@@ -1,0 +1,30 @@
+<ServerManagerConfiguration>
+  <ProxyGroup name="filters">
+    <!-- ================================================================== -->
+    <SourceProxy name="VofComponents" class="vtkVofComponents" label="Vof Components">
+      <Documentation
+         long_help="Extract connected components in Vof-field."
+         short_help="Extract components">
+      </Documentation>
+
+      <InputProperty
+         name="Input"
+         command="AddInputConnection"
+         clean_command="RemoveAllInputs">
+        <ProxyGroupDomain name="groups">
+          <Group name="sources"/>
+          <Group name="filters"/>
+        </ProxyGroupDomain>
+        <DataTypeDomain name="input_type">
+          <DataType value="vtkRectilinearGrid"/>
+        </DataTypeDomain>
+        <Documentation>
+          Set the data set to extract components.
+        </Documentation>
+      </InputProperty>
+
+    </SourceProxy>
+    <!-- End VofComponents -->
+  </ProxyGroup>
+  <!-- End Filters Group -->
+</ServerManagerConfiguration>

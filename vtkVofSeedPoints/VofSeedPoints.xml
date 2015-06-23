@@ -1,0 +1,53 @@
+<ServerManagerConfiguration>
+  <ProxyGroup name="filters">
+    <!-- ================================================================== -->
+    <SourceProxy name="VofSeedPoints" class="vtkVofSeedPoints" label="Vof Seed Points">
+      <Documentation
+         long_help="Generate seed points in the Vof-field."
+         short_help="Seed points">
+      </Documentation>
+
+      <InputProperty
+         name="Input"
+         command="AddInputConnection"
+         clean_command="RemoveAllInputs">
+        <ProxyGroupDomain name="groups">
+          <Group name="sources"/>
+          <Group name="filters"/>
+        </ProxyGroupDomain>
+        <DataTypeDomain name="input_type">
+          <DataType value="vtkDataSet"/>
+        </DataTypeDomain>
+        <Documentation>
+          Set the data set to seed points from.
+        </Documentation>
+      </InputProperty>
+
+      <IntVectorProperty
+	  name="Refinement"
+	  label="Refinement"
+	  command="SetRefinement"
+	  number_of_elements="1"
+	  default_values="0">
+	<Documentation>
+	  Cell refinement; numNewCells = numOldCells*8^Refinement
+	</Documentation>
+      </IntVectorProperty>
+
+      <IntVectorProperty
+	  name="Reseed"
+	  label="Reseed"
+	  command="SetReseed"
+	  number_of_elements="1"
+	  default_values="0">
+	<BooleanDomain name="bool"/>
+	<Documentation>
+	  Reseed points
+	</Documentation>
+      </IntVectorProperty>
+      
+    </SourceProxy>
+    <!-- End VofSeedPoints -->
+  </ProxyGroup>
+  <!-- End Filters Group -->
+</ServerManagerConfiguration>

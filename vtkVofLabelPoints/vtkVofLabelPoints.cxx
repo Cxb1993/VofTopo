@@ -153,13 +153,13 @@ int vtkVofLabelPoints::RequestData(vtkInformation *request,
   vtkFloatArray *advectedParticleLabels;
   float *advectedParticleLabels_ptr = 0;
   int numAdvectedParticles = inputAdvectedParticles->GetNumberOfPoints();
-  if (numAdvectedParticles > 0) {
+  // if (numAdvectedParticles > 0) {
     advectedParticleLabels = vtkFloatArray::New();
     advectedParticleLabels->SetName("Labels");
     advectedParticleLabels->SetNumberOfComponents(1);
     advectedParticleLabels->SetNumberOfTuples(numAdvectedParticles);
     advectedParticleLabels_ptr = advectedParticleLabels->GetPointer(0);
-  }
+  // }
 
   std::vector<std::vector<i1f1_t> > labelsToSend;
   labelsToSend.resize(numProcesses);
@@ -315,12 +315,16 @@ int vtkVofLabelPoints::RequestData(vtkInformation *request,
   // set output blocks
   int output_startParticles_Id = 0;
   {
-    inputSeeds->GetPointData()->AddArray(seedPointLabels);
+    if (numSeeds > 0) {
+      inputSeeds->GetPointData()->AddArray(seedPointLabels); 
+    }
     output->SetBlock(output_startParticles_Id, inputSeeds);
   }
   int output_endParticles_Id = 1;
   {
-    inputAdvectedParticles->GetPointData()->AddArray(advectedParticleLabels);
+    if (numAdvectedParticles > 0) {
+      inputAdvectedParticles->GetPointData()->AddArray(advectedParticleLabels);
+    }
     output->SetBlock(output_endParticles_Id, inputAdvectedParticles);
   }
   

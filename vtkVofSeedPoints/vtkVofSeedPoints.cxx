@@ -1,5 +1,6 @@
 // TODO: for vof values of nodes check if ghost nodes are taken 
 // into account in grid dimensions
+// update: ghost cells lead to many problems, so I'll avoid them for now
 
 #include "vtkObjectFactory.h" //for new() macro
 #include "vtkInformation.h"
@@ -17,14 +18,76 @@
 #include "vtkShortArray.h"
 #include "vtkPointSet.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
+// #include "vtkMPIController.h"
 
 #include "vtkVofSeedPoints.h"
 
 #include <iostream>
 #include <algorithm>
 #include <map>
+#include <limits>
 
 vtkStandardNewMacro(vtkVofSeedPoints);
+
+namespace {
+// from vtkVofAdvect
+  void findGlobalExtents(std::vector<int> &allExtents, 
+			 int globalExtents[6])
+  {
+    globalExtents[0] = globalExtents[2] = globalExtents[4] = std::numeric_limits<int>::max();
+    globalExtents[1] = globalExtents[3] = globalExtents[5] = - globalExtents[0];
+
+    for (int i = 0; i < allExtents.size()/6; ++i) {
+      if (globalExtents[0] > allExtents[i*6+0]) globalExtents[0] = allExtents[i*6+0];
+      if (globalExtents[1] < allExtents[i*6+1]) globalExtents[1] = allExtents[i*6+1];
+      if (globalExtents[2] > allExtents[i*6+2]) globalExtents[2] = allExtents[i*6+2];
+      if (globalExtents[3] < allExtents[i*6+3]) globalExtents[3] = allExtents[i*6+3];
+      if (globalExtents[4] > allExtents[i*6+4]) globalExtents[4] = allExtents[i*6+4];
+      if (globalExtents[5] < allExtents[i*6+5]) globalExtents[5] = allExtents[i*6+5];
+    }
+  }
+// from vtkVofAdvect
+  void findNeighbors(const int myExtents[6], 
+		     const int globalExtents[6], 
+		     const std::vector<int> &allExtents,
+		     std::vector<std::vector<int> > &neighbors)
+  {
+    const int numDims = 3;
+    const int numSides = 6;
+
+    for (int i = 0; i < numDims; ++i) {
+
+      if (myExtents[i*2+0] > globalExtents[i*2+0]) { 
+	for (int j = 0; j < allExtents.size()/numSides; ++j) {
+
+	  if (myExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
+	      myExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
+	      myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	      myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	      myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	      myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+
+	    neighbors[i*2+0].push_back(j);
+	  }
+	}
+      }
+      if (myExtents[i*2+1] < globalExtents[i*2+1]) { 
+	for (int j = 0; j < allExtents.size()/numSides; ++j) {
+
+	  if (myExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
+	      myExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
+	      myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	      myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	      myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	      myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+
+	    neighbors[i*2+1].push_back(j);
+	  }
+	}
+      }
+    }
+  }
+}
 
 //-----------------------------------------------------------------------------
 vtkVofSeedPoints::vtkVofSeedPoints()
@@ -32,6 +95,7 @@ vtkVofSeedPoints::vtkVofSeedPoints()
   this->OutputSeeds = NULL;
   this->Connectivity = NULL;
   this->Coords = NULL;
+  // this->Controller = vtkMPIController::New();
 }
 
 //-----------------------------------------------------------------------------
@@ -195,8 +259,10 @@ int vtkVofSeedPoints::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 					  vtkInformationVector **inputVector,
 					  vtkInformationVector *outputVector)
 {
-  // vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
   return 1;
 }
@@ -206,6 +272,12 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
 				  vtkInformationVector **inputVector,
 				  vtkInformationVector *outputVector)
 {
+  // int processId = 0;
+  // int numProcesses = Controller->GetNumberOfProcesses();
+  // if (numProcesses > 0) { 
+  //   processId = Controller->GetLocalProcessId();
+  // }
+
   if (!(this->OutputSeeds == NULL || Reseed)) {
 
     vtkInformation *outInfo = outputVector->GetInformationObject(0);
@@ -368,29 +440,29 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     output->GetPointData()->AddArray(Coords);
   }
 
-  // // used only for testing ---------------------------------------------------
-  // vtkCellArray *lines = vtkCellArray::New();
-  // for (int i = 0; i < Connectivity->GetNumberOfTuples(); ++i) {
-  //   int conn[3] = {Connectivity->GetComponent(i,0),
-  // 		   Connectivity->GetComponent(i,1),
-  // 		   Connectivity->GetComponent(i,2)};
-  //   vtkIdType pts[2];
-  //   pts[0] = i;
+  // used only for testing ---------------------------------------------------
+  vtkCellArray *lines = vtkCellArray::New();
+  for (int i = 0; i < Connectivity->GetNumberOfTuples(); ++i) {
+    int conn[3] = {Connectivity->GetComponent(i,0),
+  		   Connectivity->GetComponent(i,1),
+  		   Connectivity->GetComponent(i,2)};
+    vtkIdType pts[2];
+    pts[0] = i;
 
-  //   pts[1] = conn[0];
-  //   if (pts[1] != -1) {
-  //     lines->InsertNextCell(2, pts);
-  //   }
-  //   pts[1] = conn[1];
-  //   if (pts[1] != -1) {
-  //     lines->InsertNextCell(2, pts);
-  //   }
-  //   pts[1] = conn[2];
-  //   if (pts[1] != -1) {
-  //     lines->InsertNextCell(2, pts);
-  //   }
-  // }
-  // output->SetLines(lines);
+    pts[1] = conn[0];
+    if (pts[1] != -1) {
+      lines->InsertNextCell(2, pts);
+    }
+    pts[1] = conn[1];
+    if (pts[1] != -1) {
+      lines->InsertNextCell(2, pts);
+    }
+    pts[1] = conn[2];
+    if (pts[1] != -1) {
+      lines->InsertNextCell(2, pts);
+    }
+  }
+  output->SetLines(lines);
 
   return 1;
 }

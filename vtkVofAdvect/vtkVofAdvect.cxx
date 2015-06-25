@@ -346,10 +346,11 @@ int vtkVofAdvect::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 				    vtkInformationVector **inputVector,
 				    vtkInformationVector *outputVector)
 {
-  // vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
   if(this->FirstIteration) {
     TerminationTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
@@ -448,6 +449,11 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
       inputVelocityGrid->GetExtent(MyExtent);
       std::vector<int> AllExtents(6*numProcesses);
       Controller->AllGatherV(&MyExtent[0], &AllExtents[0], 6, &RecvLengths[0], &RecvOffsets[0]);
+
+      std::cout << processId << " | " << "extent: " 
+		<< MyExtent[0] << " " << MyExtent[1] << " " 
+		<< MyExtent[2] << " " << MyExtent[3] << " " 
+		<< MyExtent[4] << " " << MyExtent[5] << std::endl; 
     
       findGlobalExtents(AllExtents, GlobalExtents);
       NeighborProcesses.clear();
@@ -459,8 +465,6 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
       for (int i = 0; i < NeighborProcesses.size(); ++i) {
 	NumNeighbors += NeighborProcesses[i].size();
       }
-
-      std::cout << "num neighborprocesses = " << NumNeighbors << std::endl;
     }
     //---------------------------------------------------
   }

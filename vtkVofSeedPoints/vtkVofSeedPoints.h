@@ -12,6 +12,7 @@ class vtkInformationVector;
 class vtkIterativeClosestPointTransform;
 class vtkPoints;
 class vtkShortArray;
+class vtkMPIController;
 
 #include "vtkMath.h"
 
@@ -51,5 +52,10 @@ class vtkVofSeedPoints : public vtkPolyDataAlgorithm
   vtkIntArray *Connectivity;
   vtkShortArray *Coords;
   int Reseed;
+
+  /* // multiprocess */
+  /* vtkMPIController *Controller; */
+  /* std::vector<std::vector<int> > NeighborProcesses; */
+  /* int GlobalExtents[6]; */
 };
 #endif

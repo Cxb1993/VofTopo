@@ -45,25 +45,25 @@ namespace
     id[i] = j;
   }
 
-  void findGlobalBounds(std::vector<double> &allBounds,
-			double globalBounds[6])
+  void findGlobalExtents(std::vector<int> &allExtents, 
+			 int globalExtents[6])
   {
-    globalBounds[0] = globalBounds[2] = globalBounds[4] = std::numeric_limits<double>::max();
-    globalBounds[1] = globalBounds[3] = globalBounds[5] = - globalBounds[0];
+    globalExtents[0] = globalExtents[2] = globalExtents[4] = std::numeric_limits<int>::max();
+    globalExtents[1] = globalExtents[3] = globalExtents[5] = - globalExtents[0];
 
-    for (int i = 0; i < allBounds.size()/6; ++i) {
-      if (globalBounds[0] > allBounds[i*6+0]) globalBounds[0] = allBounds[i*6+0];
-      if (globalBounds[1] < allBounds[i*6+1]) globalBounds[1] = allBounds[i*6+1];
-      if (globalBounds[2] > allBounds[i*6+2]) globalBounds[2] = allBounds[i*6+2];
-      if (globalBounds[3] < allBounds[i*6+3]) globalBounds[3] = allBounds[i*6+3];
-      if (globalBounds[4] > allBounds[i*6+4]) globalBounds[4] = allBounds[i*6+4];
-      if (globalBounds[5] < allBounds[i*6+5]) globalBounds[5] = allBounds[i*6+5];
+    for (int i = 0; i < allExtents.size()/6; ++i) {
+      if (globalExtents[0] > allExtents[i*6+0]) globalExtents[0] = allExtents[i*6+0];
+      if (globalExtents[1] < allExtents[i*6+1]) globalExtents[1] = allExtents[i*6+1];
+      if (globalExtents[2] > allExtents[i*6+2]) globalExtents[2] = allExtents[i*6+2];
+      if (globalExtents[3] < allExtents[i*6+3]) globalExtents[3] = allExtents[i*6+3];
+      if (globalExtents[4] > allExtents[i*6+4]) globalExtents[4] = allExtents[i*6+4];
+      if (globalExtents[5] < allExtents[i*6+5]) globalExtents[5] = allExtents[i*6+5];
     }
   }
 
-  void findNeighbors(const double myBounds[6],
-		     const double globalBounds[6],
-		     const std::vector<double> &allBounds,
+  void findNeighbors(const int myExtents[6], 
+		     const int globalExtents[6], 
+		     const std::vector<int> &allExtents,
 		     std::vector<std::vector<int> > &neighbors)
   {
     const int numDims = 3;
@@ -71,27 +71,27 @@ namespace
 
     for (int i = 0; i < numDims; ++i) {
 
-      if (myBounds[i*2+0] > globalBounds[i*2+0]) {
-	for (int j = 0; j < allBounds.size()/numSides; ++j) {
-
-	  if (myBounds[i*2+0] == allBounds[j*numSides+i*2+1] &&
-	      myBounds[((i+1)%3)*2+0] < allBounds[j*numSides+((i+1)%3)*2+1] &&
-	      myBounds[((i+1)%3)*2+1] > allBounds[j*numSides+((i+1)%3)*2+0] &&
-	      myBounds[((i+2)%3)*2+0] < allBounds[j*numSides+((i+2)%3)*2+1] &&
-	      myBounds[((i+2)%3)*2+1] > allBounds[j*numSides+((i+2)%3)*2+0]) {
+      if (myExtents[i*2+0] > globalExtents[i*2+0]) { 
+	for (int j = 0; j < allExtents.size()/numSides; ++j) {
+	  if (myExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
+	      myExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
+	      myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	      myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	      myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	      myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
 
 	    neighbors[i*2+0].push_back(j);
 	  }
 	}
       }
-      if (myBounds[i*2+1] < globalBounds[i*2+1]) {
-	for (int j = 0; j < allBounds.size()/numSides; ++j) {
-
-	  if (myBounds[i*2+1] == allBounds[j*numSides+i*2+0] &&
-	      myBounds[((i+1)%3)*2+0] < allBounds[j*numSides+((i+1)%3)*2+1] &&
-	      myBounds[((i+1)%3)*2+1] > allBounds[j*numSides+((i+1)%3)*2+0] &&
-	      myBounds[((i+2)%3)*2+0] < allBounds[j*numSides+((i+2)%3)*2+1] &&
-	      myBounds[((i+2)%3)*2+1] > allBounds[j*numSides+((i+2)%3)*2+0]) {
+      if (myExtents[i*2+1] < globalExtents[i*2+1]) { 
+	for (int j = 0; j < allExtents.size()/numSides; ++j) {
+	  if (myExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
+	      myExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
+	      myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	      myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	      myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	      myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
 
 	    neighbors[i*2+1].push_back(j);
 	  }
@@ -103,8 +103,8 @@ namespace
   bool adjointPoint(int x, int y, int z, int extent[6]) 
   {
     if (x >= extent[0] && x <= extent[1] && 
-	y >= extent[2] && y <= extent[3] && 
-	z >= extent[4] && z <= extent[5]) {
+  	y >= extent[2] && y <= extent[3] && 
+  	z >= extent[4] && z <= extent[5]) {
       return true;
     }
     return false;
@@ -397,24 +397,23 @@ int vtkVofComponents::RequestData(vtkInformation *vtkNotUsed(request),
 
     int numAllLabels = labelOffsets.back() + allNumLabels.back();
 
-    // -----------------------------------------------------------------------
-    // find neighboring processes
-    double myBounds[6];
-    input->GetBounds(&myBounds[0]);
-    std::vector<double> allBounds(numProcesses*6);
+    // ------------------------
     for (int i = 0; i < numProcesses; ++i) {
       recvLengths[i] = 6;
       recvOffsets[i] = i*6;
     }
-    Controller->AllGatherV(&myBounds[0], &allBounds[0], 6, &recvLengths[0], &recvOffsets[0]);
 
-    double globalBounds[6];
-    findGlobalBounds(allBounds, globalBounds);
+    int MyExtent[6];
+    input->GetExtent(MyExtent);
+    std::vector<int> AllExtents(6*numProcesses);
+    Controller->AllGatherV(&MyExtent[0], &AllExtents[0], 6, &recvLengths[0], &recvOffsets[0]);
 
+    int GlobalExtents[6];
+    findGlobalExtents(AllExtents, GlobalExtents);
     std::vector<std::vector<int> > neighborProcesses;
     neighborProcesses.clear();
     neighborProcesses.resize(6);
-    findNeighbors(myBounds, globalBounds, allBounds, neighborProcesses);
+    findNeighbors(MyExtent, GlobalExtents, AllExtents, neighborProcesses);
 
     int numNeighbors = 0;
     for (int i = 0; i < neighborProcesses.size(); ++i) {
@@ -434,12 +433,18 @@ int vtkVofComponents::RequestData(vtkInformation *vtkNotUsed(request),
       res[2] -= 1;
     }
 
-    int lext[6][6] = {{0,0,                0,res[1]-1,         0,res[2]-1},
-		      {res[0]-1,res[0]-1,  0,res[1]-1,         0,res[2]-1},
-		      {0,res[0]-1,         0,0,                0,res[2]-1},
-		      {0,res[0]-1,         res[1]-1,res[1]-1,  0,res[2]-1},
-		      {0,res[0]-1,         0,res[1]-1,         0,0},
-		      {0,res[0]-1,         0,res[1]-1,         res[2]-1,res[2]-1}};
+    // int lext[6][6] = {{0,0,                0,res[1]-1,         0,res[2]-1},
+    // 		      {res[0]-1,res[0]-1,  0,res[1]-1,         0,res[2]-1},
+    // 		      {0,res[0]-1,         0,0,                0,res[2]-1},
+    // 		      {0,res[0]-1,         res[1]-1,res[1]-1,  0,res[2]-1},
+    // 		      {0,res[0]-1,         0,res[1]-1,         0,0},
+    // 		      {0,res[0]-1,         0,res[1]-1,         res[2]-1,res[2]-1}};
+    int lext[6][6] = {{0,1,                0,res[1]-1,         0,res[2]-1},
+    		      {res[0]-2,res[0]-1,  0,res[1]-1,         0,res[2]-1},
+    		      {0,res[0]-1,         0,1,                0,res[2]-1},
+    		      {0,res[0]-1,         res[1]-2,res[1]-1,  0,res[2]-1},
+    		      {0,res[0]-1,         0,res[1]-1,         0,1},
+    		      {0,res[0]-1,         0,res[1]-1,         res[2]-2,res[2]-1}};
 
     std::vector<std::vector<float4> > labelsToSend(6);
     for (int p = 0; p < neighborProcesses.size(); ++p) {
@@ -542,19 +547,12 @@ int vtkVofComponents::RequestData(vtkInformation *vtkNotUsed(request),
 	  
 	  int mx, my, mz;
 
-	  if (pointData != 0 && cellData == 0) {
-	    if (!adjointPoint(x, y, z, myExtent)) {
-	      continue;
-	    }
-	    mx = x - myExtent[0];
-	    my = y - myExtent[2];
-	    mz = z - myExtent[4];
+	  if (!adjointPoint(x, y, z, myExtent)) {
+	    continue;
 	  }
-	  if (pointData == 0 && cellData != 0) {
-	    if (!adjointCell(x, y, z, myExtent, i, mx, my, mz)) {
-	      continue;
-	    }	    
-	  }
+	  mx = x - myExtent[0];
+	  my = y - myExtent[2];
+	  mz = z - myExtent[4];
 
     	  int idx = mx + my*res[0] + mz*res[0]*res[1];
     	  int myLabel = labels->GetValue(idx) + labelOffsets[processId];

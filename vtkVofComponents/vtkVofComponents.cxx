@@ -433,18 +433,18 @@ int vtkVofComponents::RequestData(vtkInformation *vtkNotUsed(request),
       res[2] -= 1;
     }
 
-    // int lext[6][6] = {{0,0,                0,res[1]-1,         0,res[2]-1},
-    // 		      {res[0]-1,res[0]-1,  0,res[1]-1,         0,res[2]-1},
-    // 		      {0,res[0]-1,         0,0,                0,res[2]-1},
-    // 		      {0,res[0]-1,         res[1]-1,res[1]-1,  0,res[2]-1},
-    // 		      {0,res[0]-1,         0,res[1]-1,         0,0},
-    // 		      {0,res[0]-1,         0,res[1]-1,         res[2]-1,res[2]-1}};
-    int lext[6][6] = {{0,1,                0,res[1]-1,         0,res[2]-1},
-    		      {res[0]-2,res[0]-1,  0,res[1]-1,         0,res[2]-1},
-    		      {0,res[0]-1,         0,1,                0,res[2]-1},
-    		      {0,res[0]-1,         res[1]-2,res[1]-1,  0,res[2]-1},
-    		      {0,res[0]-1,         0,res[1]-1,         0,1},
-    		      {0,res[0]-1,         0,res[1]-1,         res[2]-2,res[2]-1}};
+    int lext[6][6] = {{0,0,                0,res[1]-1,         0,res[2]-1},
+    		      {res[0]-1,res[0]-1,  0,res[1]-1,         0,res[2]-1},
+    		      {0,res[0]-1,         0,0,                0,res[2]-1},
+    		      {0,res[0]-1,         res[1]-1,res[1]-1,  0,res[2]-1},
+    		      {0,res[0]-1,         0,res[1]-1,         0,0},
+    		      {0,res[0]-1,         0,res[1]-1,         res[2]-1,res[2]-1}};
+    // int lext[6][6] = {{0,1,                0,res[1]-1,         0,res[2]-1},
+    // 		      {res[0]-2,res[0]-1,  0,res[1]-1,         0,res[2]-1},
+    // 		      {0,res[0]-1,         0,1,                0,res[2]-1},
+    // 		      {0,res[0]-1,         res[1]-2,res[1]-1,  0,res[2]-1},
+    // 		      {0,res[0]-1,         0,res[1]-1,         0,1},
+    // 		      {0,res[0]-1,         0,res[1]-1,         res[2]-2,res[2]-1}};
 
     std::vector<std::vector<float4> > labelsToSend(6);
     for (int p = 0; p < neighborProcesses.size(); ++p) {

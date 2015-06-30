@@ -259,10 +259,10 @@ int vtkVofSeedPoints::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 					  vtkInformationVector **inputVector,
 					  vtkInformationVector *outputVector)
 {
-  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  // vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  // vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  // outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
   return 1;
 }
@@ -440,29 +440,29 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     output->GetPointData()->AddArray(Coords);
   }
 
-  // used only for testing ---------------------------------------------------
-  vtkCellArray *lines = vtkCellArray::New();
-  for (int i = 0; i < Connectivity->GetNumberOfTuples(); ++i) {
-    int conn[3] = {Connectivity->GetComponent(i,0),
-  		   Connectivity->GetComponent(i,1),
-  		   Connectivity->GetComponent(i,2)};
-    vtkIdType pts[2];
-    pts[0] = i;
+  // // used only for testing ---------------------------------------------------
+  // vtkCellArray *lines = vtkCellArray::New();
+  // for (int i = 0; i < Connectivity->GetNumberOfTuples(); ++i) {
+  //   int conn[3] = {Connectivity->GetComponent(i,0),
+  // 		   Connectivity->GetComponent(i,1),
+  // 		   Connectivity->GetComponent(i,2)};
+  //   vtkIdType pts[2];
+  //   pts[0] = i;
 
-    pts[1] = conn[0];
-    if (pts[1] != -1) {
-      lines->InsertNextCell(2, pts);
-    }
-    pts[1] = conn[1];
-    if (pts[1] != -1) {
-      lines->InsertNextCell(2, pts);
-    }
-    pts[1] = conn[2];
-    if (pts[1] != -1) {
-      lines->InsertNextCell(2, pts);
-    }
-  }
-  output->SetLines(lines);
+  //   pts[1] = conn[0];
+  //   if (pts[1] != -1) {
+  //     lines->InsertNextCell(2, pts);
+  //   }
+  //   pts[1] = conn[1];
+  //   if (pts[1] != -1) {
+  //     lines->InsertNextCell(2, pts);
+  //   }
+  //   pts[1] = conn[2];
+  //   if (pts[1] != -1) {
+  //     lines->InsertNextCell(2, pts);
+  //   }
+  // }
+  // output->SetLines(lines);
 
   return 1;
 }

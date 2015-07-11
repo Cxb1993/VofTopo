@@ -25,6 +25,9 @@ class vtkVofSeedPoints : public vtkPolyDataAlgorithm
   vtkSetMacro(Reseed, int);
   vtkGetMacro(Reseed, int);
 
+  vtkSetMacro(SeedTimeStep, int);
+  vtkGetMacro(SeedTimeStep, int);
+
   static vtkVofSeedPoints *New();
   vtkTypeMacro(vtkVofSeedPoints, vtkPolyDataAlgorithm);
   void PrintSelf(ostream &os, vtkIndent indent);
@@ -52,10 +55,7 @@ class vtkVofSeedPoints : public vtkPolyDataAlgorithm
   vtkIntArray *Connectivity;
   vtkShortArray *Coords;
   int Reseed;
-
-  /* // multiprocess */
-  /* vtkMPIController *Controller; */
-  /* std::vector<std::vector<int> > NeighborProcesses; */
-  /* int GlobalExtents[6]; */
+  int SeedTimeStep;
+  int SeedTimeStepPrev;
 };
 #endif

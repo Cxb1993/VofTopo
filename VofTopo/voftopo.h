@@ -205,7 +205,7 @@ void discardStrayParticles(const T *vofField, const int res[3],
     getGridPosition(particle, res, xcoords, ycoords, zcoords,
 		    idxOut, bcoordOut);
     float f = interpolateSca(vofField, res, idxOut, bcoordOut);
-    if (f <= 0.0f) {
+    if (f <= 0.0f && particle.id > -1) {
       particle.id = particle.id*-1 - 1;
     }
     particlesValid.push_back(particle);

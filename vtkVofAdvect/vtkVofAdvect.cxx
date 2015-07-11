@@ -91,14 +91,6 @@ namespace
       if (myExtents[i*2+0] > globalExtents[i*2+0]) { 
 	for (int j = 0; j < allExtents.size()/numSides; ++j) {
 
-	  // if (myExtents[i*2+0] == allExtents[j*numSides+i*2+1] &&
-	  //     myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
-	  //     myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
-	  //     myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
-	  //     myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
-
-	  //   neighbors[i*2+0].push_back(j);
-	  // }
 	  if (myExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
 	      myExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
 	      myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
@@ -113,14 +105,6 @@ namespace
       if (myExtents[i*2+1] < globalExtents[i*2+1]) { 
 	for (int j = 0; j < allExtents.size()/numSides; ++j) {
 
-	  // if (myExtents[i*2+1] == allExtents[j*numSides+i*2+0] &&
-	  //     myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
-	  //     myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
-	  //     myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
-	  //     myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
-
-	  //   neighbors[i*2+1].push_back(j);
-	  // }
 	  if (myExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
 	      myExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
 	      myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
@@ -346,11 +330,11 @@ int vtkVofAdvect::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 				    vtkInformationVector **inputVector,
 				    vtkInformationVector *outputVector)
 {
-  // vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  // outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
   if(this->FirstIteration) {
     TerminationTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
@@ -483,7 +467,10 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
   // processing here
   if (StartTimeStep < TerminationTimeStep && 
       CurrentTimeStep < TerminationTimeStep) {
-    ProcessData(inputVofGrid, inputVelocityGrid);
+
+    std::cout << "{" << processId << "} [" << CurrentTimeStep << "] advection start" << std::endl;
+    Advect(inputVofGrid, inputVelocityGrid);
+    std::cout << "{" << processId << "} [" << CurrentTimeStep << "] advection end" << std::endl;
   }
 
   //
@@ -587,8 +574,8 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
   return 1;
 }
 
-int vtkVofAdvect::ProcessData(vtkRectilinearGrid *inputVofGrid,
-			      vtkRectilinearGrid *inputVelocityGrid)
+int vtkVofAdvect::Advect(vtkRectilinearGrid *inputVofGrid,
+			 vtkRectilinearGrid *inputVelocityGrid)
 {
   //------------------------------------------------
   // discard particles that move to cells with f = 0
@@ -612,10 +599,16 @@ int vtkVofAdvect::ProcessData(vtkRectilinearGrid *inputVofGrid,
   }
 
   vtkDataArray *velocityArray;
-  getGridData(inputVelocityGrid, vtkDataSetAttributes::VECTORS, &velocityArray);
-  float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+  getGridData(inputVelocityGrid, vtkDataSetAttributes::VECTORS, &velocityArray);  
 
-  if (velocityArray->GetDataType() == VTK_FLOAT) {
+  float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+  // Time step in the simulation data might be incorrent, in which case we set it
+  // manually
+  if (TimeStepDelta != 0.0) {
+    dt = TimeStepDelta;    
+  }
+
+  if (velocityArray->GetDataType() == VTK_FLOAT) {    
     advectParticles(vtkFloatArray::SafeDownCast(velocityArray)->GetPointer(0), res, 
   		    vtkFloatArray::SafeDownCast(XCoords)->GetPointer(0), 
   		    vtkFloatArray::SafeDownCast(YCoords)->GetPointer(0), 

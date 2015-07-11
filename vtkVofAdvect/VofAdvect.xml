@@ -20,10 +20,6 @@
 	<InputArrayDomain name="input_array1"
 			  number_of_components="3">
 	</InputArrayDomain>
-	<!-- <InputArrayDomain name="input_array1" -->
-	<!-- 		  attribute_type="point"  -->
-	<!-- 		  number_of_components="3"> -->
-	<!-- </InputArrayDomain> -->
 	<Documentation>
 	  The input.
 	</Documentation>
@@ -42,10 +38,6 @@
 	<InputArrayDomain name="input_array2"
 			  number_of_components="1">
 	</InputArrayDomain>
-	<!-- <InputArrayDomain name="input_array2" -->
-	<!-- 		  attribute_type="point"  -->
-	<!-- 		  number_of_components="1"> -->
-	<!-- </InputArrayDomain> -->
 	<Documentation>
 	  The input.
 	</Documentation>
@@ -73,6 +65,14 @@
 	  number_of_elements="1"
 	  default_values="0">
       </IntVectorProperty>
+
+      <DoubleVectorProperty
+	  name="TimeStepDelta"
+	  label="Time step delta"
+	  command="SetTimeStepDelta"
+	  number_of_elements="1"
+	  default_values="0">
+      </DoubleVectorProperty>
     </SourceProxy>
     <!-- End VofAdvect -->
   </ProxyGroup>

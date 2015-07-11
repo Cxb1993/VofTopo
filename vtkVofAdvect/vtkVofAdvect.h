@@ -35,6 +35,9 @@ class vtkVofAdvect : public vtkPolyDataAlgorithm
   // GUI -------------------------------
   vtkGetMacro(StartTimeStep, int);
   vtkSetMacro(StartTimeStep, int);
+
+  vtkGetMacro(TimeStepDelta, double);
+  vtkSetMacro(TimeStepDelta, double);
   //~GUI -------------------------------
 
  protected:
@@ -57,14 +60,15 @@ class vtkVofAdvect : public vtkPolyDataAlgorithm
 		  vtkInformationVector **, 
 		  vtkInformationVector *);
 
-  int ProcessData(vtkRectilinearGrid *inputVofGrid,
-		  vtkRectilinearGrid *inputVelocityGrid);
+  int Advect(vtkRectilinearGrid *inputVofGrid,
+	     vtkRectilinearGrid *inputVelocityGrid);
 
  private:
 
   std::vector<double> InputTimeValues;
   double StartTime;
   double TerminationTime;
+  double TimeStepDelta;
   int StartTimeStep;
   int TerminationTimeStep;
   int CurrentTimeStep;

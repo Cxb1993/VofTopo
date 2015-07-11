@@ -46,6 +46,17 @@
 	</Documentation>
       </IntVectorProperty>
       
+      <IntVectorProperty
+	  name="SeedTimeStep"
+	  label="SeedTimeStep"
+	  command="SetSeedTimeStep"
+	  number_of_elements="1"
+	  default_values="0">
+	<Documentation>
+	  Time step at which point are seeded
+	</Documentation>
+      </IntVectorProperty>
+
     </SourceProxy>
     <!-- End VofSeedPoints -->
   </ProxyGroup>

@@ -95,7 +95,6 @@ vtkVofSeedPoints::vtkVofSeedPoints()
   this->OutputSeeds = NULL;
   this->Connectivity = NULL;
   this->Coords = NULL;
-  // this->Controller = vtkMPIController::New();
 }
 
 //-----------------------------------------------------------------------------
@@ -259,10 +258,25 @@ int vtkVofSeedPoints::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 					  vtkInformationVector **inputVector,
 					  vtkInformationVector *outputVector)
 {
-  // vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
-  // vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  // outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+
+  if (Reseed) {
+    if (inInfo->Has(vtkStreamingDemandDrivenPipeline::TIME_STEPS())) {
+
+      unsigned int numberOfInputTimeSteps =
+	inInfo->Length(vtkStreamingDemandDrivenPipeline::TIME_STEPS());
+
+      std::vector<double> inputTimeValues(numberOfInputTimeSteps);
+      inInfo->Get(vtkStreamingDemandDrivenPipeline::TIME_STEPS(),
+		  &inputTimeValues[0]);
+
+      inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(), 
+		  inputTimeValues[SeedTimeStep]);
+    }
+  }
 
   return 1;
 }
@@ -272,12 +286,6 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
 				  vtkInformationVector **inputVector,
 				  vtkInformationVector *outputVector)
 {
-  // int processId = 0;
-  // int numProcesses = Controller->GetNumberOfProcesses();
-  // if (numProcesses > 0) { 
-  //   processId = Controller->GetLocalProcessId();
-  // }
-
   if (!(this->OutputSeeds == NULL || Reseed)) {
 
     vtkInformation *outInfo = outputVector->GetInformationObject(0);

@@ -181,7 +181,7 @@ namespace {
 
   void placeSeeds(vtkPoints *seeds, const float cellCenter[3], 
 		  const float cellSize[3], const int refinement,
-		  const float f, const double bounds[6],
+		  const float f, const float gradf[3], const double bounds[6],
 		  const int cell_x, const int cell_y, const int cell_z, 
 		  std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> &seedPos)
   {
@@ -208,9 +208,9 @@ namespace {
 	  float seed[3] = {cellCenter[0]+dx[0],
 			   cellCenter[1]+dx[1],
 			   cellCenter[2]+dx[2]};
-	  // float df = grad[0]*dx[0] + grad[1]*dx[1] + grad[2]*dx[2];
+	  float df = gradf[0]*dx[0] + gradf[1]*dx[1] + gradf[2]*dx[2];
 
-	  if (pointWithinBounds(seed, bounds)) {
+	  if (pointWithinBounds(seed, bounds) && f + df >= 0.06125f) {
 
 	    seeds->InsertNextPoint(seed);
 	    int3_t pos = {cell_x*subdiv + xr, 
@@ -387,7 +387,10 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
 			       coordNodes[2]->GetComponent(k+1,0) - 
 			       coordNodes[2]->GetComponent(k,0)};
 
-	  placeSeeds(OutputSeeds, cellCenter, cellSize, Refinement, f, 
+	  float gradf[3];
+	  computeGradient(data, cellRes, i, j, k, coordCenters, gradf);
+
+	  placeSeeds(OutputSeeds, cellCenter, cellSize, Refinement, f, gradf,
 		     bounds, i+extent[0], j+extent[2], k+extent[4], seedPos);
 	}
 	++idx;

@@ -8,6 +8,7 @@
 #include "vtkFloatArray.h"
 #include "vtkIntArray.h"
 #include "vtkShortArray.h"
+#include "vtkCharArray.h"
 #include "vtkPointData.h"
 #include "vtkCellData.h"
 #include "vtkPoints.h"
@@ -132,6 +133,11 @@ int vtkVofLabelPoints::RequestData(vtkInformation *request,
     vtkErrorMacro("One of the inputs is empty");
     return 0;
   }
+
+  vtkCharArray *ifacePoints = vtkCharArray::
+    SafeDownCast(inputSeeds->GetPointData()->GetArray("InterfacePoints"));
+  if (ifacePoints != NULL) std::cout << "BANGLA" << std::endl;
+  else std::cout << "NIE BANGLA" << std::endl;
 
   // output labels for seed points -------------------------------------------
   vtkFloatArray *seedPointLabels;

@@ -18,7 +18,7 @@
 #include "vtkShortArray.h"
 #include "vtkPointSet.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
-// #include "vtkMPIController.h"
+#include "vtkCharArray.h"
 
 #include "vtkVofSeedPoints.h"
 
@@ -212,85 +212,80 @@ namespace {
 	       data->GetComponent(id_back,0))/dk;
   }
 
-  // void placeOuterSeeds(vtkDataArray *data, const int refinement, 
-  // 		       vtkDataArray *coordCenters[3], vtkDataArray *coordNodes[3], 
-  // 		       const int globalExtent[6], const int localExtent[6],
-  // 		       std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> &seedPos,
-  // 		       vtkPoints *seeds)
-  // {
-  //   int subdiv = 1;
-  //   for (int i = 0; i < refinement; ++i) {
-  //     subdiv *= 2;
-  //   }
+  void placeOuterSeeds(vtkDataArray *data, const int refinement, 
+  		       vtkDataArray *coordCenters[3], vtkDataArray *coordNodes[3], 
+  		       const int globalExtent[6], const int localExtent[6],
+  		       std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> &seedPos,
+  		       vtkPoints *seeds)
+  {
+    int subdiv = 1;
+    for (int i = 0; i < refinement; ++i) {
+      subdiv *= 2;
+    }
 
-  //   std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> outerSeedPos(int3_t_compare);
+    std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> outerSeedPos(int3_t_compare);
 
-  //   std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)>::iterator it;
-  //   for (it = seedPos.begin(); it != seedPos.end(); ++it) {
+    std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)>::iterator it;
+    for (it = seedPos.begin(); it != seedPos.end(); ++it) {
       
-  //     int3_t coords = it->first;
-  //     int3_t coordsNeighbors[6] = {{coords.x-1, coords.y, coords.z},
-  // 				   {coords.x+1, coords.y, coords.z},
-  // 				   {coords.x, coords.y-1, coords.z},
-  // 				   {coords.x, coords.y+1, coords.z},
-  // 				   {coords.x, coords.y, coords.z-1},
-  // 				   {coords.x, coords.y, coords.z+1}};
+      int3_t coords = it->first;
+      int3_t coordsNeighbors[6] = {{coords.x-1, coords.y, coords.z},
+  				   {coords.x+1, coords.y, coords.z},
+  				   {coords.x, coords.y-1, coords.z},
+  				   {coords.x, coords.y+1, coords.z},
+  				   {coords.x, coords.y, coords.z-1},
+  				   {coords.x, coords.y, coords.z+1}};
 
-  //     for (int n = 0; n < 6; ++n) {	
+      for (int n = 0; n < 6; ++n) {	
 
-  // 	int3_t negCoordsNeighbors = {-coordsNeighbors[n].x-1,
-  // 				     -coordsNeighbors[n].y-1,
-  // 				     -coordsNeighbors[n].z-1};
-	
+  	if (seedPos.find(coordsNeighbors[n]) == seedPos.end() && 
+  	    outerSeedPos.find(coordsNeighbors[n]) == outerSeedPos.end()) {
 
-  // 	if (seedPos.find(coordsNeighbors[n]) == seedPos.end() && 
-  // 	    outerSeedPos.find(negCoordsNeighbors) == outerSeedPos.end()) {
-
-  // 	  int i = coordsNeighbors[n].x/subdiv;
-  // 	  int j = coordsNeighbors[n].y/subdiv;
-  // 	  int k = coordsNeighbors[n].z/subdiv;
-  // 	  int xr = coordsNeighbors[n].x%subdiv;
-  // 	  int yr = coordsNeighbors[n].y%subdiv;
-  // 	  int zr = coordsNeighbors[n].z%subdiv;
+  	  int i = coordsNeighbors[n].x/subdiv;
+  	  int j = coordsNeighbors[n].y/subdiv;
+  	  int k = coordsNeighbors[n].z/subdiv;
+  	  int xr = coordsNeighbors[n].x%subdiv;
+  	  int yr = coordsNeighbors[n].y%subdiv;
+  	  int zr = coordsNeighbors[n].z%subdiv;
  
-  // 	  float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
-  // 				 coordCenters[1]->GetComponent(j,0),
-  // 				 coordCenters[2]->GetComponent(k,0)};
-  // 	  float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
-  // 			       coordNodes[0]->GetComponent(i,0),
-  // 			       coordNodes[1]->GetComponent(j+1,0) - 
-  // 			       coordNodes[1]->GetComponent(j,0),
-  // 			       coordNodes[2]->GetComponent(k+1,0) - 
-  // 			       coordNodes[2]->GetComponent(k,0)};
-  // 	  float originOffset[3] = {0.0f,0.0f,0.0f};
-  // 	  for (int i = 0; i < refinement; ++i) {
-  // 	    cellSize[0] /= 2.0f;
-  // 	    cellSize[1] /= 2.0f;
-  // 	    cellSize[2] /= 2.0f;
-  // 	    originOffset[0] -= cellSize[0]/2.0f;
-  // 	    originOffset[1] -= cellSize[1]/2.0f;
-  // 	    originOffset[2] -= cellSize[2]/2.0f;
-  // 	  }
+  	  float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
+  				 coordCenters[1]->GetComponent(j,0),
+  				 coordCenters[2]->GetComponent(k,0)};
+  	  float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
+  			       coordNodes[0]->GetComponent(i,0),
+  			       coordNodes[1]->GetComponent(j+1,0) - 
+  			       coordNodes[1]->GetComponent(j,0),
+  			       coordNodes[2]->GetComponent(k+1,0) - 
+  			       coordNodes[2]->GetComponent(k,0)};
+  	  float originOffset[3] = {0.0f,0.0f,0.0f};
+  	  for (int i = 0; i < refinement; ++i) {
+  	    cellSize[0] /= 2.0f;
+  	    cellSize[1] /= 2.0f;
+  	    cellSize[2] /= 2.0f;
+  	    originOffset[0] -= cellSize[0]/2.0f;
+  	    originOffset[1] -= cellSize[1]/2.0f;
+  	    originOffset[2] -= cellSize[2]/2.0f;
+  	  }
 
-  // 	  float dx[3] = {originOffset[0] + xr*cellSize[0],
-  // 	  		 originOffset[1] + yr*cellSize[1],
-  // 	  		 originOffset[2] + zr*cellSize[2]};
-  // 	  float seed[3] = {cellCenter[0]+dx[0],
-  // 	  		   cellCenter[1]+dx[1],
-  // 	  		   cellCenter[2]+dx[2]};
+  	  float dx[3] = {originOffset[0] + xr*cellSize[0],
+  	  		 originOffset[1] + yr*cellSize[1],
+  	  		 originOffset[2] + zr*cellSize[2]};
+  	  float seed[3] = {cellCenter[0]+dx[0],
+  	  		   cellCenter[1]+dx[1],
+  	  		   cellCenter[2]+dx[2]};
      
-  // 	  seeds->InsertNextPoint(seed);
+  	  seeds->InsertNextPoint(seed);
 
-  // 	  outerSeedPos[negCoordsNeighbors] = g_seedIdx;
-  // 	  ++g_seedIdx;
-  // 	}
-  //     }
-  //   }
+  	  outerSeedPos[coordsNeighbors[n]] = g_seedIdx;
+  	  ++g_seedIdx;
+  	}
+      }
+    }
 
-  //   for (it = outerSeedPos.begin(); it != outerSeedPos.end(); ++it) {
-  //     seedPos[it->first] = it->second;
-  //   }
-  // }
+    for (it = outerSeedPos.begin(); it != outerSeedPos.end(); ++it) {
+      seedPos[it->first] = it->second;
+    }
+  }
 
 } // namespace
 
@@ -300,6 +295,7 @@ vtkVofSeedPoints::vtkVofSeedPoints()
   this->OutputSeeds = NULL;
   this->Connectivity = NULL;
   this->Coords = NULL;
+  this->InterfacePoints = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -311,6 +307,8 @@ vtkVofSeedPoints::~vtkVofSeedPoints()
     this->Connectivity->Delete();
   if (this->Coords != NULL)
     this->Coords->Delete();
+  if (this->InterfacePoints != NULL)
+    this->InterfacePoints->Delete();
 }
 
 //----------------------------------------------------------------------------
@@ -472,6 +470,12 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
   seedPos.clear();
   g_seedIdx = 0;
 
+  if (InterfacePoints != NULL) {
+    InterfacePoints->Delete();
+  }
+  InterfacePoints = vtkCharArray::New();
+  InterfacePoints->SetNumberOfComponents(1);
+  InterfacePoints->SetName("InterfacePoints");
   //---------------------------------------------------------------------------
   // populate the grid with seed points
   int idx = 0;
@@ -502,6 +506,11 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     }
   }
 
+  int numSeeds = seedPos.size();
+  for (int i = 0; i < numSeeds; ++i) {
+    InterfacePoints->InsertNextValue(0);
+  }
+
   int globalExtent[6];
   inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), globalExtent);
   int localExtent[6];
@@ -509,8 +518,13 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
 
   // insert additional seed points on the boundary of the original ones 
   // so that it's possible to construct outer boundary
-  // placeOuterSeeds(data, Refinement, coordCenters, coordNodes, 
-  // 		  globalExtent, localExtent, seedPos, OutputSeeds);
+  placeOuterSeeds(data, Refinement, coordCenters, coordNodes, 
+  		  globalExtent, localExtent, seedPos, OutputSeeds);
+
+  int numInterfacePoints = seedPos.size() - numSeeds;
+  for (int i = 0; i < numInterfacePoints; ++i) {
+    InterfacePoints->InsertNextValue(1);
+  }
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   vtkPolyData *output = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
@@ -532,20 +546,10 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
   Coords->SetNumberOfComponents(3);
   Coords->SetNumberOfTuples(seedPos.size());
 
-  // const int minval = -1*std::numeric_limits<int>::max();
-
   std::map<int3_t, int>::iterator it;
   for (it = seedPos.begin(); it != seedPos.end(); ++it) {
 
     int conn[3] = {-1,-1,-1};
-    // int conn[3] = {minval,minval,minval};
-    // int xn = it->first.x;
-    // int yn = it->first.y;
-    // int zn = it->first.z;
-
-    // int x = xn < 0 ? -1*(xn + 1) : xn;
-    // int y = yn < 0 ? -1*(yn + 1) : yn;
-    // int z = zn < 0 ? -1*(zn + 1) : zn;
 
     int x = it->first.x;
     int y = it->first.y;
@@ -567,7 +571,6 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     int seedIdx = it->second;
     Connectivity->SetTuple3(seedIdx, conn[0], conn[1], conn[2]);
     Coords->SetTuple3(seedIdx, x, y, z);
-    // Coords->SetTuple3(seedIdx, xn, yn, zn);
   }
 
   if (Connectivity != NULL) {
@@ -575,6 +578,9 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
   }
   if (Coords != NULL) {
     output->GetPointData()->AddArray(Coords);
+  }
+  if (InterfacePoints != NULL) {
+    output->GetPointData()->AddArray(InterfacePoints);
   }
 
   // // used only for testing ---------------------------------------------------

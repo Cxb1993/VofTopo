@@ -5,6 +5,7 @@
 #include "vtkCellData.h"
 #include "vtkFloatArray.h"
 #include "vtkShortArray.h"
+#include "vtkCharArray.h"
 #include "vtkPolyData.h"
 #include "vtkCellArray.h"
 #include "vtkIdTypeArray.h"
@@ -223,6 +224,11 @@ int vtkVofGenBounds::RequestData(vtkInformation *request,
     SafeDownCast(input->GetPointData()->GetArray("Connectivity"));
   vtkShortArray *coords = vtkShortArray::
     SafeDownCast(input->GetPointData()->GetArray("Coords"));
+  vtkCharArray *ifacePoints = vtkCharArray::
+    SafeDownCast(input->GetPointData()->GetArray("InterfacePoints"));
+
+  if (ifacePoints != NULL) std::cout << "BANGLA" << std::endl;
+  else std::cout << "NIE BANGLA" << std::endl;
 
   const int numPoints = points->GetNumberOfPoints();
 
@@ -262,13 +268,10 @@ int vtkVofGenBounds::RequestData(vtkInformation *request,
   std::vector<float3_t> vertices;
   vertices.clear();
 
-  const int co[6][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
+  const int co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
   			 {0,0,0, 1,0,0, 1,0,1, 0,0,1},
-  			 {0,0,0, 0,1,0, 1,1,0, 1,0,0},
-			 {1,0,0, 1,0,1, 1,1,1, 1,1,0},
-  			 {0,1,0, 1,1,0, 1,1,1, 0,1,1},
-  			 {0,0,1, 0,1,1, 1,1,1, 1,0,1}};
-  const float po[6][12] = {{-cs2[0],-cs2[1],-cs2[2], 
+  			 {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
   			    -cs2[0],-cs2[1], cs2[2], 
   			    -cs2[0], cs2[1], cs2[2], 
   			    -cs2[0], cs2[1],-cs2[2]},
@@ -279,19 +282,7 @@ int vtkVofGenBounds::RequestData(vtkInformation *request,
   			   {-cs2[0],-cs2[1],-cs2[2], 
   			    -cs2[0], cs2[1],-cs2[2], 
   			     cs2[0], cs2[1],-cs2[2],
-			     cs2[0],-cs2[1],-cs2[2]},
-			   { cs2[0],-cs2[1],-cs2[2], 
-  			     cs2[0],-cs2[1], cs2[2], 
-  			     cs2[0], cs2[1], cs2[2], 
-  			     cs2[0], cs2[1],-cs2[2]},
-  			   {-cs2[0], cs2[1],-cs2[2], 
-  			     cs2[0], cs2[1],-cs2[2], 
-  			     cs2[0], cs2[1], cs2[2], 
-  			    -cs2[0], cs2[1], cs2[2]},
-  			   {-cs2[0],-cs2[1], cs2[2], 
-  			    -cs2[0], cs2[1], cs2[2], 
-  			     cs2[0], cs2[1], cs2[2],
-  			     cs2[0],-cs2[1], cs2[2]}};
+			     cs2[0],-cs2[1],-cs2[2]}};
 
   vtkFloatArray *labelsBack = vtkFloatArray::New();
   labelsBack->SetNumberOfComponents(1);
@@ -299,12 +290,6 @@ int vtkVofGenBounds::RequestData(vtkInformation *request,
   vtkFloatArray *labelsFront = vtkFloatArray::New();
   labelsFront->SetNumberOfComponents(1);
   labelsFront->SetName("FrontLabels");
-
-  // std::vector<std::vector<int> > neighbors(numPoints);
-  // std::vector<int> initNeighbors(6,-1);
-  // for (int i = 0; i < numPoints; ++i) {
-  //   neighbors[i] = initNeighbors;
-  // }
 
   for (int i = 0; i < numPoints; ++i) {
 
@@ -322,9 +307,6 @@ int vtkVofGenBounds::RequestData(vtkInformation *request,
 
     for (int j = 0; j < 3; ++j) {
       if (conn[j] > -1) {
-
-	// neighbors[i][j] = 1;
-	// neighbors[conn[j]][j+3] = 1;
 
 	float l1 = labels->GetValue(conn[j]);
 	double p1[3];
@@ -369,66 +351,6 @@ int vtkVofGenBounds::RequestData(vtkInformation *request,
       }
     }    
   }
-
-  // float minval = -1.0f;//-1.0f*std::numeric_limits<float>::max();
-
-  // for (int i = 0; i < numPoints; ++i) {
-
-  //   double p0[3];
-  //   points->GetPoint(i, p0);
-  //   int c0[3] = {coords->GetComponent(i, 0),
-  // 		 coords->GetComponent(i, 1),
-  // 		 coords->GetComponent(i, 2)};
-  //   float l0 = labels->GetValue(i);
-
-  //   for (int j = 0; j < 6; ++j) {
-  //     if (neighbors[i][j] == -1) {
-
-
-  // 	if (j < 3) {
-  // 	  labelsBack->InsertNextValue(l0);
-  // 	  labelsBack->InsertNextValue(l0);
-  // 	  labelsFront->InsertNextValue(minval);
-  // 	  labelsFront->InsertNextValue(minval);
-  // 	}
-  // 	else {
-  // 	  labelsBack->InsertNextValue(minval);
-  // 	  labelsBack->InsertNextValue(minval);
-  // 	  labelsFront->InsertNextValue(l0);
-  // 	  labelsFront->InsertNextValue(l0);
-  // 	}
-	
-  // 	float3_t verts[4];
-  // 	int3_t iverts[4];
-
-  // 	for (int k = 0; k < 4; ++k) {
-
-  // 	  float3_t vertex = {p0[0]+po[j][k*3+0], 
-  // 			     p0[1]+po[j][k*3+1], 
-  // 			     p0[2]+po[j][k*3+2]};
-  // 	  verts[k] = vertex;
-
-  // 	  int3_t ivertex = {c0[0]+co[j][k*3+0], 
-  // 			    c0[1]+co[j][k*3+1], 
-  // 			    c0[2]+co[j][k*3+2]};
-  // 	  iverts[k] = ivertex;
-  // 	}
-  // 	vertices.push_back(verts[0]);
-  // 	vertices.push_back(verts[1]);
-  // 	vertices.push_back(verts[2]);
-  // 	vertices.push_back(verts[2]);
-  // 	vertices.push_back(verts[3]);
-  // 	vertices.push_back(verts[0]);
-
-  // 	ivertices.push_back(iverts[0]);
-  // 	ivertices.push_back(iverts[1]);
-  // 	ivertices.push_back(iverts[2]);
-  // 	ivertices.push_back(iverts[2]);
-  // 	ivertices.push_back(iverts[3]);
-  // 	ivertices.push_back(iverts[0]);
-  //     }
-  //   }
-  // }
 
   std::vector<int> indices;
   std::vector<float3_t> mergedVertices;

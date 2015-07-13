@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <map>
 #include <limits>
+#include <iterator>
 
 vtkStandardNewMacro(vtkVofSeedPoints);
 
@@ -87,55 +88,6 @@ namespace {
       }
     }
   }
-}
-
-//-----------------------------------------------------------------------------
-vtkVofSeedPoints::vtkVofSeedPoints()
-{
-  this->OutputSeeds = NULL;
-  this->Connectivity = NULL;
-  this->Coords = NULL;
-}
-
-//-----------------------------------------------------------------------------
-vtkVofSeedPoints::~vtkVofSeedPoints()
-{
-  if (this->OutputSeeds != NULL)
-    this->OutputSeeds->Delete();
-  if (this->Connectivity != NULL)
-    this->Connectivity->Delete();
-  if (this->Coords != NULL)
-    this->Coords->Delete();
-}
-
-//----------------------------------------------------------------------------
-void vtkVofSeedPoints::AddSourceConnection(vtkAlgorithmOutput* input)
-{
-  this->AddInputConnection(1, input);
-}
-
-//----------------------------------------------------------------------------
-void vtkVofSeedPoints::RemoveAllSources()
-{
-  this->SetInputConnection(1, 0);
-}
-
-//----------------------------------------------------------------------------
-int vtkVofSeedPoints::FillInputPortInformation( int port, vtkInformation* info )
-{
-  if (!this->Superclass::FillInputPortInformation(port, info))
-    {
-      return 0;
-    }
-  if ( port == 0 )
-    {
-      info->Set( vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet" );
-      return 1;
-    }
-  return 0;
-}
-
-namespace {
 
   typedef struct {
     int x;
@@ -143,13 +95,19 @@ namespace {
     int z;
   } int3_t;
 
+  inline int3_t operator/(int3_t a, int b)
+  {
+    int3_t c = {a.x/b, a.y/b, a.z/b};
+    return c;
+  }
+
   bool int3_t_compare(const int3_t &a, const int3_t &b)
   {
     return (a.x < b.x ||
-	    (a.x == b.x &&
-	     (a.y < b.y ||
-	      (a.y == b.y &&
-	       (a.z < b.z)))));
+  	    (a.x == b.x &&
+  	     (a.y < b.y ||
+  	      (a.y == b.y &&
+  	       (a.z < b.z)))));
   }
 
   // TODO: nodePos computation is unsafe now!
@@ -158,7 +116,7 @@ namespace {
 				       int numCells)
   {
     float centerDist = coords->GetComponent(1,0) - coords->GetComponent(0,0);
-    float nodePos = coords->GetComponent(0,0) - centerDist/2.0f;//0.0f;
+    float nodePos = coords->GetComponent(0,0) - centerDist/2.0f;
     for (int i = 0; i < numCells; ++i) {
       coordsDer->SetComponent(i, 0, nodePos);
       float halfCell = coords->GetComponent(0,i) - nodePos;
@@ -253,7 +211,153 @@ namespace {
     grad[2] = (data->GetComponent(id_front,0) - 
 	       data->GetComponent(id_back,0))/dk;
   }
+
+  // void placeOuterSeeds(vtkDataArray *data, const int refinement, 
+  // 		       vtkDataArray *coordCenters[3], vtkDataArray *coordNodes[3], 
+  // 		       const int globalExtent[6], const int localExtent[6],
+  // 		       std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> &seedPos,
+  // 		       vtkPoints *seeds)
+  // {
+  //   int subdiv = 1;
+  //   for (int i = 0; i < refinement; ++i) {
+  //     subdiv *= 2;
+  //   }
+
+  //   std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> outerSeedPos(int3_t_compare);
+
+  //   std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)>::iterator it;
+  //   for (it = seedPos.begin(); it != seedPos.end(); ++it) {
+      
+  //     int3_t coords = it->first;
+  //     int3_t coordsNeighbors[6] = {{coords.x-1, coords.y, coords.z},
+  // 				   {coords.x+1, coords.y, coords.z},
+  // 				   {coords.x, coords.y-1, coords.z},
+  // 				   {coords.x, coords.y+1, coords.z},
+  // 				   {coords.x, coords.y, coords.z-1},
+  // 				   {coords.x, coords.y, coords.z+1}};
+
+  //     for (int n = 0; n < 6; ++n) {	
+
+  // 	int3_t negCoordsNeighbors = {-coordsNeighbors[n].x-1,
+  // 				     -coordsNeighbors[n].y-1,
+  // 				     -coordsNeighbors[n].z-1};
+	
+
+  // 	if (seedPos.find(coordsNeighbors[n]) == seedPos.end() && 
+  // 	    outerSeedPos.find(negCoordsNeighbors) == outerSeedPos.end()) {
+
+  // 	  int i = coordsNeighbors[n].x/subdiv;
+  // 	  int j = coordsNeighbors[n].y/subdiv;
+  // 	  int k = coordsNeighbors[n].z/subdiv;
+  // 	  int xr = coordsNeighbors[n].x%subdiv;
+  // 	  int yr = coordsNeighbors[n].y%subdiv;
+  // 	  int zr = coordsNeighbors[n].z%subdiv;
+ 
+  // 	  float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
+  // 				 coordCenters[1]->GetComponent(j,0),
+  // 				 coordCenters[2]->GetComponent(k,0)};
+  // 	  float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
+  // 			       coordNodes[0]->GetComponent(i,0),
+  // 			       coordNodes[1]->GetComponent(j+1,0) - 
+  // 			       coordNodes[1]->GetComponent(j,0),
+  // 			       coordNodes[2]->GetComponent(k+1,0) - 
+  // 			       coordNodes[2]->GetComponent(k,0)};
+  // 	  float originOffset[3] = {0.0f,0.0f,0.0f};
+  // 	  for (int i = 0; i < refinement; ++i) {
+  // 	    cellSize[0] /= 2.0f;
+  // 	    cellSize[1] /= 2.0f;
+  // 	    cellSize[2] /= 2.0f;
+  // 	    originOffset[0] -= cellSize[0]/2.0f;
+  // 	    originOffset[1] -= cellSize[1]/2.0f;
+  // 	    originOffset[2] -= cellSize[2]/2.0f;
+  // 	  }
+
+  // 	  float dx[3] = {originOffset[0] + xr*cellSize[0],
+  // 	  		 originOffset[1] + yr*cellSize[1],
+  // 	  		 originOffset[2] + zr*cellSize[2]};
+  // 	  float seed[3] = {cellCenter[0]+dx[0],
+  // 	  		   cellCenter[1]+dx[1],
+  // 	  		   cellCenter[2]+dx[2]};
+     
+  // 	  seeds->InsertNextPoint(seed);
+
+  // 	  outerSeedPos[negCoordsNeighbors] = g_seedIdx;
+  // 	  ++g_seedIdx;
+  // 	}
+  //     }
+  //   }
+
+  //   for (it = outerSeedPos.begin(); it != outerSeedPos.end(); ++it) {
+  //     seedPos[it->first] = it->second;
+  //   }
+  // }
+
 } // namespace
+
+//-----------------------------------------------------------------------------
+vtkVofSeedPoints::vtkVofSeedPoints()
+{
+  this->OutputSeeds = NULL;
+  this->Connectivity = NULL;
+  this->Coords = NULL;
+}
+
+//-----------------------------------------------------------------------------
+vtkVofSeedPoints::~vtkVofSeedPoints()
+{
+  if (this->OutputSeeds != NULL)
+    this->OutputSeeds->Delete();
+  if (this->Connectivity != NULL)
+    this->Connectivity->Delete();
+  if (this->Coords != NULL)
+    this->Coords->Delete();
+}
+
+//----------------------------------------------------------------------------
+void vtkVofSeedPoints::AddSourceConnection(vtkAlgorithmOutput* input)
+{
+  this->AddInputConnection(1, input);
+}
+
+//----------------------------------------------------------------------------
+void vtkVofSeedPoints::RemoveAllSources()
+{
+  this->SetInputConnection(1, 0);
+}
+
+//----------------------------------------------------------------------------
+int vtkVofSeedPoints::FillInputPortInformation( int port, vtkInformation* info )
+{
+  if (!this->Superclass::FillInputPortInformation(port, info))
+    {
+      return 0;
+    }
+  if ( port == 0 )
+    {
+      info->Set( vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet" );
+      return 1;
+    }
+  return 0;
+}
+
+int vtkVofSeedPoints::RequestInformation(vtkInformation *vtkNotUsed(request),
+					 vtkInformationVector **inputVector,
+					 vtkInformationVector *outputVector)
+{
+  // Get input and output pipeline information.
+  vtkInformation* outInfo = outputVector->GetInformationObject(0);
+  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
+
+  // Get the input whole extent.
+  int extent[6];
+  inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent);
+
+  // Store the new whole extent for the output.
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent, 6);
+
+  return 1;
+}
+
 int vtkVofSeedPoints::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 					  vtkInformationVector **inputVector,
 					  vtkInformationVector *outputVector)
@@ -398,6 +502,16 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     }
   }
 
+  int globalExtent[6];
+  inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), globalExtent);
+  int localExtent[6];
+  input->GetExtent(localExtent);
+
+  // insert additional seed points on the boundary of the original ones 
+  // so that it's possible to construct outer boundary
+  // placeOuterSeeds(data, Refinement, coordCenters, coordNodes, 
+  // 		  globalExtent, localExtent, seedPos, OutputSeeds);
+
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   vtkPolyData *output = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
   output->SetPoints(OutputSeeds);
@@ -418,10 +532,21 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
   Coords->SetNumberOfComponents(3);
   Coords->SetNumberOfTuples(seedPos.size());
 
+  // const int minval = -1*std::numeric_limits<int>::max();
+
   std::map<int3_t, int>::iterator it;
   for (it = seedPos.begin(); it != seedPos.end(); ++it) {
 
     int conn[3] = {-1,-1,-1};
+    // int conn[3] = {minval,minval,minval};
+    // int xn = it->first.x;
+    // int yn = it->first.y;
+    // int zn = it->first.z;
+
+    // int x = xn < 0 ? -1*(xn + 1) : xn;
+    // int y = yn < 0 ? -1*(yn + 1) : yn;
+    // int z = zn < 0 ? -1*(zn + 1) : zn;
+
     int x = it->first.x;
     int y = it->first.y;
     int z = it->first.z;
@@ -442,6 +567,7 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     int seedIdx = it->second;
     Connectivity->SetTuple3(seedIdx, conn[0], conn[1], conn[2]);
     Coords->SetTuple3(seedIdx, x, y, z);
+    // Coords->SetTuple3(seedIdx, xn, yn, zn);
   }
 
   if (Connectivity != NULL) {

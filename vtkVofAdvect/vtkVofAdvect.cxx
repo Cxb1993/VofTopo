@@ -50,16 +50,29 @@ namespace
     return ts;
   }
 
-  int outOfBounds(const f3u1_t particle, const double bounds[6])
+  // if the bounds is on the global domain boundary, then don't mark the particle for sending
+  int outOfBounds(const f3u1_t particle, const double bounds[6], const double globalBounds[6])
   {
-    if (particle.x < bounds[0]) return 0;
-    if (particle.x > bounds[1]) return 1;
-    if (particle.y < bounds[2]) return 2;
-    if (particle.y > bounds[3]) return 3;
-    if (particle.z < bounds[4]) return 4;
-    if (particle.z > bounds[5]) return 5;
+    if (particle.x < bounds[0] && bounds[0] != globalBounds[0]) return 0;
+    if (particle.x > bounds[1] && bounds[1] != globalBounds[1]) return 1;
+    if (particle.y < bounds[2] && bounds[2] != globalBounds[2]) return 2;
+    if (particle.y > bounds[3] && bounds[3] != globalBounds[3]) return 3;
+    if (particle.z < bounds[4] && bounds[4] != globalBounds[4]) return 4;
+    if (particle.z > bounds[5] && bounds[5] != globalBounds[5]) return 5;
 
     return -1;
+  }
+
+  int withinBounds(const f3u1_t particle, const double bounds[6])
+  {
+    if (particle.x < bounds[0]) return 0;
+    if (particle.x > bounds[1]) return 0;
+    if (particle.y < bounds[2]) return 0;
+    if (particle.y > bounds[3]) return 0;
+    if (particle.z < bounds[4]) return 0;
+    if (particle.z > bounds[5]) return 0;
+
+    return 1;
   }
 
   void findGlobalExtents(std::vector<int> &allExtents, 
@@ -75,6 +88,22 @@ namespace
       if (globalExtents[3] < allExtents[i*6+3]) globalExtents[3] = allExtents[i*6+3];
       if (globalExtents[4] > allExtents[i*6+4]) globalExtents[4] = allExtents[i*6+4];
       if (globalExtents[5] < allExtents[i*6+5]) globalExtents[5] = allExtents[i*6+5];
+    }
+  }
+
+  void findGlobalBounds(std::vector<double> &allBounds, 
+			double globalBounds[6])
+  {
+    globalBounds[0] = globalBounds[2] = globalBounds[4] = std::numeric_limits<double>::max();
+    globalBounds[1] = globalBounds[3] = globalBounds[5] = - globalBounds[0];
+
+    for (int i = 0; i < allBounds.size()/6; ++i) {
+      if (globalBounds[0] > allBounds[i*6+0]) globalBounds[0] = allBounds[i*6+0];
+      if (globalBounds[1] < allBounds[i*6+1]) globalBounds[1] = allBounds[i*6+1];
+      if (globalBounds[2] > allBounds[i*6+2]) globalBounds[2] = allBounds[i*6+2];
+      if (globalBounds[3] < allBounds[i*6+3]) globalBounds[3] = allBounds[i*6+3];
+      if (globalBounds[4] > allBounds[i*6+4]) globalBounds[4] = allBounds[i*6+4];
+      if (globalBounds[5] < allBounds[i*6+5]) globalBounds[5] = allBounds[i*6+5];
     }
   }
 
@@ -434,12 +463,12 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
       std::vector<int> AllExtents(6*numProcesses);
       Controller->AllGatherV(&MyExtent[0], &AllExtents[0], 6, &RecvLengths[0], &RecvOffsets[0]);
 
-      std::cout << processId << " | " << "extent: " 
-		<< MyExtent[0] << " " << MyExtent[1] << " " 
-		<< MyExtent[2] << " " << MyExtent[3] << " " 
-		<< MyExtent[4] << " " << MyExtent[5] << std::endl; 
+      std::vector<double> AllBounds(6*numProcesses);
+      Controller->AllGatherV(&MyBounds[0], &AllBounds[0], 6, &RecvLengths[0], &RecvOffsets[0]);
     
       findGlobalExtents(AllExtents, GlobalExtents);
+      findGlobalBounds(AllBounds, GlobalBounds);
+
       NeighborProcesses.clear();
       NeighborProcesses.resize(6);
       findNeighbors(MyExtent, GlobalExtents, AllExtents, NeighborProcesses);
@@ -498,7 +527,7 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
     int pidx = 0;
     for (it = Particles.begin(); it != Particles.end(); ++it) {
 
-      int bound = outOfBounds(*it, MyBounds);
+      int bound = outOfBounds(*it, MyBounds, GlobalBounds);
       if (bound > -1) {
 	for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
 
@@ -526,8 +555,8 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
 
     // insert the paricles that are within the domain
     for (int i = 0; i < particlesToRecv.size(); ++i) {
-      int bound = outOfBounds(particlesToRecv[i], MyBounds);
-      if (bound < 0) {
+      int within = withinBounds(particlesToRecv[i], MyBounds);
+      if (within) {
 	Particles.push_back(particlesToRecv[i]);
 	PProcessId.push_back(pidsToRecv[i]); // _pid
       }

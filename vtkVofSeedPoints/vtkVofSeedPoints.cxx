@@ -169,6 +169,7 @@ namespace {
 	  float df = gradf[0]*dx[0] + gradf[1]*dx[1] + gradf[2]*dx[2];
 
 	  if (pointWithinBounds(seed, bounds) && f + df >= 0.06125f) {
+	    // if (pointWithinBounds(seed, bounds) && f >= 0.99f) {
 
 	    seeds->InsertNextPoint(seed);
 	    int3_t pos = {cell_x*subdiv + xr, 
@@ -295,7 +296,7 @@ vtkVofSeedPoints::vtkVofSeedPoints()
   this->OutputSeeds = NULL;
   this->Connectivity = NULL;
   this->Coords = NULL;
-  this->InterfacePoints = NULL;
+  // this->InterfacePoints = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -307,8 +308,8 @@ vtkVofSeedPoints::~vtkVofSeedPoints()
     this->Connectivity->Delete();
   if (this->Coords != NULL)
     this->Coords->Delete();
-  if (this->InterfacePoints != NULL)
-    this->InterfacePoints->Delete();
+  // if (this->InterfacePoints != NULL)
+  //   this->InterfacePoints->Delete();
 }
 
 //----------------------------------------------------------------------------
@@ -470,12 +471,12 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
   seedPos.clear();
   g_seedIdx = 0;
 
-  if (InterfacePoints != NULL) {
-    InterfacePoints->Delete();
-  }
-  InterfacePoints = vtkCharArray::New();
-  InterfacePoints->SetNumberOfComponents(1);
-  InterfacePoints->SetName("InterfacePoints");
+  // if (InterfacePoints != NULL) {
+  //   InterfacePoints->Delete();
+  // }
+  // InterfacePoints = vtkCharArray::New();
+  // InterfacePoints->SetNumberOfComponents(1);
+  // InterfacePoints->SetName("InterfacePoints");
   //---------------------------------------------------------------------------
   // populate the grid with seed points
   int idx = 0;
@@ -506,10 +507,10 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
     }
   }
 
-  int numSeeds = seedPos.size();
-  for (int i = 0; i < numSeeds; ++i) {
-    InterfacePoints->InsertNextValue(0);
-  }
+  // int numSeeds = seedPos.size();
+  // for (int i = 0; i < numSeeds; ++i) {
+  //   InterfacePoints->InsertNextValue(0);
+  // }
 
   int globalExtent[6];
   inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), globalExtent);
@@ -518,13 +519,13 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
 
   // insert additional seed points on the boundary of the original ones 
   // so that it's possible to construct outer boundary
-  placeOuterSeeds(data, Refinement, coordCenters, coordNodes, 
-  		  globalExtent, localExtent, seedPos, OutputSeeds);
+  // placeOuterSeeds(data, Refinement, coordCenters, coordNodes, 
+  // 		  globalExtent, localExtent, seedPos, OutputSeeds);
 
-  int numInterfacePoints = seedPos.size() - numSeeds;
-  for (int i = 0; i < numInterfacePoints; ++i) {
-    InterfacePoints->InsertNextValue(1);
-  }
+  // int numInterfacePoints = seedPos.size() - numSeeds;
+  // for (int i = 0; i < numInterfacePoints; ++i) {
+  //   InterfacePoints->InsertNextValue(1);
+  // }
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   vtkPolyData *output = vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
@@ -579,9 +580,9 @@ int vtkVofSeedPoints::RequestData(vtkInformation *request,
   if (Coords != NULL) {
     output->GetPointData()->AddArray(Coords);
   }
-  if (InterfacePoints != NULL) {
-    output->GetPointData()->AddArray(InterfacePoints);
-  }
+  // if (InterfacePoints != NULL) {
+  //   output->GetPointData()->AddArray(InterfacePoints);
+  // }
 
   // // used only for testing ---------------------------------------------------
   // vtkCellArray *lines = vtkCellArray::New();

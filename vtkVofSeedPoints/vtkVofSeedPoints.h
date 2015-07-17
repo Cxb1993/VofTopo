@@ -57,7 +57,7 @@ class vtkVofSeedPoints : public vtkPolyDataAlgorithm
   vtkPoints *OutputSeeds;
   vtkIntArray *Connectivity;
   vtkShortArray *Coords;
-  vtkCharArray *InterfacePoints;
+  /* vtkCharArray *InterfacePoints; */
   int Reseed;
   int SeedTimeStep;
   int SeedTimeStepPrev;

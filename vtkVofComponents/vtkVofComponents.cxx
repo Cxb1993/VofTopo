@@ -223,9 +223,9 @@ int vtkVofComponents::RequestInformation(vtkInformation *vtkNotUsed(request),
   vtkInformation* outInfo = outputVector->GetInformationObject(0);
   vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
 
-  int extent[6];
-  inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent);
-  outInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent, 6);
+  // int extent[6];
+  // inInfo->Get(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent);
+  // outInfo->Set(vtkStreamingDemandDrivenPipeline::WHOLE_EXTENT(), extent, 6);
 
   return 1;
 }

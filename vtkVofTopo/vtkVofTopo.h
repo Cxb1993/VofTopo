@@ -37,15 +37,15 @@ protected:
   ~vtkVofTopo();
 
   int FillInputPortInformation(int, vtkInformation*);
-  int RequestInformation(vtkInformation *,
-			 vtkInformationVector **,
-			 vtkInformationVector *);
-  int RequestUpdateExtent(vtkInformation *,
-			  vtkInformationVector **,
-			  vtkInformationVector *);
-  int RequestData(vtkInformation *,
-		  vtkInformationVector **,
-		  vtkInformationVector *);
+  int RequestInformation(vtkInformation*,
+			 vtkInformationVector**,
+			 vtkInformationVector*);
+  int RequestUpdateExtent(vtkInformation*,
+			  vtkInformationVector**,
+			  vtkInformationVector*);
+  int RequestData(vtkInformation*,
+		  vtkInformationVector**,
+		  vtkInformationVector*);
 
 private:
 
@@ -54,12 +54,14 @@ private:
 
   void GenerateSeeds(vtkRectilinearGrid *inputVof);
   void InitParticles();
-  
+  void GenerateOutputGeometry(vtkPolyData *output);
+
   std::vector<double> InputTimeValues;
   
   int InitTimeStep; // time t0
   int TargetTimeStep; // time t1 = t0+T
   int CurrentTimeStep;
+  int LastComputedTimeStep;
   
   // we can iterate over t0 or t1
   static const int IterateOverInit = 0;

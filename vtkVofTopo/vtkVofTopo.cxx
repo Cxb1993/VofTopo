@@ -19,7 +19,7 @@ vtkStandardNewMacro(vtkVofTopo);
 // taken from vtkParticleTracerBase.cxx
 namespace
 {
-  int findClosestTimeStep(double requestedTimeValue, 
+  int findClosestTimeStep(double requestedTimeValue,
 			  const std::vector<double>& timeSteps)
   {
     int ts = 0;
@@ -42,6 +42,7 @@ namespace
 vtkVofTopo::vtkVofTopo() :
   FirstIteration(true),
   CurrentTimeStep(0),
+  LastComputedTimeStep(-1),
   IterType(IterateOverTarget),
   Seeds(0)
 {
@@ -123,7 +124,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   // outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
-  
+
   if(FirstIteration) {
 
     if (IterType == IterateOverTarget) {
@@ -144,18 +145,21 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       CurrentTimeStep = InitTimeStep;
     }
 
+    if (LastComputedTimeStep > -1) {
+      CurrentTimeStep = LastComputedTimeStep;
+    }
   }
-  if (InitTimeStep <= TargetTimeStep) {
+  if (CurrentTimeStep <= TargetTimeStep) {
     int numInputs = this->GetNumberOfInputPorts();
     for (int i = 0; i < numInputs; i++) {
       vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
-	
+
       if (CurrentTimeStep < static_cast<int>(InputTimeValues.size())) {
-	inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(), 
+	inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
 		    InputTimeValues[CurrentTimeStep]);
       }
     }
-  }    
+  }
   return 1;
 }
 
@@ -176,38 +180,37 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
     // seed points -----------------------------------------------------------
     if (FirstIteration) {
-
       GenerateSeeds(inputVof);
       InitParticles();
-      // float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
-      // advectParticles(inputVof, inputVelocity, Particles, dt);
-      // CurrentTimeStep++;
-
-      // vtkPoints *advectParticles = vtkPoints::New();
-      // for (int i = 0; i < Particles.size(); ++i) {
-      // 	double p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
-      // 	advectParticles->InsertNextPoint(p);
-      // }
-
-      // vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      // vtkPolyData *output = 
-      // 	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));    
-      // output->SetPoints(advectParticles);
-
     }
 
     if(CurrentTimeStep < TargetTimeStep) {
-
       float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
       advectParticles(inputVof, inputVelocity, Particles, dt);
+
       CurrentTimeStep++;
     }
-    
+
+    bool finished = CurrentTimeStep == TargetTimeStep;
+    if (finished) {
+      request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+      FirstIteration = true;
+      LastComputedTimeStep = CurrentTimeStep;
+
+      vtkInformation *outInfo = outputVector->GetInformationObject(0);
+      vtkPolyData *output =
+      	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+      GenerateOutputGeometry(output);
+    }
+    else {
+      request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
+      FirstIteration = false;
+    }
   }
   else { // IterType == IterateOverInit
 
   }
-  
+
   return 1;
 }
 
@@ -245,3 +248,13 @@ void vtkVofTopo::InitParticles()
   }
 }
 
+//----------------------------------------------------------------------------
+void vtkVofTopo::GenerateOutputGeometry(vtkPolyData *output)
+{
+  vtkPoints *advectedParticles = vtkPoints::New();
+  for (int i = 0; i < Particles.size(); ++i) {
+    double p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+    advectedParticles->InsertNextPoint(p);
+  }
+  output->SetPoints(advectedParticles);
+}

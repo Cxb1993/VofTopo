@@ -2,7 +2,11 @@
 #define __vtkVofTopo_h
 
 #include "vtkPolyDataAlgorithm.h"
+#include "helper_math.h"
 #include <vector>
+
+class vtkMPIController;
+class vtkRectilinearGrid;
 
 class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm
 {
@@ -20,8 +24,13 @@ public:
 
   vtkGetMacro(TimeStepDelta, double);
   vtkSetMacro(TimeStepDelta, double);
-  //~GUI -------------------------------
 
+  vtkGetMacro(IterType, int);
+  vtkSetMacro(IterType, int);
+
+  vtkGetMacro(Refinement, int);
+  vtkSetMacro(Refinement, int);
+//~GUI -------------------------------
 
 protected:
   vtkVofTopo();
@@ -43,18 +52,39 @@ private:
   vtkVofTopo(const vtkVofTopo&);  // Not implemented.
   void operator=(const vtkVofTopo&);  // Not implemented.
 
+  void GenerateSeeds(vtkRectilinearGrid *inputVof);
+  void InitParticles();
+  
   std::vector<double> InputTimeValues;
   
   int InitTimeStep; // time t0
   int TargetTimeStep; // time t1 = t0+T
   int CurrentTimeStep;
+  
   // we can iterate over t0 or t1
-  enum IterationType {IterateInit, IterateTarget};
-  IterationType IterType;
+  static const int IterateOverInit = 0;
+  static const int IterateOverTarget = 1;
+  int IterType;
   bool FirstIteration;
 
   // for data sets without or with incorrect time stamp information
   double TimeStepDelta;
+
+  // multiprocess
+  vtkMPIController* Controller;
+  double LocalBounds[6];
+  double GlobalBounds[6];
+  std::vector<std::vector<int> > NeighborProcesses;
+  int NumNeighbors;
+  int GlobalExtents[6];
+
+  // seeds
+  int Refinement;
+  vtkPolyData *Seeds;
+  // particles
+  std::vector<float4> Particles;
+  std::vector<unsigned> ParticleIds;
+  std::vector<short> ParticleProcs;
 };
 
 #endif

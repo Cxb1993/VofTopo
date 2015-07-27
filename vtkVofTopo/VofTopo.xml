@@ -68,6 +68,29 @@
 	  default_values="0">
       </DoubleVectorProperty>
 
+      <IntVectorProperty
+          name="IterType"
+	  label="Iterate over"
+          command="SetIterType"
+          number_of_elements="1"
+          default_values="1">
+        <EnumerationDomain name="enum">
+          <Entry value="0" text="Init time"/>
+          <Entry value="1" text="Target time"/>
+        </EnumerationDomain>
+      </IntVectorProperty>
+
+      <IntVectorProperty
+	  name="Refinement"
+	  label="Refinement"
+	  command="SetRefinement"
+	  number_of_elements="1"
+	  default_values="0">
+	<Documentation>
+	  Seed points refinement; numNewPoints = numCells*8^Refinement
+	</Documentation>
+      </IntVectorProperty>
+
     </SourceProxy>
   </ProxyGroup>
 </ServerManagerConfiguration>

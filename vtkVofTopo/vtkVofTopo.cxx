@@ -1,9 +1,15 @@
 #include "vtkVofTopo.h"
+#include "vofTopology.h"
+
+#include "vtkSmartPointer.h"
 #include "vtkObjectFactory.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkRectilinearGrid.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
+#include "vtkCellArray.h"
+#include "vtkPoints.h"
+#include "vtkPointData.h"
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -35,7 +41,9 @@ namespace
 //----------------------------------------------------------------------------
 vtkVofTopo::vtkVofTopo() :
   FirstIteration(true),
-  CurrentTimeStep(0)
+  CurrentTimeStep(0),
+  IterType(IterateOverTarget),
+  Seeds(0)
 {
   this->SetNumberOfInputPorts(2);
 }
@@ -43,6 +51,9 @@ vtkVofTopo::vtkVofTopo() :
 //----------------------------------------------------------------------------
 vtkVofTopo::~vtkVofTopo()
 {
+  if (Seeds != 0) {
+    Seeds->Delete();
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -115,7 +126,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   
   if(FirstIteration) {
 
-    if (IterType == IterateTarget) {
+    if (IterType == IterateOverTarget) {
 
       double targetTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
       if(targetTime > InputTimeValues.back()) {
@@ -161,6 +172,42 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
     SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT()));
 
+  if (IterType == IterateOverTarget) {
+
+    // seed points -----------------------------------------------------------
+    if (FirstIteration) {
+
+      GenerateSeeds(inputVof);
+      InitParticles();
+      // float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+      // advectParticles(inputVof, inputVelocity, Particles, dt);
+      // CurrentTimeStep++;
+
+      // vtkPoints *advectParticles = vtkPoints::New();
+      // for (int i = 0; i < Particles.size(); ++i) {
+      // 	double p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+      // 	advectParticles->InsertNextPoint(p);
+      // }
+
+      // vtkInformation *outInfo = outputVector->GetInformationObject(0);
+      // vtkPolyData *output = 
+      // 	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));    
+      // output->SetPoints(advectParticles);
+
+    }
+
+    if(CurrentTimeStep < TargetTimeStep) {
+
+      float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+      advectParticles(inputVof, inputVelocity, Particles, dt);
+      CurrentTimeStep++;
+    }
+    
+  }
+  else { // IterType == IterateOverInit
+
+  }
+  
   return 1;
 }
 
@@ -169,3 +216,32 @@ void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os,indent);
 }
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *inputVof)
+{
+  vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
+  vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
+  vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
+  generateSeedPoints(inputVof, Refinement, seedPoints, seedConnectivity, seedCoords);
+  if (Seeds != 0) {
+    Seeds->Delete();
+  }
+  Seeds = vtkPolyData::New();
+  Seeds->SetPoints(seedPoints);
+  Seeds->GetPointData()->AddArray(seedConnectivity);
+  Seeds->GetPointData()->AddArray(seedCoords);
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::InitParticles()
+{
+  vtkPoints *seedPoints = Seeds->GetPoints();
+  Particles.clear();
+  for (int i = 0; i < seedPoints->GetNumberOfPoints(); ++i) {
+    double p[3];
+    seedPoints->GetPoint(i, p);
+    Particles.push_back(make_float4(p[0], p[1], p[2], 1.0f));
+  }
+}
+

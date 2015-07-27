@@ -399,8 +399,8 @@ int vtkVofAdvect::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 }
 //----------------------------------------------------------------------------
 int vtkVofAdvect::RequestData(vtkInformation *request,
-			    vtkInformationVector **inputVector,
-			    vtkInformationVector *outputVector)
+			      vtkInformationVector **inputVector,
+			      vtkInformationVector *outputVector)
 {
   if (StartTimeStep > TerminationTimeStep) 
     return 1;

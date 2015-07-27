@@ -43,12 +43,16 @@ class vtkVofSeedPoints : public vtkPolyDataAlgorithm
   // Make sure the pipeline knows what type we expect as input
   int FillInputPortInformation( int port, vtkInformation* info );
 
-  int RequestInformation(vtkInformation*, vtkInformationVector**, vtkInformationVector*);
-
-  int RequestUpdateExtent(vtkInformation*, vtkInformationVector**, vtkInformationVector*);
-
+  int RequestInformation(vtkInformation*,
+			 vtkInformationVector**,
+			 vtkInformationVector*);
+  int RequestUpdateExtent(vtkInformation*,
+			  vtkInformationVector**,
+			  vtkInformationVector*);
   // Generate output
-  int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *); 
+  int RequestData(vtkInformation *,
+		  vtkInformationVector **,
+		  vtkInformationVector *); 
 
  private:
 

@@ -10,6 +10,8 @@
 #include "vtkCellArray.h"
 #include "vtkPoints.h"
 #include "vtkPointData.h"
+#include "vtkMPIController.h"
+#include "vtkMPICommunicator.h"
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -43,10 +45,12 @@ vtkVofTopo::vtkVofTopo() :
   FirstIteration(true),
   CurrentTimeStep(0),
   LastComputedTimeStep(-1),
+  UseCache(false),
   IterType(IterateOverTarget),
   Seeds(0)
 {
   this->SetNumberOfInputPorts(2);
+  this->Controller = vtkMPIController::New();
 }
 
 //----------------------------------------------------------------------------
@@ -55,6 +59,7 @@ vtkVofTopo::~vtkVofTopo()
   if (Seeds != 0) {
     Seeds->Delete();
   }
+  this->Controller->Delete();
 }
 
 //----------------------------------------------------------------------------
@@ -92,19 +97,21 @@ int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
     // check if user input is within time step range
     if (InitTimeStep < 0) {
       InitTimeStep = 0;
-      vtkWarningMacro(<<"InitTimeStep out of range; setting to " << InitTimeStep);
     }
     if (InitTimeStep > InputTimeValues.size()-1) {
       InitTimeStep = InputTimeValues.size()-1;
-      vtkWarningMacro(<<"InitTimeStep out of range; setting to " << InitTimeStep);
     }
     if (TargetTimeStep > InputTimeValues.size()-1) {
       TargetTimeStep = InputTimeValues.size()-1;
-      vtkWarningMacro(<<"TargetTimeStep out of range; setting to " << TargetTimeStep);
     }
     if (TargetTimeStep < InitTimeStep) {
-      vtkErrorMacro(<<"TargetTimeStep smaller than InitTimeStep");
       return 0;
+    }
+
+    // multiprocess
+    if (Controller->GetCommunicator() != 0) {
+      // find neighbor processes and global domain bounds
+      GetGlobalContext(inInfo);
     }
   }
   else {
@@ -136,17 +143,26 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       TargetTimeStep = findClosestTimeStep(targetTime, InputTimeValues);
       if (TargetTimeStep < 0) {
 	TargetTimeStep = 0;
-	vtkWarningMacro(<<"TargetTimeStep out of range; setting to " << TargetTimeStep);
       }
       if (TargetTimeStep > InputTimeValues.size()-1) {
 	TargetTimeStep = InputTimeValues.size()-1;
-	vtkWarningMacro(<<"TargetTimeStep out of range; setting to " << TargetTimeStep);
       }
-      CurrentTimeStep = InitTimeStep;
-    }
 
-    if (LastComputedTimeStep > -1) {
-      CurrentTimeStep = LastComputedTimeStep;
+      if (LastComputedTimeStep > -1 &&
+      	  LastComputedTimeStep < TargetTimeStep) {
+      	UseCache = true;
+      }
+      else {
+      	UseCache = false;
+      	LastComputedTimeStep = -1;
+      }
+      
+      if (UseCache) {
+        CurrentTimeStep = LastComputedTimeStep + 1;
+      }
+      else {
+	CurrentTimeStep = InitTimeStep;
+      }
     }
   }
   if (CurrentTimeStep <= TargetTimeStep) {
@@ -178,24 +194,30 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
   if (IterType == IterateOverTarget) {
 
-    // seed points -----------------------------------------------------------
+    // Stage I ---------------------------------------------------------------
     if (FirstIteration) {
-      GenerateSeeds(inputVof);
-      InitParticles();
+      if (!UseCache) {
+	GenerateSeeds(inputVof);
+	InitParticles();
+      }
     }
 
-    if(CurrentTimeStep < TargetTimeStep) {
+    // Stage II --------------------------------------------------------------
+    if(CurrentTimeStep < TargetTimeStep) {     
       float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
       advectParticles(inputVof, inputVelocity, Particles, dt);
-
-      CurrentTimeStep++;
+      LastComputedTimeStep = CurrentTimeStep;
     }
 
-    bool finished = CurrentTimeStep == TargetTimeStep;
+    if (Controller->GetCommunicator() != 0) {
+      ExchangeParticles();
+    }
+
+    bool finished = (CurrentTimeStep + 1) >= TargetTimeStep;
+    // Stage III -------------------------------------------------------------
     if (finished) {
       request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
       FirstIteration = true;
-      LastComputedTimeStep = CurrentTimeStep;
 
       vtkInformation *outInfo = outputVector->GetInformationObject(0);
       vtkPolyData *output =
@@ -205,6 +227,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     else {
       request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
       FirstIteration = false;
+      CurrentTimeStep++;
     }
   }
   else { // IterType == IterateOverInit
@@ -258,3 +281,90 @@ void vtkVofTopo::GenerateOutputGeometry(vtkPolyData *output)
   }
   output->SetPoints(advectedParticles);
 }
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
+{
+  int numProcesses = Controller->GetNumberOfProcesses();
+  std::vector<vtkIdType> RecvLengths(numProcesses);
+  std::vector<vtkIdType> RecvOffsets(numProcesses);
+  for (int i = 0; i < numProcesses; ++i) {
+    RecvLengths[i] = 6;
+    RecvOffsets[i] = i*6;
+  }
+
+  vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
+    SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
+      
+  int LocalExtent[6];
+  inputVof->GetExtent(LocalExtent);
+  std::vector<int> AllExtents(6*numProcesses);
+  Controller->AllGatherV(&LocalExtent[0], &AllExtents[0], 6, &RecvLengths[0], &RecvOffsets[0]);
+
+  int GlobalExtents[6];
+  findGlobalExtents(AllExtents, GlobalExtents);
+
+  NeighborProcesses.clear();
+  NeighborProcesses.resize(6);
+  findNeighbors(LocalExtent, GlobalExtents, AllExtents, NeighborProcesses);
+
+  NumNeighbors = 0;
+  for (int i = 0; i < NeighborProcesses.size(); ++i) {
+    NumNeighbors += NeighborProcesses[i].size();
+  }
+
+  // find domain bounds
+  inputVof->GetBounds(&LocalBounds[0]);
+  std::vector<double> AllBounds(6*numProcesses);
+  Controller->AllGatherV(&LocalBounds[0], &AllBounds[0], 6, &RecvLengths[0], &RecvOffsets[0]);
+  findGlobalBounds(AllBounds, GlobalBounds);
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::ExchangeParticles()
+{
+  int numProcesses = Controller->GetNumberOfProcesses();
+  int processId = Controller->GetLocalProcessId();
+  // one vector for each side of the process
+  std::vector<std::vector<float4> > particlesToSend(numProcesses);
+  for (int i = 0; i < numProcesses; ++i) {
+    particlesToSend[i].resize(0);
+  }
+
+  //------------------------------------------------------------------------
+  std::vector<float4>::iterator it;
+  std::vector<float4> particlesToKeep;
+
+  int pidx = 0;
+  for (it = Particles.begin(); it != Particles.end(); ++it) {
+
+    int bound = outOfBounds(*it, LocalBounds, GlobalBounds);
+    if (bound > -1) {
+      for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
+
+  	int neighborId = NeighborProcesses[bound][j];
+
+  	particlesToSend[neighborId].push_back(*it);
+      }
+    }
+    else {
+      particlesToKeep.push_back(*it);
+    }
+
+    ++pidx;
+  }
+  Particles = particlesToKeep;
+  //------------------------------------------------------------------------
+
+  std::vector<float4> particlesToRecv;
+  sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
+
+  // insert the paricles that are within the domain
+  for (int i = 0; i < particlesToRecv.size(); ++i) {
+    int within = withinBounds(particlesToRecv[i], LocalBounds);
+    if (within) {
+      Particles.push_back(particlesToRecv[i]);
+    }
+  }
+}
+

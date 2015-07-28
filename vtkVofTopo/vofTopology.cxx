@@ -6,6 +6,8 @@
 #include "vtkDoubleArray.h"
 #include <iostream>
 #include <map>
+#include <vector>
+#include <limits>
 
 namespace
 {
@@ -162,6 +164,31 @@ namespace
 
     return (1.0f-z)*c + z*d;
   }
+
+  int outOfBounds(const float4 particle, const double bounds[6], const double globalBounds[6])
+  {
+    if (particle.x < bounds[0] && bounds[0] != globalBounds[0]) return 0;
+    if (particle.x > bounds[1] && bounds[1] != globalBounds[1]) return 1;
+    if (particle.y < bounds[2] && bounds[2] != globalBounds[2]) return 2;
+    if (particle.y > bounds[3] && bounds[3] != globalBounds[3]) return 3;
+    if (particle.z < bounds[4] && bounds[4] != globalBounds[4]) return 4;
+    if (particle.z > bounds[5] && bounds[5] != globalBounds[5]) return 5;
+
+    return -1;
+  }
+
+  int withinBounds(const float4 particle, const double bounds[6])
+  {
+    if (particle.x < bounds[0]) return 0;
+    if (particle.x > bounds[1]) return 0;
+    if (particle.y < bounds[2]) return 0;
+    if (particle.y > bounds[3]) return 0;
+    if (particle.z < bounds[4]) return 0;
+    if (particle.z > bounds[5]) return 0;
+
+    return 1;
+  }
+
 }
 
 void generateSeedPoints(vtkRectilinearGrid *input,
@@ -291,5 +318,79 @@ void advectParticles(vtkRectilinearGrid *inputVof,
 
     float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
     *it = *it + velocity*deltaT;
+  }
+}
+
+// multiprocess
+void findGlobalExtents(std::vector<int> &allExtents, 
+		       int globalExtents[6])
+{
+  globalExtents[0] = globalExtents[2] = globalExtents[4] = std::numeric_limits<int>::max();
+  globalExtents[1] = globalExtents[3] = globalExtents[5] = - globalExtents[0];
+
+  for (int i = 0; i < allExtents.size()/6; ++i) {
+    if (globalExtents[0] > allExtents[i*6+0]) globalExtents[0] = allExtents[i*6+0];
+    if (globalExtents[1] < allExtents[i*6+1]) globalExtents[1] = allExtents[i*6+1];
+    if (globalExtents[2] > allExtents[i*6+2]) globalExtents[2] = allExtents[i*6+2];
+    if (globalExtents[3] < allExtents[i*6+3]) globalExtents[3] = allExtents[i*6+3];
+    if (globalExtents[4] > allExtents[i*6+4]) globalExtents[4] = allExtents[i*6+4];
+    if (globalExtents[5] < allExtents[i*6+5]) globalExtents[5] = allExtents[i*6+5];
+  }
+}
+
+void findGlobalBounds(std::vector<double> &allBounds, 
+		      double globalBounds[6])
+{
+  globalBounds[0] = globalBounds[2] = globalBounds[4] = std::numeric_limits<double>::max();
+  globalBounds[1] = globalBounds[3] = globalBounds[5] = - globalBounds[0];
+
+  for (int i = 0; i < allBounds.size()/6; ++i) {
+    if (globalBounds[0] > allBounds[i*6+0]) globalBounds[0] = allBounds[i*6+0];
+    if (globalBounds[1] < allBounds[i*6+1]) globalBounds[1] = allBounds[i*6+1];
+    if (globalBounds[2] > allBounds[i*6+2]) globalBounds[2] = allBounds[i*6+2];
+    if (globalBounds[3] < allBounds[i*6+3]) globalBounds[3] = allBounds[i*6+3];
+    if (globalBounds[4] > allBounds[i*6+4]) globalBounds[4] = allBounds[i*6+4];
+    if (globalBounds[5] < allBounds[i*6+5]) globalBounds[5] = allBounds[i*6+5];
+  }
+}
+
+void findNeighbors(const int myExtents[6], 
+		   const int globalExtents[6], 
+		   const std::vector<int> &allExtents,
+		   std::vector<std::vector<int> > &neighbors)
+{
+  const int numDims = 3;
+  const int numSides = 6;
+
+  for (int i = 0; i < numDims; ++i) {
+
+    if (myExtents[i*2+0] > globalExtents[i*2+0]) { 
+      for (int j = 0; j < allExtents.size()/numSides; ++j) {
+
+	if (myExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
+	    myExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
+	    myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	    myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	    myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	    myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+
+	  neighbors[i*2+0].push_back(j);
+	}
+      }
+    }
+    if (myExtents[i*2+1] < globalExtents[i*2+1]) { 
+      for (int j = 0; j < allExtents.size()/numSides; ++j) {
+
+	if (myExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
+	    myExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
+	    myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	    myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	    myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	    myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+
+	  neighbors[i*2+1].push_back(j);
+	}
+      }
+    }
   }
 }

@@ -52,8 +52,10 @@ private:
   vtkVofTopo(const vtkVofTopo&);  // Not implemented.
   void operator=(const vtkVofTopo&);  // Not implemented.
 
+  void GetGlobalContext(vtkInformation *inInfo);
   void GenerateSeeds(vtkRectilinearGrid *inputVof);
   void InitParticles();
+  void ExchangeParticles();
   void GenerateOutputGeometry(vtkPolyData *output);
 
   std::vector<double> InputTimeValues;
@@ -61,7 +63,6 @@ private:
   int InitTimeStep; // time t0
   int TargetTimeStep; // time t1 = t0+T
   int CurrentTimeStep;
-  int LastComputedTimeStep;
   
   // we can iterate over t0 or t1
   static const int IterateOverInit = 0;
@@ -78,7 +79,6 @@ private:
   double GlobalBounds[6];
   std::vector<std::vector<int> > NeighborProcesses;
   int NumNeighbors;
-  int GlobalExtents[6];
 
   // seeds
   int Refinement;
@@ -87,6 +87,8 @@ private:
   std::vector<float4> Particles;
   std::vector<unsigned> ParticleIds;
   std::vector<short> ParticleProcs;
+  bool UseCache;
+  int LastComputedTimeStep;
 };
 
 #endif

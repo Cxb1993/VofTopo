@@ -132,9 +132,13 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 				    vtkInformationVector *outputVector)
 {
   vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  // inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  // outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+
+  int gl = inInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS());
+  
+  std::cout << "gl = " << gl << std::endl;
 
   if(FirstIteration) {
 
@@ -170,7 +174,6 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
     }
   }
   if (CurrentTimeStep <= TargetTimeStep) {
-    std::cout << "CurrentTimeStep = " << CurrentTimeStep << std::endl;
     int numInputs = this->GetNumberOfInputPorts();
     for (int i = 0; i < numInputs; i++) {
       vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
@@ -220,23 +223,23 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       // Stage III -----------------------------------------------------------
-      ExtractComponents(inputVof, components);
-
-      vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      vtkRectilinearGrid *output =
-      	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-
-      output->SetExtent(components->GetExtent());
-      output->SetXCoordinates(components->GetXCoordinates());
-      output->SetYCoordinates(components->GetYCoordinates());
-      output->SetZCoordinates(components->GetZCoordinates());
-      output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
-      output->GetCellData()->SetActiveScalars("Labels");
+      // ExtractComponents(inputVof, components);
 
       // vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      // vtkPolyData *output =
-      // 	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-      // GenerateOutputGeometry(output);
+      // vtkRectilinearGrid *output =
+      // 	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+      // output->SetExtent(components->GetExtent());
+      // output->SetXCoordinates(components->GetXCoordinates());
+      // output->SetYCoordinates(components->GetYCoordinates());
+      // output->SetZCoordinates(components->GetZCoordinates());
+      // output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
+      // output->GetCellData()->SetActiveScalars("Labels");
+
+      vtkInformation *outInfo = outputVector->GetInformationObject(0);
+      vtkPolyData *output =
+      	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+      GenerateOutputGeometry(output);
     }
     else {
       request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -342,6 +345,13 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof,
   advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
+
+    int extent[6];
+    vof->GetExtent(extent);
+    std::cout << Controller->GetLocalProcessId() << " | " 
+	      << extent[0] << " " << extent[1] << " "
+      	      << extent[2] << " " << extent[3] << " "
+	      << extent[4] << " " << extent[5] << std::endl;
   }
 }
 
@@ -448,23 +458,6 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
       recvLengths[i] = 6;
       recvOffsets[i] = i*6;
     }
-
-    // int MyExtent[6];
-    // input->GetExtent(MyExtent);
-    // std::vector<int> AllExtents(6*numProcesses);
-    // Controller->AllGatherV(&MyExtent[0], &AllExtents[0], 6, &recvLengths[0], &recvOffsets[0]);
-
-    // int GlobalExtents[6];
-    // findGlobalExtents(AllExtents, GlobalExtents);
-    // std::vector<std::vector<int> > neighborProcesses;
-    // neighborProcesses.clear();
-    // neighborProcesses.resize(6);
-    // findNeighbors(MyExtent, GlobalExtents, AllExtents, neighborProcesses);
-
-    // int numNeighbors = 0;
-    // for (int i = 0; i < neighborProcesses.size(); ++i) {
-    //   numNeighbors += neighborProcesses[i].size();
-    // }
 
     // -----------------------------------------------------------------------
     // prepare labelled cells to send to neighbors

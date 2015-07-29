@@ -1,7 +1,7 @@
 #ifndef __vtkVofTopo_h
 #define __vtkVofTopo_h
 
-#include "vtkRectilinearGridAlgorithm.h"
+#include "vtkPolyDataAlgorithm.h"
 #include "helper_math.h"
 #include <vector>
 
@@ -9,11 +9,11 @@ class vtkMPIController;
 class vtkRectilinearGrid;
 class vtkPolyData;
 
-class VTK_EXPORT vtkVofTopo : public vtkRectilinearGridAlgorithm
+class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm
 {
 public:
   static vtkVofTopo* New();
-  vtkTypeMacro(vtkVofTopo, vtkRectilinearGridAlgorithm);
+  vtkTypeMacro(vtkVofTopo, vtkPolyDataAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // GUI -------------------------------

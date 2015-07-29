@@ -325,36 +325,31 @@ void vtkVofTopo::ExchangeParticles()
 {
   int numProcesses = Controller->GetNumberOfProcesses();
   int processId = Controller->GetLocalProcessId();
+
   // one vector for each side of the process
   std::vector<std::vector<float4> > particlesToSend(numProcesses);
   for (int i = 0; i < numProcesses; ++i) {
     particlesToSend[i].resize(0);
   }
 
-  //------------------------------------------------------------------------
   std::vector<float4>::iterator it;
   std::vector<float4> particlesToKeep;
 
-  int pidx = 0;
   for (it = Particles.begin(); it != Particles.end(); ++it) {
 
     int bound = outOfBounds(*it, LocalBounds, GlobalBounds);
     if (bound > -1) {
       for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
 
-  	int neighborId = NeighborProcesses[bound][j];
-
+  	int neighborId = NeighborProcesses[bound][j];	
   	particlesToSend[neighborId].push_back(*it);
       }
     }
     else {
       particlesToKeep.push_back(*it);
     }
-
-    ++pidx;
   }
   Particles = particlesToKeep;
-  //------------------------------------------------------------------------
 
   std::vector<float4> particlesToRecv;
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);

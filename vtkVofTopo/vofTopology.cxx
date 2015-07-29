@@ -124,15 +124,35 @@ namespace
 			       const double bcoords[3])
   {
     int lx = idxCell[0];
-    int ux = lx+1;
     int ly = idxCell[1];
-    int uy = ly+1;
     int lz = idxCell[2];
+    float x = bcoords[0] - 0.5;
+    float y = bcoords[1] - 0.5;
+    float z = bcoords[2] - 0.5;
+
+    if (bcoords[0] < 0.5) {
+      lx -= 1;
+      x = bcoords[0] + 0.5;
+    }
+    if (bcoords[1] < 0.5) {
+      ly -= 1;
+      y = bcoords[1] + 0.5;
+    }
+    if (bcoords[2] < 0.5) {
+      lz -= 1;
+      z = bcoords[2] + 0.5;
+    }
+    
+    int ux = lx+1;
+    int uy = ly+1;
     int uz = lz+1;
 
-    float x = bcoords[0];
-    float y = bcoords[1];
-    float z = bcoords[2];
+    if (lx < 0) lx = 0;
+    if (ly < 0) ly = 0;
+    if (lz < 0) lz = 0;
+    if (ux > res[0]-1) ux = res[0]-1;
+    if (uy > res[1]-1) uy = res[1]-1;
+    if (uz > res[2]-1) uz = res[2]-1;
 
     unsigned lzslab = lz*res[0]*res[1];
     unsigned uzslab = uz*res[0]*res[1];
@@ -147,7 +167,6 @@ namespace
 		      ux + lyr + uzslab,
 		      lx + uyr + uzslab,
 		      ux + uyr + uzslab};
-
     float3 vv[8];
     for (int i = 0; i < 8; i++) {
       vv[i].x = velocityField->GetComponent(id[i], 0);
@@ -164,31 +183,6 @@ namespace
 
     return (1.0f-z)*c + z*d;
   }
-
-  int outOfBounds(const float4 particle, const double bounds[6], const double globalBounds[6])
-  {
-    if (particle.x < bounds[0] && bounds[0] != globalBounds[0]) return 0;
-    if (particle.x > bounds[1] && bounds[1] != globalBounds[1]) return 1;
-    if (particle.y < bounds[2] && bounds[2] != globalBounds[2]) return 2;
-    if (particle.y > bounds[3] && bounds[3] != globalBounds[3]) return 3;
-    if (particle.z < bounds[4] && bounds[4] != globalBounds[4]) return 4;
-    if (particle.z > bounds[5] && bounds[5] != globalBounds[5]) return 5;
-
-    return -1;
-  }
-
-  int withinBounds(const float4 particle, const double bounds[6])
-  {
-    if (particle.x < bounds[0]) return 0;
-    if (particle.x > bounds[1]) return 0;
-    if (particle.y < bounds[2]) return 0;
-    if (particle.y > bounds[3]) return 0;
-    if (particle.z < bounds[4]) return 0;
-    if (particle.z > bounds[5]) return 0;
-
-    return 1;
-  }
-
 }
 
 void generateSeedPoints(vtkRectilinearGrid *input,
@@ -314,10 +308,12 @@ void advectParticles(vtkRectilinearGrid *inputVof,
     double x[3] = {it->x, it->y, it->z};
     int ijk[3];
     double pcoords[3];
-    inputVof->ComputeStructuredCoordinates(x, ijk, pcoords);
+    int particleInsideGrid = inputVof->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
-    *it = *it + velocity*deltaT;
+    if (particleInsideGrid) {
+      float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
+      *it = *it + velocity*deltaT;
+    }
   }
 }
 
@@ -393,4 +389,28 @@ void findNeighbors(const int myExtents[6],
       }
     }
   }
+}
+
+int outOfBounds(const float4 particle, const double bounds[6], const double globalBounds[6])
+{
+  if (particle.x < bounds[0] && bounds[0] != globalBounds[0]) return 0;
+  if (particle.x > bounds[1] && bounds[1] != globalBounds[1]) return 1;
+  if (particle.y < bounds[2] && bounds[2] != globalBounds[2]) return 2;
+  if (particle.y > bounds[3] && bounds[3] != globalBounds[3]) return 3;
+  if (particle.z < bounds[4] && bounds[4] != globalBounds[4]) return 4;
+  if (particle.z > bounds[5] && bounds[5] != globalBounds[5]) return 5;
+
+  return -1;
+}
+
+int withinBounds(const float4 particle, const double bounds[6])
+{
+  if (particle.x < bounds[0]) return 0;
+  if (particle.x > bounds[1]) return 0;
+  if (particle.y < bounds[2]) return 0;
+  if (particle.y > bounds[3]) return 0;
+  if (particle.z < bounds[4]) return 0;
+  if (particle.z > bounds[5]) return 0;
+
+  return 1;
 }

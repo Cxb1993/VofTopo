@@ -1,18 +1,19 @@
 #ifndef __vtkVofTopo_h
 #define __vtkVofTopo_h
 
-#include "vtkPolyDataAlgorithm.h"
+#include "vtkRectilinearGridAlgorithm.h"
 #include "helper_math.h"
 #include <vector>
 
 class vtkMPIController;
 class vtkRectilinearGrid;
+class vtkPolyData;
 
-class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm
+class VTK_EXPORT vtkVofTopo : public vtkRectilinearGridAlgorithm
 {
 public:
   static vtkVofTopo* New();
-  vtkTypeMacro(vtkVofTopo, vtkPolyDataAlgorithm);
+  vtkTypeMacro(vtkVofTopo, vtkRectilinearGridAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // GUI -------------------------------
@@ -53,9 +54,13 @@ private:
   void operator=(const vtkVofTopo&);  // Not implemented.
 
   void GetGlobalContext(vtkInformation *inInfo);
-  void GenerateSeeds(vtkRectilinearGrid *inputVof);
+  void GenerateSeeds(vtkRectilinearGrid *vof);
   void InitParticles();
+  void AdvectParticles(vtkRectilinearGrid *vof,
+		       vtkRectilinearGrid *velocity);
   void ExchangeParticles();
+  void ExtractComponents(vtkRectilinearGrid *vof,
+			 vtkRectilinearGrid *components);
   void GenerateOutputGeometry(vtkPolyData *output);
 
   std::vector<double> InputTimeValues;

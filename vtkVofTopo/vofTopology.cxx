@@ -414,3 +414,4 @@ int withinBounds(const float4 particle, const double bounds[6])
 
   return 1;
 }
+

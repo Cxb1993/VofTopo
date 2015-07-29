@@ -535,6 +535,8 @@ int vtkVofComponents::RequestData(vtkInformation *vtkNotUsed(request),
       allLabels[i] = i;
     }
 
+    // -----------------------------------------------------------------------
+    // identify equivalent labels from neighbor processes
     nidx = 0;
     for (int i = 0; i < 6; ++i) {
       for (int j = 0; j < neighborProcesses[i].size(); ++j) {

@@ -7,6 +7,7 @@
 #include "vtkIntArray.h"
 #include "vtkMPIController.h"
 #include <vector>
+#include <algorithm>
 #include "helper_math.h"
 
 void generateSeedPoints(vtkRectilinearGrid *input,
@@ -84,5 +85,90 @@ void sendData(const std::vector<std::vector<T> > &dataToSend, std::vector<T> &da
   }
 }
 
+// components
+static const double g_emf0 = 0.000001;
+static int g_res[3];
+static int g_labelId = 0;
+
+template<typename T>
+static void grow(std::vector<T> &data, const int &idx,
+		 std::vector<float> &labels)
+{
+  T tmp = data[idx];
+
+  if (tmp <= g_emf0) {
+    return;
+  }
+
+  labels[idx] = g_labelId;
+  data[idx] = 0.0;
+
+  int i = idx%g_res[0];
+  int j = (idx/g_res[0])%g_res[1];
+  int k = idx/(g_res[0]*g_res[1]);
+
+  if (i + 1 < g_res[0]) {
+    grow(data, idx+1, labels);
+  }
+  if (i > 0) {
+    grow(data, idx-1, labels);
+  }
+  if (j + 1 < g_res[1]) {
+    grow(data, idx+g_res[0], labels);
+  }
+  if (j > 0) {
+    grow(data, idx-g_res[0], labels);
+  }
+  if (k + 1 < g_res[2]) {
+    grow(data, idx+g_res[0]*g_res[1], labels);
+  }
+  if (k > 0) {
+    grow(data, idx-g_res[0]*g_res[1], labels);
+  }
+}
+
+template<typename T>
+static bool extractComponents_pred(T f)
+{
+  return f > g_emf0;
+}
+
+template<typename T>
+static void extractComponents(const T *vofField,
+			      const int res[3],
+			      float *labelField)
+{
+  g_res[0] = res[0];
+  g_res[1] = res[1];
+  g_res[2] = res[2];
+
+  int numCells = res[0]*res[1]*res[2];
+  std::vector<T> fieldTmp(vofField, vofField+numCells);
+  std::vector<float> labelFieldTmp(numCells, -1.0f);
+
+  int i = 0;
+  while (i < numCells) {
+
+    typename std::vector<T>::iterator it =
+      std::find_if(fieldTmp.begin()+i, fieldTmp.end(),
+		   extractComponents_pred<T>);
+
+    if (it == fieldTmp.end()) {
+      break;
+    }
+
+    int idx = it - fieldTmp.begin();
+
+    if (idx > i) {
+      i = idx;
+    }
+    else {
+      ++i;
+    }
+    grow(fieldTmp, idx, labelFieldTmp);
+    ++g_labelId;
+  }
+  std::copy(labelFieldTmp.begin(), labelFieldTmp.end(), labelField);
+}
   
 #endif//VOFTOPOLOGY_H

@@ -1,3 +1,5 @@
+// TODO: add process id and coords to particles
+
 #include "vtkVofTopo.h"
 #include "vofTopology.h"
 
@@ -226,21 +228,26 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // Stage III -----------------------------------------------------------
       ExtractComponents(inputVof, components);
 
-      vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      vtkRectilinearGrid *output =
-      	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-
-      output->SetExtent(components->GetExtent());
-      output->SetXCoordinates(components->GetXCoordinates());
-      output->SetYCoordinates(components->GetYCoordinates());
-      output->SetZCoordinates(components->GetZCoordinates());
-      output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
-      output->GetCellData()->SetActiveScalars("Labels");
+      vtkSmartPointer<vtkFloatArray> particleLabels = vtkSmartPointer<vtkFloatArray>::New();
+      // Stage IV ------------------------------------------------------------
+      LabelAdvectedParticles(components, particleLabels);      
 
       // vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      // vtkPolyData *output =
-      // 	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-      // GenerateOutputGeometry(output);
+      // vtkRectilinearGrid *output =
+      // 	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+      // output->SetExtent(components->GetExtent());
+      // output->SetXCoordinates(components->GetXCoordinates());
+      // output->SetYCoordinates(components->GetYCoordinates());
+      // output->SetZCoordinates(components->GetZCoordinates());
+      // output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
+      // output->GetCellData()->SetActiveScalars("Labels");
+
+      vtkInformation *outInfo = outputVector->GetInformationObject(0);
+      vtkPolyData *output =
+      	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+      GenerateOutputGeometry(output);
+      output->GetPointData()->AddArray(particleLabels);
     }
     else {
       request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -571,5 +578,33 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
   components->SetZCoordinates(vof->GetZCoordinates());
   components->GetCellData()->AddArray(labels);
   components->GetCellData()->SetActiveScalars("Labels");
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
+					vtkFloatArray *labels)
+{
+  labels->SetName("Labels");
+  labels->SetNumberOfComponents(1);
+  labels->SetNumberOfTuples(Particles.size());
+
+  vtkDataArray *data =
+    components->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  int nodeRes[3];
+  components->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  
+  for (int i = 0; i < Particles.size(); ++i) {
+
+    double x[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+    int ijk[3];
+    double pcoords[3];
+    int particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
+    if (particleInsideGrid) {
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float label = data->GetComponent(idx,0);
+      labels->SetValue(i, label);
+    }
+  }
 }
 

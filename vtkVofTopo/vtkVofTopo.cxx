@@ -131,15 +131,16 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 				    vtkInformationVector **inputVector,
 				    vtkInformationVector *outputVector)
 {
-  vtkInformation* inInfo = inputVector[0]->GetInformationObject(0);
-  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  // set one ghost level -----------------------------------------------------
+  int numInputs = this->GetNumberOfInputPorts();
+  for (int i = 0; i < numInputs; i++) {
+    vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
+    inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  }
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
-  int gl = inInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS());
   
-  std::cout << "gl = " << gl << std::endl;
-
   if(FirstIteration) {
 
     if (IterType == IterateOverTarget) {
@@ -191,7 +192,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
 			    vtkInformationVector *outputVector)
-{
+{ 
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 

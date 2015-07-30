@@ -183,6 +183,29 @@ namespace
 
     return (1.0f-z)*c + z*d;
   }
+
+  // connected-components
+  int uf_root(std::vector<int> &id, int i)
+  {
+    while (i != id[i]) {
+      id[i] = id[id[i]];
+      i = id[i];
+    }
+    return i;
+  }
+
+  bool uf_find(std::vector<int> &id, int p, int q)
+  {
+    return uf_root(id, p) == uf_root(id, q);
+  }
+
+  void uf_unite(std::vector<int> &id, int p, int q)
+  {
+    int i = uf_root(id, p);
+    int j = uf_root(id, q);
+    id[i] = j;
+  }
+
 }
 
 void generateSeedPoints(vtkRectilinearGrid *input,
@@ -350,39 +373,39 @@ void findGlobalBounds(std::vector<double> &allBounds,
   }
 }
 
-void findNeighbors(const int myExtents[6], 
+void findNeighbors(const int localExtents[6], 
 		   const int globalExtents[6], 
 		   const std::vector<int> &allExtents,
 		   std::vector<std::vector<int> > &neighbors)
 {
   const int numDims = 3;
   const int numSides = 6;
-
+  
   for (int i = 0; i < numDims; ++i) {
 
-    if (myExtents[i*2+0] > globalExtents[i*2+0]) { 
+    if (localExtents[i*2+0] > globalExtents[i*2+0]) {
       for (int j = 0; j < allExtents.size()/numSides; ++j) {
-
-	if (myExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
-	    myExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
-	    myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
-	    myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
-	    myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
-	    myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+	
+	if (localExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
+	    localExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
+	    localExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	    localExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	    localExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	    localExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
 
 	  neighbors[i*2+0].push_back(j);
 	}
       }
     }
-    if (myExtents[i*2+1] < globalExtents[i*2+1]) { 
+    if (localExtents[i*2+1] < globalExtents[i*2+1]) { 
       for (int j = 0; j < allExtents.size()/numSides; ++j) {
 
-	if (myExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
-	    myExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
-	    myExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
-	    myExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
-	    myExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
-	    myExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+	if (localExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
+	    localExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
+	    localExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
+	    localExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
+	    localExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
+	    localExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
 
 	  neighbors[i*2+1].push_back(j);
 	}
@@ -415,3 +438,115 @@ int withinBounds(const float4 particle, const double bounds[6])
   return 1;
 }
 
+void prepareLabelsToSend(std::vector<std::vector<int> > &NeighborProcesses,
+			 const int myExtent[6], int cellRes[3], vtkFloatArray *labels,
+			 std::vector<std::vector<float4> > &labelsToSend)
+{
+  const int NUM_SIDES = 6;
+  const int slabs[NUM_SIDES][6] =
+    {{0,1,                       0,cellRes[1]-1,            0,cellRes[2]-1},
+     {cellRes[0]-2,cellRes[0]-1, 0,cellRes[1]-1,            0,cellRes[2]-1},
+     {0,cellRes[0]-1,            0,1,                       0,cellRes[2]-1},
+     {0,cellRes[0]-1,            cellRes[1]-2,cellRes[1]-1, 0,cellRes[2]-1},
+     {0,cellRes[0]-1,            0,cellRes[1]-1,            0,1},
+     {0,cellRes[0]-1,            0,cellRes[1]-1,            cellRes[2]-2,cellRes[2]-1}};
+
+  for (int p = 0; p < NeighborProcesses.size(); ++p) {
+    if (NeighborProcesses[p].size() > 0) {
+
+      for (int k = slabs[p][4]; k <= slabs[p][5]; ++k) {
+	for (int j = slabs[p][2]; j <= slabs[p][3]; ++j) {
+	  for (int i = slabs[p][0]; i <= slabs[p][1]; ++i) {
+
+	    int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+	    float label = labels->GetValue(idx);
+	    if (label > -1) {
+	      labelsToSend[p].push_back(make_float4(i+myExtent[0], j+myExtent[2],
+						    k+myExtent[4], label));
+	    }
+	  }
+	}
+      }
+    }
+  }
+}
+
+void unifyLabelsInProcess(std::vector<std::vector<int> > &NeighborProcesses,
+			  const int myExtent[6], int cellRes[3], vtkFloatArray *labels,
+			  std::vector<std::vector<float4> > &labelsToRecv,
+			  std::vector<int> &labelOffsets, int processId,
+			  std::vector<int> &allLabels)
+{
+  const int NUM_SIDES = 6;
+  int nidx = 0;
+  for (int i = 0; i < NUM_SIDES; ++i) {
+    for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
+      for (int s = 0; s < labelsToRecv[nidx].size(); ++s) {
+
+	int x = labelsToRecv[nidx][s].x;
+	int y = labelsToRecv[nidx][s].y;
+	int z = labelsToRecv[nidx][s].z;
+
+	if (x >= myExtent[0] && x <= myExtent[1] &&
+	    y >= myExtent[2] && y <= myExtent[3] &&
+	    z >= myExtent[4] && z <= myExtent[5]) {
+	    
+	  x -= myExtent[0];
+	  y -= myExtent[2];
+	  z -= myExtent[4];
+
+	  int idx = x + y*cellRes[0] + z*cellRes[0]*cellRes[1];
+	  int myLabel = labels->GetValue(idx) + labelOffsets[processId];
+
+	  int neighborLabel = labelsToRecv[nidx][s].w + labelOffsets[NeighborProcesses[i][j]];
+
+	  if (labels->GetValue(idx) > -1) {
+	    if (!uf_find(allLabels, myLabel, neighborLabel)) {
+	      uf_unite(allLabels, myLabel, neighborLabel);
+	    }
+	  }
+	}
+      }
+      ++nidx;
+    }
+  }
+}
+
+void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
+			 std::vector<int> &allLabels, vtkFloatArray *labels,
+			 std::vector<int> &labelOffsets, int processId)
+{
+  for (int i = 0; i < allLabelUnions.size(); ++i) {
+
+    int labelId = i%numAllLabels;
+    if (allLabelUnions[i] != labelId) {
+      if (!uf_find(allLabels, allLabelUnions[i], labelId)) {
+	uf_unite(allLabels, allLabelUnions[i], labelId);
+      }
+    }
+  }
+
+  for (int i = 0; i < allLabels.size(); ++i) {
+    if (allLabels[i] != i) {
+      int rootId = uf_root(allLabels, i);
+      allLabels[i] = rootId;
+    }
+  }
+  std::map<int,int> labelMap;
+  int labelId = 0;
+  for (int i = 0; i < allLabels.size(); ++i) {
+    if (labelMap.find(allLabels[i]) == labelMap.end()) {
+      labelMap[allLabels[i]] = labelId;
+      ++labelId;
+    }
+  }
+
+  float *labels_ptr = labels->GetPointer(0);
+  for (int i = 0; i < labels->GetNumberOfTuples(); ++i) {
+    if (labels_ptr[i] > -1) {
+      int label = labels_ptr[i] + labelOffsets[processId];
+      label = allLabels[label];
+      labels_ptr[i] = labelMap[label];
+    }
+  }
+}

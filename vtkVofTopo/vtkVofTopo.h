@@ -1,7 +1,7 @@
 #ifndef __vtkVofTopo_h
 #define __vtkVofTopo_h
 
-#include "vtkPolyDataAlgorithm.h"
+#include "vtkRectilinearGridAlgorithm.h"
 #include "helper_math.h"
 #include <vector>
 
@@ -9,11 +9,11 @@ class vtkMPIController;
 class vtkRectilinearGrid;
 class vtkPolyData;
 
-class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm
+class VTK_EXPORT vtkVofTopo : public vtkRectilinearGridAlgorithm
 {
 public:
   static vtkVofTopo* New();
-  vtkTypeMacro(vtkVofTopo, vtkPolyDataAlgorithm);
+  vtkTypeMacro(vtkVofTopo, vtkRectilinearGridAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // GUI -------------------------------
@@ -79,9 +79,10 @@ private:
   double TimeStepDelta;
 
   // multiprocess
+  static const int NUM_SIDES = 6;
   vtkMPIController* Controller;
-  double LocalBounds[6];
-  double GlobalBounds[6];
+  double LocalBounds[NUM_SIDES];
+  double GlobalBounds[NUM_SIDES];
   std::vector<std::vector<int> > NeighborProcesses;
   int NumNeighbors;
 

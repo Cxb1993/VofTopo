@@ -5,6 +5,7 @@
 #include "vtkPoints.h"
 #include "vtkShortArray.h"
 #include "vtkIntArray.h"
+#include "vtkFloatArray.h"
 #include "vtkMPIController.h"
 #include <vector>
 #include <algorithm>
@@ -170,5 +171,19 @@ static void extractComponents(const T *vofField,
   }
   std::copy(labelFieldTmp.begin(), labelFieldTmp.end(), labelField);
 }
-  
+
+void prepareLabelsToSend(std::vector<std::vector<int> > &NeighborProcesses,
+			 const int myExtent[6], int cellRes[3], vtkFloatArray *labels,
+			 std::vector<std::vector<float4> > &labelsToSend);
+
+void unifyLabelsInProcess(std::vector<std::vector<int> > &NeighborProcesses,
+			  const int myExtent[6], int cellRes[3], vtkFloatArray *labels,
+			  std::vector<std::vector<float4> > &labelsToRecv,
+			  std::vector<int> &labelOffsets, int processId,
+			  std::vector<int> &allLabels);
+
+void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
+			 std::vector<int> &allLabels, vtkFloatArray *labels,
+			 std::vector<int> &labelOffsets, int processId);
+
 #endif//VOFTOPOLOGY_H

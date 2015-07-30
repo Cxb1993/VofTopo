@@ -19,6 +19,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <map>
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -111,12 +112,6 @@ int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
     if (TargetTimeStep < InitTimeStep) {
       return 0;
     }
-
-    // multiprocess
-    if (Controller->GetCommunicator() != 0) {
-      // find neighbor processes and global domain bounds
-      GetGlobalContext(inInfo);
-    }
   }
   else {
     vtkErrorMacro(<<"Input information has no TIME_STEPS set");
@@ -196,6 +191,11 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
+  if (FirstIteration && Controller->GetCommunicator() != 0) {
+    // find neighbor processes and global domain bounds
+    GetGlobalContext(inInfoVof);    
+  }
+
   vtkRectilinearGrid *inputVelocity = vtkRectilinearGrid::
     SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT()));
   vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
@@ -224,23 +224,23 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       // Stage III -----------------------------------------------------------
-      // ExtractComponents(inputVof, components);
-
-      // vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      // vtkRectilinearGrid *output =
-      // 	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-
-      // output->SetExtent(components->GetExtent());
-      // output->SetXCoordinates(components->GetXCoordinates());
-      // output->SetYCoordinates(components->GetYCoordinates());
-      // output->SetZCoordinates(components->GetZCoordinates());
-      // output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
-      // output->GetCellData()->SetActiveScalars("Labels");
+      ExtractComponents(inputVof, components);
 
       vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      vtkPolyData *output =
-      	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-      GenerateOutputGeometry(output);
+      vtkRectilinearGrid *output =
+      	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+      output->SetExtent(components->GetExtent());
+      output->SetXCoordinates(components->GetXCoordinates());
+      output->SetYCoordinates(components->GetYCoordinates());
+      output->SetZCoordinates(components->GetZCoordinates());
+      output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
+      output->GetCellData()->SetActiveScalars("Labels");
+
+      // vtkInformation *outInfo = outputVector->GetInformationObject(0);
+      // vtkPolyData *output =
+      // 	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+      // GenerateOutputGeometry(output);
     }
     else {
       request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -307,25 +307,43 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
   std::vector<vtkIdType> RecvLengths(numProcesses);
   std::vector<vtkIdType> RecvOffsets(numProcesses);
   for (int i = 0; i < numProcesses; ++i) {
-    RecvLengths[i] = 6;
-    RecvOffsets[i] = i*6;
+    RecvLengths[i] = NUM_SIDES;
+    RecvOffsets[i] = i*NUM_SIDES;
   }
 
   vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
     SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
-      
-  int LocalExtent[6];
-  inputVof->GetExtent(LocalExtent);
-  std::vector<int> AllExtents(6*numProcesses);
-  Controller->AllGatherV(&LocalExtent[0], &AllExtents[0], 6, &RecvLengths[0], &RecvOffsets[0]);
+  
+  int LocalExtents[NUM_SIDES];
+  inputVof->GetExtent(LocalExtents);
+    
+  std::vector<int> AllExtents(NUM_SIDES*numProcesses);
+  Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
 
-  int GlobalExtents[6];
+  int GlobalExtents[NUM_SIDES];
   findGlobalExtents(AllExtents, GlobalExtents);
 
-  NeighborProcesses.clear();
-  NeighborProcesses.resize(6);
-  findNeighbors(LocalExtent, GlobalExtents, AllExtents, NeighborProcesses);
+  // reduce extent to one without ghost cells
+  if (LocalExtents[0] > GlobalExtents[0])
+    LocalExtents[0] += 1;
+  if (LocalExtents[1] < GlobalExtents[1])
+    LocalExtents[1] -= 1;
+  if (LocalExtents[2] > GlobalExtents[2])
+    LocalExtents[2] += 1;
+  if (LocalExtents[3] < GlobalExtents[3])
+    LocalExtents[3] -= 1;
+  if (LocalExtents[4] > GlobalExtents[4])
+    LocalExtents[4] += 1;
+  if (LocalExtents[5] < GlobalExtents[5])
+    LocalExtents[5] -= 1;
 
+  // send extents again
+  Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
+
+  NeighborProcesses.clear();
+  NeighborProcesses.resize(NUM_SIDES);
+  findNeighbors(LocalExtents, GlobalExtents, AllExtents, NeighborProcesses);
+  
   NumNeighbors = 0;
   for (int i = 0; i < NeighborProcesses.size(); ++i) {
     NumNeighbors += NeighborProcesses[i].size();
@@ -333,7 +351,7 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 
   // find domain bounds
   inputVof->GetBounds(&LocalBounds[0]);
-  std::vector<double> AllBounds(6*numProcesses);
+  std::vector<double> AllBounds(NUM_SIDES*numProcesses);
   Controller->AllGatherV(&LocalBounds[0], &AllBounds[0], 6, &RecvLengths[0], &RecvOffsets[0]);
   findGlobalBounds(AllBounds, GlobalBounds);
 }
@@ -346,13 +364,6 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof,
   advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
-
-    int extent[6];
-    vof->GetExtent(extent);
-    std::cout << Controller->GetLocalProcessId() << " | " 
-	      << extent[0] << " " << extent[1] << " "
-      	      << extent[2] << " " << extent[3] << " "
-	      << extent[4] << " " << extent[5] << std::endl;
   }
 }
 
@@ -427,7 +438,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     extractComponents(vtkDoubleArray::SafeDownCast(data)->GetPointer(0),
   		      cellRes, labels->GetPointer(0));
   }
-   
+ 
   //--------------------------------------------------------------------------
   // send number of labels to other processes
   if (Controller->GetCommunicator() != 0) {
@@ -456,46 +467,22 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
 
     // ------------------------
     for (int i = 0; i < numProcesses; ++i) {
-      recvLengths[i] = 6;
-      recvOffsets[i] = i*6;
+      recvLengths[i] = NUM_SIDES;
+      recvOffsets[i] = i*NUM_SIDES;
     }
 
     // -----------------------------------------------------------------------
     // prepare labelled cells to send to neighbors
-    int myExtent[6];
+    int myExtent[NUM_SIDES];
     vof->GetExtent(myExtent);
 
-    int slabs[6][6] = {{0,0,                       0,cellRes[1]-1,            0,cellRes[2]-1},
-		       {cellRes[0]-1,cellRes[0]-1, 0,cellRes[1]-1,            0,cellRes[2]-1},
-		       {0,cellRes[0]-1,            0,0,                       0,cellRes[2]-1},
-		       {0,cellRes[0]-1,            cellRes[1]-1,cellRes[1]-1, 0,cellRes[2]-1},
-		       {0,cellRes[0]-1,            0,cellRes[1]-1,            0,0},
-		       {0,cellRes[0]-1,            0,cellRes[1]-1,            cellRes[2]-1,cellRes[2]-1}};
-
     std::vector<std::vector<float4> > labelsToSend(6);
-    for (int p = 0; p < NeighborProcesses.size(); ++p) {
-      if (NeighborProcesses[p].size() > 0) {
-
-    	for (int k = slabs[p][4]; k <= slabs[p][5]; ++k) {
-    	  for (int j = slabs[p][2]; j <= slabs[p][3]; ++j) {
-    	    for (int i = slabs[p][0]; i <= slabs[p][1]; ++i) {
-
-    	      int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
-    	      float label = labels->GetValue(idx);
-    	      if (label > -1) {
-    		labelsToSend[p].push_back(make_float4(i+myExtent[0], j+myExtent[2],
-    						      k+myExtent[4], label));
-    	      }
-    	    }
-    	  }
-    	}
-      }
-    }
+    prepareLabelsToSend(NeighborProcesses, myExtent, cellRes, labels, labelsToSend);
 
     // -----------------------------------------------------------------------
     // send header to neighbors with the number of labels to be send
-    int numLabelsToSend[6];
-    for (int i = 0; i < 6; ++i) {
+    int numLabelsToSend[NUM_SIDES];
+    for (int i = 0; i < NUM_SIDES; ++i) {
       numLabelsToSend[i] = labelsToSend[i].size();
 
       for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
@@ -510,7 +497,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     // receive header
     std::vector<int> numLabelsToRecv(NumNeighbors);
     int nidx = 0;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < NUM_SIDES; ++i) {
       for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
     	numLabelsToRecv[nidx] = 0;
     	const int RECV_LABELS_TAG = 100+NeighborProcesses[i][j];
@@ -524,7 +511,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     // -----------------------------------------------------------------------
 
     // send the labels to each side
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < NUM_SIDES; ++i) {
       for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
     	const int SEND_LABEL_DATA_TAG = 100+processId;
 
@@ -544,7 +531,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     // receive labels from each neighbor
     vtkMPICommunicator::Request *reqs = new vtkMPICommunicator::Request[NumNeighbors];
     nidx = 0;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < NUM_SIDES; ++i) {
       for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
     	const int RECV_LABEL_DATA_TAG = 100+NeighborProcesses[i][j];
 
@@ -556,85 +543,26 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     }
     Controller->WaitAll(NumNeighbors, reqs);
 
+    // -----------------------------------------------------------------------
+    // identify equivalent labels from neighbor processes
     std::vector<int> allLabels(numAllLabels);
     for (int i = 0; i < allLabels.size(); ++i) {
       allLabels[i] = i;
+    }    
+    unifyLabelsInProcess(NeighborProcesses, myExtent, cellRes,
+			 labels, labelsToRecv, labelOffsets, processId,
+			 allLabels);
+
+    for (int i = 0; i < numProcesses; ++i) {
+      recvLengths[i] = numAllLabels;
+      recvOffsets[i] = i*numAllLabels;
     }
-    
-    // // -----------------------------------------------------------------------
-    // // identify equivalent labels from neighbor processes
-    // nidx = 0;
-    // for (int i = 0; i < 6; ++i) {
-    //   for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
-    // 	for (int s = 0; s < labelsToRecv[nidx].size(); ++s) {
+    std::vector<int> allLabelUnions(numAllLabels*numProcesses);
+    Controller->AllGatherV(&allLabels[0], &allLabelUnions[0], numAllLabels, 
+    			   &recvLengths[0], &recvOffsets[0]);
 
-    // 	  int x = labelsToRecv[nidx][s].x;
-    // 	  int y = labelsToRecv[nidx][s].y;
-    // 	  int z = labelsToRecv[nidx][s].z;
-    // 	  int neighborLabel = labelsToRecv[nidx][s].w + labelOffsets[NeighborProcesses[i][j]];
-	  
-    // 	  int mx, my, mz;
-
-    // 	  if (!adjointPoint(x, y, z, myExtent)) {
-    // 	    continue;
-    // 	  }
-    // 	  mx = x - myExtent[0];
-    // 	  my = y - myExtent[2];
-    // 	  mz = z - myExtent[4];
-
-    // 	  int idx = mx + my*res[0] + mz*res[0]*res[1];
-    // 	  int myLabel = labels->GetValue(idx) + labelOffsets[processId];
-
-    // 	  if (labels->GetValue(idx) > -1) {
-    // 	    if (!uf_find(allLabels, myLabel, neighborLabel)) {
-    // 	      uf_unite(allLabels, myLabel, neighborLabel);
-    // 	    }
-    // 	  }
-    // 	}
-    // 	++nidx;
-    //   }
-    // }
-    // for (int i = 0; i < numProcesses; ++i) {
-    //   recvLengths[i] = numAllLabels;
-    //   recvOffsets[i] = i*numAllLabels;
-    // }
-    // std::vector<int> allLabelUnions(numAllLabels*numProcesses);
-    // Controller->AllGatherV(&allLabels[0], &allLabelUnions[0], numAllLabels, 
-    // 			   &recvLengths[0], &recvOffsets[0]);
-
-    // for (int i = 0; i < allLabelUnions.size(); ++i) {
-
-    //   int labelId = i%numAllLabels;
-    //   if (allLabelUnions[i] != labelId) {
-    // 	if (!uf_find(allLabels, allLabelUnions[i], labelId)) {
-    // 	  uf_unite(allLabels, allLabelUnions[i], labelId);
-    // 	}
-    //   }
-    // }
-
-    // for (int i = 0; i < allLabels.size(); ++i) {
-    //   if (allLabels[i] != i) {
-    // 	int rootId = uf_root(allLabels, i);
-    // 	allLabels[i] = rootId;
-    //   }
-    // }
-    // std::map<int,int> labelMap;
-    // int labelId = 0;
-    // for (int i = 0; i < allLabels.size(); ++i) {
-    //   if (labelMap.find(allLabels[i]) == labelMap.end()) {
-    // 	labelMap[allLabels[i]] = labelId;
-    // 	++labelId;
-    //   }
-    // }
-
-    // float *labels_ptr = labels->GetPointer(0);
-    // for (int i = 0; i < labels->GetNumberOfTuples(); ++i) {
-    //   if (labels_ptr[i] > -1) {
-    // 	int label = labels_ptr[i] + labelOffsets[processId];
-    // 	label = allLabels[label];
-    // 	labels_ptr[i] = labelMap[label];
-    //   }
-    // }
+    unifyLabelsInDomain(allLabelUnions, numAllLabels, allLabels, labels,
+			labelOffsets, processId);
   }
 
   components->SetExtent(vof->GetExtent());

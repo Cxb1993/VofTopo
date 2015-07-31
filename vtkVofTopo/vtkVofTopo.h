@@ -63,7 +63,8 @@ private:
   void ExtractComponents(vtkRectilinearGrid *vof,
 			 vtkRectilinearGrid *components);
   void LabelAdvectedParticles(vtkRectilinearGrid *components,
-			      vtkFloatArray *labels);
+			      std::vector<float> &labels);
+  void TransferLabelsToSeeds(std::vector<float> &particleLabels);
   void GenerateOutputGeometry(vtkPolyData *output);
 
   std::vector<double> InputTimeValues;

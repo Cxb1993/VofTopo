@@ -135,7 +135,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
-  
+
   if(FirstIteration) {
 
     if (IterType == IterateOverTarget) {
@@ -160,7 +160,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       	UseCache = false;
       	LastComputedTimeStep = -1;
       }
-      
+
       if (UseCache) {
         CurrentTimeStep = LastComputedTimeStep + 1;
       }
@@ -187,13 +187,13 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
 			    vtkInformationVector *outputVector)
-{ 
+{
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
   if (FirstIteration && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds
-    GetGlobalContext(inInfoVof);    
+    GetGlobalContext(inInfoVof);
   }
 
   vtkRectilinearGrid *inputVelocity = vtkRectilinearGrid::
@@ -227,14 +227,17 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       ExtractComponents(inputVof, components);
 
       // Stage IV ------------------------------------------------------------
-      vtkSmartPointer<vtkFloatArray> particleLabels = vtkSmartPointer<vtkFloatArray>::New();
-      LabelAdvectedParticles(components, particleLabels);      
+      std::vector<float> particleLabels;
+      LabelAdvectedParticles(components, particleLabels);
 
+      // // Stage V -------------------------------------------------------------
+      TransferLabelsToSeeds(particleLabels);
+
+      // Generate output -----------------------------------------------------
       vtkInformation *outInfo = outputVector->GetInformationObject(0);
       vtkPolyData *output =
       	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
       GenerateOutputGeometry(output);
-      output->GetPointData()->AddArray(particleLabels);
     }
     else {
       request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -288,7 +291,7 @@ void vtkVofTopo::InitParticles()
   if (Controller->GetCommunicator() != 0) {
 
     const int processId = Controller->GetLocalProcessId();
-    
+
     ParticleIds.resize(seedPoints->GetNumberOfPoints());
     ParticleProcs.resize(seedPoints->GetNumberOfPoints());
     for (int i = 0; i < seedPoints->GetNumberOfPoints(); ++i) {
@@ -300,31 +303,9 @@ void vtkVofTopo::InitParticles()
 
 //----------------------------------------------------------------------------
 void vtkVofTopo::GenerateOutputGeometry(vtkPolyData *output)
-{
-  vtkPoints *advectedParticles = vtkPoints::New();
-  
-  for (int i = 0; i < Particles.size(); ++i) {
-    double p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
-    advectedParticles->InsertNextPoint(p);
-  }
-  output->SetPoints(advectedParticles);
-    
-  if (Controller->GetCommunicator() != 0) {
-    vtkIntArray *particleIds = vtkIntArray::New();
-    particleIds->SetName("ParticleIds");
-    particleIds->SetNumberOfComponents(1);
-    particleIds->SetNumberOfTuples(Particles.size());
-    vtkShortArray *particleProcs = vtkShortArray::New();
-    particleProcs->SetName("ParticleProcs");
-    particleProcs->SetNumberOfComponents(1);
-    particleProcs->SetNumberOfTuples(Particles.size());
-    for (int i = 0; i < Particles.size(); ++i) {
-      particleIds->SetValue(i, ParticleIds[i]);
-      particleProcs->SetValue(i, ParticleProcs[i]);
-    }  
-    output->GetPointData()->AddArray(particleIds);
-    output->GetPointData()->AddArray(particleProcs);
-  }
+{  
+  output->SetPoints(Seeds->GetPoints());
+  output->GetPointData()->AddArray(Seeds->GetPointData()->GetArray("Labels"));
 }
 
 //----------------------------------------------------------------------------
@@ -340,10 +321,10 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 
   vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
     SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
-  
+
   int LocalExtents[NUM_SIDES];
   inputVof->GetExtent(LocalExtents);
-    
+
   std::vector<int> AllExtents(NUM_SIDES*numProcesses);
   Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
 
@@ -370,7 +351,7 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
   NeighborProcesses.clear();
   NeighborProcesses.resize(NUM_SIDES);
   findNeighbors(LocalExtents, GlobalExtents, AllExtents, NeighborProcesses);
-  
+
   NumNeighbors = 0;
   for (int i = 0; i < NeighborProcesses.size(); ++i) {
     NumNeighbors += NeighborProcesses[i].size();
@@ -387,7 +368,7 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof,
 				 vtkRectilinearGrid *velocity)
 {
-  float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];  
+  float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
   advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
@@ -419,13 +400,23 @@ void vtkVofTopo::ExchangeParticles()
 
     int bound = outOfBounds(Particles[i], LocalBounds, GlobalBounds);
     if (bound > -1) {
-      for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
+      // for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
 
-  	int neighborId = NeighborProcesses[bound][j];	
-  	particlesToSend[neighborId].push_back(Particles[i]);
-	particleIdsToSend[neighborId].push_back(ParticleIds[i]);
-	particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
+      // 	int neighborId = NeighborProcesses[bound][j];
+      // 	particlesToSend[neighborId].push_back(Particles[i]);
+      // 	particleIdsToSend[neighborId].push_back(ParticleIds[i]);
+      // 	particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
+      // }
+      for (int j = 0; j < numProcesses; ++j) {
+
+  	int neighborId = j;
+	if (neighborId != processId) {
+	  particlesToSend[neighborId].push_back(Particles[i]);
+	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
+	  particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
+	}
       }
+
     }
     else {
       particlesToKeep.push_back(Particles[i]);
@@ -450,7 +441,7 @@ void vtkVofTopo::ExchangeParticles()
     if (within) {
       Particles.push_back(particlesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
-      ParticleProcs.push_back(particleProcsToRecv[i]);      
+      ParticleProcs.push_back(particleProcsToRecv[i]);
     }
   }
 }
@@ -483,7 +474,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     extractComponents(vtkDoubleArray::SafeDownCast(data)->GetPointer(0),
   		      cellRes, labels->GetPointer(0));
   }
- 
+
   //--------------------------------------------------------------------------
   // send number of labels to other processes
   if (Controller->GetCommunicator() != 0) {
@@ -593,7 +584,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     std::vector<int> allLabels(numAllLabels);
     for (int i = 0; i < allLabels.size(); ++i) {
       allLabels[i] = i;
-    }    
+    }
     unifyLabelsInProcess(NeighborProcesses, myExtent, cellRes,
 			 labels, labelsToRecv, labelOffsets, processId,
 			 allLabels);
@@ -603,7 +594,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
       recvOffsets[i] = i*numAllLabels;
     }
     std::vector<int> allLabelUnions(numAllLabels*numProcesses);
-    Controller->AllGatherV(&allLabels[0], &allLabelUnions[0], numAllLabels, 
+    Controller->AllGatherV(&allLabels[0], &allLabelUnions[0], numAllLabels,
     			   &recvLengths[0], &recvOffsets[0]);
 
     unifyLabelsInDomain(allLabelUnions, numAllLabels, allLabels, labels,
@@ -620,29 +611,138 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
 
 //----------------------------------------------------------------------------
 void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
-					vtkFloatArray *labels)
+					std::vector<float> &labels)
 {
-  labels->SetName("Labels");
-  labels->SetNumberOfComponents(1);
-  labels->SetNumberOfTuples(Particles.size());
+  labels.resize(Particles.size());
 
   vtkDataArray *data =
     components->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   int nodeRes[3];
   components->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  
+
   for (int i = 0; i < Particles.size(); ++i) {
 
+    if (Particles[i].w == 0.0f) {
+      labels[i] = -1.0f;
+      continue;
+    }
+    
     double x[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
     int ijk[3];
     double pcoords[3];
     int particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
+
     if (particleInsideGrid) {
+      
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
       float label = data->GetComponent(idx,0);
-      labels->SetValue(i, label);
+      labels[i] = label;
+    }
+    else {
+      labels[i] = -1.0f;
     }
   }
 }
 
+//----------------------------------------------------------------------------
+void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
+{
+  vtkFloatArray *labelsArray = vtkFloatArray::New();
+  labelsArray->SetName("Labels");
+  labelsArray->SetNumberOfComponents(1);
+  labelsArray->SetNumberOfTuples(Seeds->GetNumberOfPoints());
+  for (int i = 0; i < Seeds->GetNumberOfPoints(); ++i) {
+    labelsArray->SetValue(i, -10.0f);
+  }
+
+  if (sizeof(float) != sizeof(int)) {
+    vtkDebugMacro("offsets computed assuming same size of int and \
+ float, but they have different size");
+  }
+
+  if (Controller->GetCommunicator() == 0) {
+    for (int i = 0; i < particleLabels.size(); ++i) {
+      labelsArray->SetValue(i, particleLabels[i]);
+    }
+  }
+  else {
+    
+    const int processId = Controller->GetLocalProcessId();
+    const int numProcesses = Controller->GetNumberOfProcesses();
+
+    std::cout << processId << " | " << Seeds->GetNumberOfPoints() << " " << Particles.size() << std::endl;
+
+    std::vector<std::vector<float> > labelsToSend(numProcesses);
+    std::vector<std::vector<int> > idsToSend(numProcesses);
+    for (int i = 0; i < numProcesses; ++i) {
+      labelsToSend[i].resize(0);
+      idsToSend[i].resize(0);
+    }
+
+    for (int i = 0; i < particleLabels.size(); ++i) {
+
+      // particle started from a seed in other process - its label and id
+      // will be sent to that process
+      if (processId != ParticleProcs[i]) {
+	labelsToSend[ParticleProcs[i]].push_back(particleLabels[i]);
+	idsToSend[ParticleProcs[i]].push_back(ParticleIds[i]);
+      }
+      // particle started from a seed in this process
+      else {
+	labelsArray->SetValue(ParticleIds[i], particleLabels[i]);
+      }
+    }
+
+    // send labels to particle seeds
+    std::vector<int> numLabelsToSend(numProcesses);
+    std::vector<int> numLabelsToRecv(numProcesses);
+    std::vector<float> allLabelsToSend;
+    std::vector<int> allIdsToSend;
+    allLabelsToSend.resize(0);
+    allIdsToSend.resize(0);
+    for (int i = 0; i < numProcesses; ++i) {
+      numLabelsToSend[i] = labelsToSend[i].size();
+      numLabelsToRecv[i] = 0;      
+      for (int j = 0; j < labelsToSend[i].size(); ++j) {
+	allLabelsToSend.push_back(labelsToSend[i][j]);
+	allIdsToSend.push_back(idsToSend[i][j]);
+      }
+    }
+
+    std::vector<int> RecvLengths(numProcesses);
+    std::vector<int> RecvOffsets(numProcesses);
+    int numAllLabelsToRecv = 0;
+    for (int i = 0; i < numProcesses; ++i) {
+      Controller->Scatter((int*)&numLabelsToSend[0], (int*)&numLabelsToRecv[i], 1, i);
+
+      RecvOffsets[i] = numAllLabelsToRecv;
+      RecvLengths[i] = numLabelsToRecv[i]*sizeof(float);
+      numAllLabelsToRecv += numLabelsToRecv[i];
+    }
+
+    std::vector<float> labelsToRecv(numAllLabelsToRecv);
+    std::vector<int> idsToRecv(numAllLabelsToRecv, -10000);
+    std::vector<vtkIdType> SendLengths(numProcesses);
+    std::vector<vtkIdType> SendOffsets(numProcesses);
+    int offset = 0;
+    for (int i = 0; i < numProcesses; ++i) {
+      SendLengths[i] = numLabelsToSend[i]*sizeof(float);
+      SendOffsets[i] = offset;
+      offset += numLabelsToSend[i]*sizeof(float);
+    }
+
+    for (int i = 0; i < numProcesses; ++i) {
+      Controller->ScatterV((char*)&allLabelsToSend[0], (char*)&labelsToRecv[RecvOffsets[i]], 
+			   &SendLengths[0], &SendOffsets[0], RecvLengths[i], i);
+    }
+    for (int i = 0; i < numProcesses; ++i) {
+      Controller->ScatterV((char*)&allIdsToSend[0], (char*)&idsToRecv[RecvOffsets[i]], 
+			   &SendLengths[0], &SendOffsets[0], RecvLengths[i], i);
+    }
+    for (int i = 0; i < labelsToRecv.size(); ++i) {
+      labelsArray->SetValue(idsToRecv[i], labelsToRecv[i]);
+    }
+  }
+  Seeds->GetPointData()->AddArray(labelsArray);
+}

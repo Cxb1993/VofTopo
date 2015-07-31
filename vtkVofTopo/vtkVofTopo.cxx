@@ -1,5 +1,3 @@
-// TODO: add process id and coords to particles
-
 #include "vtkVofTopo.h"
 #include "vofTopology.h"
 
@@ -224,24 +222,13 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
       FirstIteration = true;
 
-      vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       // Stage III -----------------------------------------------------------
+      vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       ExtractComponents(inputVof, components);
 
-      vtkSmartPointer<vtkFloatArray> particleLabels = vtkSmartPointer<vtkFloatArray>::New();
       // Stage IV ------------------------------------------------------------
+      vtkSmartPointer<vtkFloatArray> particleLabels = vtkSmartPointer<vtkFloatArray>::New();
       LabelAdvectedParticles(components, particleLabels);      
-
-      // vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      // vtkRectilinearGrid *output =
-      // 	vtkRectilinearGrid::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-
-      // output->SetExtent(components->GetExtent());
-      // output->SetXCoordinates(components->GetXCoordinates());
-      // output->SetYCoordinates(components->GetYCoordinates());
-      // output->SetZCoordinates(components->GetZCoordinates());
-      // output->GetCellData()->AddArray(components->GetCellData()->GetArray("Labels"));
-      // output->GetCellData()->SetActiveScalars("Labels");
 
       vtkInformation *outInfo = outputVector->GetInformationObject(0);
       vtkPolyData *output =
@@ -289,10 +276,25 @@ void vtkVofTopo::InitParticles()
 {
   vtkPoints *seedPoints = Seeds->GetPoints();
   Particles.clear();
+  ParticleIds.clear();
+  ParticleProcs.clear();
+
+  Particles.resize(seedPoints->GetNumberOfPoints());
   for (int i = 0; i < seedPoints->GetNumberOfPoints(); ++i) {
     double p[3];
     seedPoints->GetPoint(i, p);
-    Particles.push_back(make_float4(p[0], p[1], p[2], 1.0f));
+    Particles[i] = make_float4(p[0], p[1], p[2], 1.0f);
+  }
+  if (Controller->GetCommunicator() != 0) {
+
+    const int processId = Controller->GetLocalProcessId();
+    
+    ParticleIds.resize(seedPoints->GetNumberOfPoints());
+    ParticleProcs.resize(seedPoints->GetNumberOfPoints());
+    for (int i = 0; i < seedPoints->GetNumberOfPoints(); ++i) {
+      ParticleIds[i] = i;
+      ParticleProcs[i] = processId;
+    }
   }
 }
 
@@ -300,11 +302,29 @@ void vtkVofTopo::InitParticles()
 void vtkVofTopo::GenerateOutputGeometry(vtkPolyData *output)
 {
   vtkPoints *advectedParticles = vtkPoints::New();
+  
   for (int i = 0; i < Particles.size(); ++i) {
     double p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
     advectedParticles->InsertNextPoint(p);
   }
   output->SetPoints(advectedParticles);
+    
+  if (Controller->GetCommunicator() != 0) {
+    vtkIntArray *particleIds = vtkIntArray::New();
+    particleIds->SetName("ParticleIds");
+    particleIds->SetNumberOfComponents(1);
+    particleIds->SetNumberOfTuples(Particles.size());
+    vtkShortArray *particleProcs = vtkShortArray::New();
+    particleProcs->SetName("ParticleProcs");
+    particleProcs->SetNumberOfComponents(1);
+    particleProcs->SetNumberOfTuples(Particles.size());
+    for (int i = 0; i < Particles.size(); ++i) {
+      particleIds->SetValue(i, ParticleIds[i]);
+      particleProcs->SetValue(i, ParticleProcs[i]);
+    }  
+    output->GetPointData()->AddArray(particleIds);
+    output->GetPointData()->AddArray(particleProcs);
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -367,7 +387,7 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof,
 				 vtkRectilinearGrid *velocity)
 {
-  float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+  float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];  
   advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
@@ -382,37 +402,55 @@ void vtkVofTopo::ExchangeParticles()
 
   // one vector for each side of the process
   std::vector<std::vector<float4> > particlesToSend(numProcesses);
+  std::vector<std::vector<int> > particleIdsToSend(numProcesses);
+  std::vector<std::vector<short> > particleProcsToSend(numProcesses);
   for (int i = 0; i < numProcesses; ++i) {
     particlesToSend[i].resize(0);
+    particleIdsToSend[i].resize(0);
+    particleProcsToSend[i].resize(0);
   }
 
   std::vector<float4>::iterator it;
   std::vector<float4> particlesToKeep;
+  std::vector<int> particleIdsToKeep;
+  std::vector<short> particleProcsToKeep;
 
-  for (it = Particles.begin(); it != Particles.end(); ++it) {
+  for (int i = 0; i < Particles.size(); ++i) {
 
-    int bound = outOfBounds(*it, LocalBounds, GlobalBounds);
+    int bound = outOfBounds(Particles[i], LocalBounds, GlobalBounds);
     if (bound > -1) {
       for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
 
   	int neighborId = NeighborProcesses[bound][j];	
-  	particlesToSend[neighborId].push_back(*it);
+  	particlesToSend[neighborId].push_back(Particles[i]);
+	particleIdsToSend[neighborId].push_back(ParticleIds[i]);
+	particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
       }
     }
     else {
-      particlesToKeep.push_back(*it);
+      particlesToKeep.push_back(Particles[i]);
+      particleIdsToKeep.push_back(ParticleIds[i]);
+      particleProcsToKeep.push_back(ParticleProcs[i]);
     }
   }
   Particles = particlesToKeep;
+  ParticleIds = particleIdsToKeep;
+  ParticleProcs = particleProcsToKeep;
 
   std::vector<float4> particlesToRecv;
+  std::vector<int> particleIdsToRecv;
+  std::vector<short> particleProcsToRecv;
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
+  sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
+  sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
 
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
     int within = withinBounds(particlesToRecv[i], LocalBounds);
     if (within) {
       Particles.push_back(particlesToRecv[i]);
+      ParticleIds.push_back(particleIdsToRecv[i]);
+      ParticleProcs.push_back(particleProcsToRecv[i]);      
     }
   }
 }

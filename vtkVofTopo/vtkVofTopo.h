@@ -81,21 +81,23 @@ private:
   // for data sets without or with incorrect time stamp information
   double TimeStepDelta;
 
-  // multiprocess
-  static const int NUM_SIDES = 6;
+  // Multiprocess
   vtkMPIController* Controller;
+  static const int NUM_SIDES = 6;
   double LocalBounds[NUM_SIDES];
   double GlobalBounds[NUM_SIDES];
   std::vector<std::vector<int> > NeighborProcesses;
   int NumNeighbors;
 
-  // seeds
+  // Seeds
   int Refinement;
   vtkPolyData *Seeds;
-  // particles
+  // Particles
   std::vector<float4> Particles;
-  std::vector<unsigned> ParticleIds;
+  std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
+
+  // Caching  
   bool UseCache;
   int LastComputedTimeStep;
 };

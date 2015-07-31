@@ -315,27 +315,36 @@ void generateSeedPoints(vtkRectilinearGrid *input,
 }
 
 
-void advectParticles(vtkRectilinearGrid *inputVof,
-		     vtkRectilinearGrid *inputVelocity,
+void advectParticles(vtkRectilinearGrid *vofGrid,
+		     vtkRectilinearGrid *velocityGrid,
 		     std::vector<float4> &particles,
 		     const float deltaT)
 {
   int nodeRes[3];
-  inputVof->GetDimensions(nodeRes);
+  vofGrid->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  vtkDataArray *velocityArray = inputVelocity->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+  vtkDataArray *velocityArray = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+  vtkDataArray *vofArray = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
   std::vector<float4>::iterator it;
   for (it = particles.begin(); it != particles.end(); ++it) {
-    
-    double x[3] = {it->x, it->y, it->z};
-    int ijk[3];
-    double pcoords[3];
-    int particleInsideGrid = inputVof->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    if (particleInsideGrid) {
-      float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
-      *it = *it + velocity*deltaT;
+    if (it->w != 0.0f) {
+      double x[3] = {it->x, it->y, it->z};
+      int ijk[3];
+      double pcoords[3];
+      int particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float f = vofArray->GetComponent(idx, 0);
+      
+      if (particleInsideGrid) {
+	if (f <= g_emf0) {
+	  it->w = 0.0f;
+	  continue;
+	}
+	float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
+	*it = *it + velocity*deltaT;
+      }
     }
   }
 }

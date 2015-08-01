@@ -20,6 +20,7 @@
 #include <vector>
 #include <cmath>
 #include <map>
+#include <set>
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -230,14 +231,21 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       std::vector<float> particleLabels;
       LabelAdvectedParticles(components, particleLabels);
 
-      // // Stage V -------------------------------------------------------------
+      // Stage V -------------------------------------------------------------
       TransferLabelsToSeeds(particleLabels);
+
+      // Stage VI ------------------------------------------------------------
+      vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
+      GenerateBoundaries(boundaries);
 
       // Generate output -----------------------------------------------------
       vtkInformation *outInfo = outputVector->GetInformationObject(0);
       vtkPolyData *output =
       	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-      GenerateOutputGeometry(output);
+      output->SetPoints(boundaries->GetPoints());
+      output->SetPolys(boundaries->GetPolys());
+      output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("BackLabels"));
+      output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("FrontLabels"));
     }
     else {
       request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -299,13 +307,6 @@ void vtkVofTopo::InitParticles()
       ParticleProcs[i] = processId;
     }
   }
-}
-
-//----------------------------------------------------------------------------
-void vtkVofTopo::GenerateOutputGeometry(vtkPolyData *output)
-{  
-  output->SetPoints(Seeds->GetPoints());
-  output->GetPointData()->AddArray(Seeds->GetPointData()->GetArray("Labels"));
 }
 
 //----------------------------------------------------------------------------
@@ -671,8 +672,6 @@ void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
     const int processId = Controller->GetLocalProcessId();
     const int numProcesses = Controller->GetNumberOfProcesses();
 
-    std::cout << processId << " | " << Seeds->GetNumberOfPoints() << " " << Particles.size() << std::endl;
-
     std::vector<std::vector<float> > labelsToSend(numProcesses);
     std::vector<std::vector<int> > idsToSend(numProcesses);
     for (int i = 0; i < numProcesses; ++i) {
@@ -745,4 +744,23 @@ void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
     }
   }
   Seeds->GetPointData()->AddArray(labelsArray);
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
+{
+  vtkPoints *points = Seeds->GetPoints();
+  vtkFloatArray *labels = vtkFloatArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+  vtkIntArray *connectivity = vtkIntArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
+  vtkShortArray *coords = vtkShortArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
+
+  if (!labels || !connectivity || !coords) {
+    vtkDebugMacro("One of the input attributes is not present");
+    return;
+  }
+
+  generateBoundaries(points, labels, connectivity, coords, boundaries);
 }

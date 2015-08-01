@@ -65,7 +65,8 @@ private:
   void LabelAdvectedParticles(vtkRectilinearGrid *components,
 			      std::vector<float> &labels);
   void TransferLabelsToSeeds(std::vector<float> &particleLabels);
-  void GenerateOutputGeometry(vtkPolyData *output);
+
+  void GenerateBoundaries(vtkPolyData *boundaries);
 
   std::vector<double> InputTimeValues;
   
@@ -93,6 +94,7 @@ private:
   // Seeds
   int Refinement;
   vtkPolyData *Seeds;
+
   // Particles
   std::vector<float4> Particles;
   std::vector<int> ParticleIds;

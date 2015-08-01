@@ -4,6 +4,8 @@ if(COMMAND cmake_policy)
   cmake_policy(SET CMP0003 NEW)
 endif(COMMAND cmake_policy)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+
 if (ParaView_SOURCE_DIR)
   include_directories(${VTK_INCLUDE_DIRS})
 else (ParaView_SOURCE_DIR)

@@ -4,10 +4,14 @@
 #include "vtkCellData.h"
 #include "vtkFloatArray.h"
 #include "vtkDoubleArray.h"
+#include "vtkIdTypeArray.h"
+#include "vtkCellArray.h"
 #include <iostream>
 #include <map>
 #include <vector>
 #include <limits>
+#include <set>
+#include <cmath>
 
 namespace
 {
@@ -206,6 +210,70 @@ namespace
     id[i] = j;
   }
 
+  class compare_int3 {
+  public:
+    bool operator()(const int3 a, const int3 b) const {
+      return (a.x < b.x || (a.x == b.x && (a.y < b.y || (a.y == b.y && (a.z < b.z)))));
+    }
+  };
+
+  void mergeTriangles(std::vector<float3>& vertices,
+		      std::vector<int3>& ivertices,
+		      std::vector<int>& indices,
+		      std::vector<float3>& mergedVertices)
+  {
+    int vertexID = 0;
+    std::map<int3, int, compare_int3> vertexMap;
+    int totalVerts = vertices.size();
+    
+    for (int t = 0; t < totalVerts; t++) {
+
+      int3 &key = ivertices[t];
+      
+      if (vertexMap.find(key) == vertexMap.end()) {
+	
+	vertexMap[key] = vertexID;
+
+	mergedVertices.push_back(vertices[t]);
+
+	indices.push_back(vertexID);
+	
+	vertexID++;
+      }
+      else {	
+	indices.push_back(vertexMap[key]);
+      }
+    }
+  }
+
+  void smoothSurface(std::vector<float3>& vertices,
+		     std::vector<int>& indices)
+  {
+    std::vector<std::set<int> > neighbors(vertices.size());
+    for (int i = 0; i < indices.size()/3; ++i) {
+      
+      int *tri = &indices[i*3];
+      for (int j = 0; j < 3; j++) {
+	neighbors[tri[j]].insert(tri[(j+1)%3]);
+	neighbors[tri[j]].insert(tri[(j+2)%3]);
+      }
+    }
+
+    std::vector<float3> verticesTmp(vertices.size());
+    float3 vert = {0.0f,0.0f,0.0f};
+    for (int i = 0; i < verticesTmp.size(); ++i) {
+      verticesTmp[i] = vert;
+    }
+
+    for (int i = 0; i < neighbors.size(); ++i) {
+      std::set<int>::iterator it;
+      for (it = neighbors[i].begin(); it != neighbors[i].end(); ++it) {
+	verticesTmp[i] += vertices[*it];
+      }
+      verticesTmp[i] += vertices[i];
+      vertices[i] = verticesTmp[i]/(neighbors[i].size()+1);
+    }
+  }
 }
 
 void generateSeedPoints(vtkRectilinearGrid *input,
@@ -558,4 +626,168 @@ void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
       labels_ptr[i] = labelMap[label];
     }
   }
+}
+
+void generateBoundaries(vtkPoints *points,
+			vtkFloatArray *labels,
+			vtkIntArray *connectivity,
+			vtkShortArray *coords,
+			vtkPolyData *boundaries)
+{
+  const int numPoints = points->GetNumberOfPoints();
+
+  // hack: compute cell size - should actually be taken from the grid
+  // find a seed point that has neighbors in x, y, and z directions - from 
+  // distance to these points we can compute the cell size; without the hack
+  // it must be taken from grid explicitely
+  float cellSize[3];
+
+  for (int i = 0; i < numPoints; ++i) {
+
+    int conn[3] = {connectivity->GetComponent(i, 0),
+  		   connectivity->GetComponent(i, 1),
+  		   connectivity->GetComponent(i, 2)};
+    if (conn[0] > -1 && conn[1] > -1 && conn[2] > -1) {
+      
+      double p0[3];
+      points->GetPoint(i, p0);
+      double p1[3];
+      points->GetPoint(conn[0], p1);
+      double p2[3];
+      points->GetPoint(conn[1], p2);
+      double p3[3];
+      points->GetPoint(conn[2], p3);
+
+      cellSize[0] = std::abs(p1[0]-p0[0]);
+      cellSize[1] = std::abs(p2[1]-p0[1]);
+      cellSize[2] = std::abs(p3[2]-p0[2]);
+      break;
+    }
+  }
+  // hack end
+  const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
+
+  std::vector<int3> ivertices;
+  ivertices.clear();
+  std::vector<float3> vertices;
+  vertices.clear();
+
+  const int co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
+  			 {0,0,0, 1,0,0, 1,0,1, 0,0,1},
+  			 {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
+  			    -cs2[0],-cs2[1], cs2[2], 
+  			    -cs2[0], cs2[1], cs2[2], 
+  			    -cs2[0], cs2[1],-cs2[2]},
+  			   {-cs2[0],-cs2[1],-cs2[2], 
+  			     cs2[0],-cs2[1],-cs2[2], 
+  			     cs2[0],-cs2[1], cs2[2], 
+  			    -cs2[0],-cs2[1], cs2[2]},
+  			   {-cs2[0],-cs2[1],-cs2[2], 
+  			    -cs2[0], cs2[1],-cs2[2], 
+  			     cs2[0], cs2[1],-cs2[2],
+  			     cs2[0],-cs2[1],-cs2[2]}};
+
+  vtkFloatArray *labelsBack = vtkFloatArray::New();
+  labelsBack->SetNumberOfComponents(1);
+  labelsBack->SetName("BackLabels");
+  vtkFloatArray *labelsFront = vtkFloatArray::New();
+  labelsFront->SetNumberOfComponents(1);
+  labelsFront->SetName("FrontLabels");
+
+  for (int i = 0; i < numPoints; ++i) {
+
+    int conn[3] = {connectivity->GetComponent(i, 0),
+  		   connectivity->GetComponent(i, 1),
+  		   connectivity->GetComponent(i, 2)};
+
+    float l0 = labels->GetValue(i);
+    int c0[3] = {coords->GetComponent(i, 0),
+  		 coords->GetComponent(i, 1),
+  		 coords->GetComponent(i, 2)};
+
+    double p0[3];
+    points->GetPoint(i, p0);
+
+    for (int j = 0; j < 3; ++j) {
+      if (conn[j] > -1) {
+
+  	float l1 = labels->GetValue(conn[j]);
+  	double p1[3];
+  	points->GetPoint(conn[j], p1);
+      
+  	if (l0 != l1) {
+
+  	  labelsBack->InsertNextValue(l0);
+  	  labelsBack->InsertNextValue(l0);
+  	  labelsFront->InsertNextValue(l1);
+  	  labelsFront->InsertNextValue(l1);
+
+  	  float3 verts[4];
+  	  int3 iverts[4];
+
+  	  for (int k = 0; k < 4; ++k) {
+
+  	    float3 vertex = {p0[0]+po[j][k*3+0], 
+  			       p0[1]+po[j][k*3+1], 
+  			       p0[2]+po[j][k*3+2]};
+  	    verts[k] = vertex;
+
+  	    int3 ivertex = {c0[0]+co[j][k*3+0], 
+  	    		      c0[1]+co[j][k*3+1], 
+  	    		      c0[2]+co[j][k*3+2]};
+  	    iverts[k] = ivertex;
+  	  }
+  	  vertices.push_back(verts[0]);
+  	  vertices.push_back(verts[1]);
+  	  vertices.push_back(verts[2]);
+  	  vertices.push_back(verts[2]);
+  	  vertices.push_back(verts[3]);
+  	  vertices.push_back(verts[0]);
+
+  	  ivertices.push_back(iverts[0]);
+  	  ivertices.push_back(iverts[1]);
+  	  ivertices.push_back(iverts[2]);
+  	  ivertices.push_back(iverts[2]);
+  	  ivertices.push_back(iverts[3]);
+  	  ivertices.push_back(iverts[0]);
+  	}
+      }
+    }    
+  }
+
+  std::vector<int> indices;
+  std::vector<float3> mergedVertices;
+  mergeTriangles(vertices, ivertices, indices, mergedVertices);
+  smoothSurface(mergedVertices, indices);
+  
+  vtkPoints *outputPoints = vtkPoints::New();
+  outputPoints->SetNumberOfPoints(mergedVertices.size());
+  for (int i = 0; i < mergedVertices.size(); ++i) {
+    
+    double p[3] = {mergedVertices[i].x,
+  		   mergedVertices[i].y,
+  		   mergedVertices[i].z};
+    outputPoints->SetPoint(i, p);        
+  }
+
+  vtkIdTypeArray *cells = vtkIdTypeArray::New();
+  cells->SetNumberOfComponents(1);
+  cells->SetNumberOfTuples(indices.size()/3*4);
+  for (int i = 0; i < indices.size()/3; ++i) {
+    cells->SetValue(i*4+0,3);
+    cells->SetValue(i*4+1,indices[i*3+0]);
+    cells->SetValue(i*4+2,indices[i*3+1]);
+    cells->SetValue(i*4+3,indices[i*3+2]);
+  }
+
+  vtkCellArray *outputTriangles = vtkCellArray::New();
+  outputTriangles->SetNumberOfCells(indices.size()/3);
+  outputTriangles->SetCells(indices.size()/3, cells);
+
+  boundaries->SetPoints(outputPoints);
+  boundaries->SetPolys(outputTriangles);
+
+  boundaries->GetCellData()->AddArray(labelsBack);
+  boundaries->GetCellData()->AddArray(labelsFront);
 }

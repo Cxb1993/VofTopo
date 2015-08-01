@@ -6,6 +6,7 @@
 #include "vtkShortArray.h"
 #include "vtkIntArray.h"
 #include "vtkFloatArray.h"
+#include "vtkPolyData.h"
 #include "vtkMPIController.h"
 #include <vector>
 #include <algorithm>
@@ -185,5 +186,11 @@ void unifyLabelsInProcess(std::vector<std::vector<int> > &NeighborProcesses,
 void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
 			 std::vector<int> &allLabels, vtkFloatArray *labels,
 			 std::vector<int> &labelOffsets, int processId);
+
+void generateBoundaries(vtkPoints *points,
+			vtkFloatArray *labels,
+			vtkIntArray *connectivity,
+			vtkShortArray *coords,
+			vtkPolyData *boundaries);
 
 #endif//VOFTOPOLOGY_H

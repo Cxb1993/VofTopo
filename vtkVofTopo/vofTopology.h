@@ -200,9 +200,6 @@ void generateNewBoundaries(vtkPoints *points,
 			   vtkShortArray *coords,
 			   int currentTimeStep,			  
 			   std::vector<float3> &vertices,
-			   std::vector<float3> &ivertices,
-			   std::map<int,std::pair<float3,float3> > &constrainedVertices,
-			   std::vector<int> &indices,
 			   std::vector<int> &splitTimes);
 
 

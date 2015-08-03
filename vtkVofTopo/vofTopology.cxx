@@ -887,13 +887,8 @@ void generateNewBoundaries(vtkPoints *points,
 			   vtkShortArray *coords,
 			   int currentTimeStep,
 			   std::vector<float3> &vertices,
-			   std::vector<float3> &ivertices,
-			   std::map<int,std::pair<float3,float3> > &constrainedVertices,
-			   std::vector<int> &indices,
 			   std::vector<int> &splitTimes)
 {
-  std::cout << "currentTimeStep = " << currentTimeStep << " "
-	    << "indices.size() = " << indices.size() << std::endl;
   const int numPoints = points->GetNumberOfPoints();
 
   // hack: compute cell size - should actually be taken from the grid
@@ -927,18 +922,6 @@ void generateNewBoundaries(vtkPoints *points,
   // hack end
   const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
 
-  std::vector<float3> iverticesTmp;
-  iverticesTmp.clear();
-  std::vector<float3> verticesTmp;
-  verticesTmp.clear();
-
-  const float co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
-			   {0,0,0, 1,0,0, 1,0,1, 0,0,1},
-			   {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
-  const float coc[3][3] = {{0,0.5f,0.5f},
-			   {0.5f,0,0.5f},
-			   {0.5f,0.5f,0}};
-  
   const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
   			    -cs2[0],-cs2[1], cs2[2], 
   			    -cs2[0], cs2[1], cs2[2], 
@@ -955,17 +938,11 @@ void generateNewBoundaries(vtkPoints *points,
 			   {0,-cs2[1],0},
 			   {0,0,-cs2[2]}};
 
-  // int vidx = 0;
-
   static std::map<std::pair<int,int>, char> usedEdges;
   if (vertices.size() == 0) {
     usedEdges.clear();
   }
-  static int vertexID = 0;
-  if (vertices.size() == 0) {
-    vertexID = 0;
-  }
-  
+
   for (int i = 0; i < numPoints; ++i) {
 
     int conn[3] = {connectivity->GetComponent(i, 0),
@@ -998,21 +975,9 @@ void generateNewBoundaries(vtkPoints *points,
 	    splitTimes.push_back(currentTimeStep);
 
 	    float3 verts[5];
-	    float3 iverts[5];
-
 	    verts[4] = make_float3(p0[0]+poc[j][0], 
 				   p0[1]+poc[j][1], 
 				   p0[2]+poc[j][2]);
-	    iverts[4] = make_float3(c0[0]+coc[j][0], 
-				    c0[1]+coc[j][1], 
-				    c0[2]+coc[j][2]);
-
-	    // float3 constraint0 = make_float3(p0[0]+poc[j][0]+poc[j][0], 
-	    // 				     p0[1]+poc[j][1]+poc[j][1], 
-	    // 				     p0[2]+poc[j][2]+poc[j][2]);
-	    // float3 constraint1 = make_float3(p0[0], 
-	    // 				     p0[1], 
-	    // 				     p0[2]);
 	  
 	    for (int k = 0; k < 4; ++k) {
 
@@ -1020,49 +985,23 @@ void generateNewBoundaries(vtkPoints *points,
 			       p0[1]+po[j][k*3+1], 
 			       p0[2]+po[j][k*3+2]};
 	      verts[k] = vertex;
-
-	      float3 ivertex = {c0[0]+co[j][k*3+0], 
-				c0[1]+co[j][k*3+1], 
-				c0[2]+co[j][k*3+2]};
-	      iverts[k] = ivertex;
 	    }
-	    verticesTmp.push_back(verts[0]);
-	    verticesTmp.push_back(verts[1]);
-	    verticesTmp.push_back(verts[4]);
-	    verticesTmp.push_back(verts[1]);
-	    verticesTmp.push_back(verts[2]);
-	    verticesTmp.push_back(verts[4]);
-	    verticesTmp.push_back(verts[2]);
-	    verticesTmp.push_back(verts[3]);
-	    verticesTmp.push_back(verts[4]);
-	    verticesTmp.push_back(verts[3]);
-	    verticesTmp.push_back(verts[0]);
-	    verticesTmp.push_back(verts[4]);
-	  
-	    iverticesTmp.push_back(iverts[0]);
-	    iverticesTmp.push_back(iverts[1]);
-	    iverticesTmp.push_back(iverts[4]);
-	    iverticesTmp.push_back(iverts[1]);
-	    iverticesTmp.push_back(iverts[2]);
-	    iverticesTmp.push_back(iverts[4]);
-	    iverticesTmp.push_back(iverts[2]);
-	    iverticesTmp.push_back(iverts[3]);
-	    iverticesTmp.push_back(iverts[4]);
-	    iverticesTmp.push_back(iverts[3]);
-	    iverticesTmp.push_back(iverts[0]);
-	    iverticesTmp.push_back(iverts[4]);
-
-	    // constrainedVertices[vidx+ 2] = std::pair<float3,float3>(constraint0,constraint1);
-	    // constrainedVertices[vidx+ 5] = std::pair<float3,float3>(constraint0,constraint1);
-	    // constrainedVertices[vidx+ 8] = std::pair<float3,float3>(constraint0,constraint1);
-	    // constrainedVertices[vidx+11] = std::pair<float3,float3>(constraint0,constraint1);
-	    // vidx += 12;
+	    vertices.push_back(verts[0]);
+	    vertices.push_back(verts[1]);
+	    vertices.push_back(verts[4]);
+	    vertices.push_back(verts[1]);
+	    vertices.push_back(verts[2]);
+	    vertices.push_back(verts[4]);
+	    vertices.push_back(verts[2]);
+	    vertices.push_back(verts[3]);
+	    vertices.push_back(verts[4]);
+	    vertices.push_back(verts[3]);
+	    vertices.push_back(verts[0]);
+	    vertices.push_back(verts[4]);
 	  }
 	}
       }
     }
   }
-
-  mergeTriangles(verticesTmp, iverticesTmp, indices, vertices, ivertices, vertexID);
 }
 

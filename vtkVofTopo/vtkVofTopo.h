@@ -67,6 +67,8 @@ private:
   void TransferLabelsToSeeds(std::vector<float> &particleLabels);
 
   void GenerateBoundaries(vtkPolyData *boundaries);
+  void GenerateNewBoundaries(vtkPolyData *boundaries);
+
 
   std::vector<double> InputTimeValues;
   
@@ -79,6 +81,11 @@ private:
   static const int IterateOverTarget = 1;
   int IterType;
   bool FirstIteration;
+
+  // Visualization type
+  static const int LabelComponents = 0;
+  static const int LabelSplitTime = 1;
+  int LabelType;
 
   // for data sets without or with incorrect time stamp information
   double TimeStepDelta;

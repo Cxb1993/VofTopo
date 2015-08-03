@@ -53,6 +53,7 @@ vtkVofTopo::vtkVofTopo() :
   LastComputedTimeStep(-1),
   UseCache(false),
   IterType(IterateOverTarget),
+  LabelType(LabelSplitTime),
   Seeds(0)
 {
   this->SetNumberOfInputPorts(2);
@@ -204,6 +205,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
   if (IterType == IterateOverTarget) {
 
+    
     // Stage I ---------------------------------------------------------------
     if (FirstIteration) {
       if (!UseCache) {
@@ -218,10 +220,43 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       LastComputedTimeStep = CurrentTimeStep;
     }
 
-    bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
-    if (finishedAdvection) {
-      request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-      FirstIteration = true;
+    if (LabelType == LabelComponents) {
+      bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
+      if (finishedAdvection) {
+	request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+	FirstIteration = true;
+
+	// Stage III -----------------------------------------------------------
+	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+	ExtractComponents(inputVof, components);
+
+	// Stage IV ------------------------------------------------------------
+	std::vector<float> particleLabels;
+	LabelAdvectedParticles(components, particleLabels);
+
+	// Stage V -------------------------------------------------------------
+	TransferLabelsToSeeds(particleLabels);
+
+	// Stage VI ------------------------------------------------------------
+	vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
+	GenerateBoundaries(boundaries);
+
+	// Generate output -----------------------------------------------------
+	vtkInformation *outInfo = outputVector->GetInformationObject(0);
+	vtkPolyData *output =
+	  vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+	output->SetPoints(boundaries->GetPoints());
+	output->SetPolys(boundaries->GetPolys());
+	output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("BackLabels"));
+	output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("FrontLabels"));
+      }
+      else {
+	request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
+	FirstIteration = false;
+	CurrentTimeStep++;
+      }      
+    }
+    if (LabelType == LabelSplitTime) {
 
       // Stage III -----------------------------------------------------------
       vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
@@ -235,23 +270,31 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       TransferLabelsToSeeds(particleLabels);
 
       // Stage VI ------------------------------------------------------------
-      vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
-      GenerateBoundaries(boundaries);
+      
+      bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
+      if (finishedAdvection) {
 
-      // Generate output -----------------------------------------------------
-      vtkInformation *outInfo = outputVector->GetInformationObject(0);
-      vtkPolyData *output =
-      	vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-      output->SetPoints(boundaries->GetPoints());
-      output->SetPolys(boundaries->GetPolys());
-      output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("BackLabels"));
-      output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("FrontLabels"));
-    }
-    else {
-      request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
-      FirstIteration = false;
-      CurrentTimeStep++;
-    }
+	vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
+	GenerateNewBoundaries(boundaries);
+
+	// Generate output -----------------------------------------------------
+	vtkInformation *outInfo = outputVector->GetInformationObject(0);
+	vtkPolyData *output =
+	  vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+	output->SetPoints(boundaries->GetPoints());
+	output->SetPolys(boundaries->GetPolys());
+	output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("SplitTime"));
+
+	request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+	FirstIteration = true;
+      }
+      else {
+	GenerateNewBoundaries(0);
+	request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
+	FirstIteration = false;
+	CurrentTimeStep++;
+      }
+    }    
   }
   else { // IterType == IterateOverInit
 
@@ -761,6 +804,78 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
-
   generateBoundaries(points, labels, connectivity, coords, boundaries);
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::GenerateNewBoundaries(vtkPolyData *boundaries)
+{
+  vtkPoints *points = Seeds->GetPoints();
+  vtkFloatArray *labels = vtkFloatArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+  vtkIntArray *connectivity = vtkIntArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
+  vtkShortArray *coords = vtkShortArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
+
+  if (!labels || !connectivity || !coords) {
+    vtkDebugMacro("One of the input attributes is not present");
+    return;
+  }
+  
+  static std::vector<float3> vertices;
+  static std::vector<float3> ivertices;
+  std::map<int,std::pair<float3,float3> > constrainedVertices;
+  static std::vector<int> indices;
+  static std::vector<int> splitTimes;
+
+  if (FirstIteration) {
+    vertices.clear();
+    ivertices.clear();
+    constrainedVertices.clear();
+    indices.clear();
+    splitTimes.clear();
+  }
+
+  generateNewBoundaries(points, labels, connectivity, coords, CurrentTimeStep,
+			vertices, ivertices, constrainedVertices, indices, splitTimes);
+
+  if (boundaries != 0) {
+    
+    vtkPoints *outputPoints = vtkPoints::New();
+    outputPoints->SetNumberOfPoints(vertices.size());
+    for (int i = 0; i < vertices.size(); ++i) {
+    
+      double p[3] = {vertices[i].x, vertices[i].y, vertices[i].z};
+      outputPoints->SetPoint(i, p);        
+    }
+    boundaries->SetPoints(outputPoints);
+
+    vtkIdTypeArray *cells = vtkIdTypeArray::New();
+    cells->SetNumberOfComponents(1);
+    cells->SetNumberOfTuples(indices.size()/3*4);
+    for (int i = 0; i < indices.size()/3; ++i) {
+      cells->SetValue(i*4+0,3);
+      cells->SetValue(i*4+1,indices[i*3+0]);
+      cells->SetValue(i*4+2,indices[i*3+1]);
+      cells->SetValue(i*4+3,indices[i*3+2]);
+    }
+    vtkCellArray *outputTriangles = vtkCellArray::New();
+    outputTriangles->SetNumberOfCells(indices.size()/3);
+    outputTriangles->SetCells(indices.size()/3, cells);
+
+    boundaries->SetPolys(outputTriangles);
+
+    vtkFloatArray *labelsSplitTime = vtkFloatArray::New();
+    labelsSplitTime->SetNumberOfComponents(1);
+    labelsSplitTime->SetNumberOfTuples(outputTriangles->GetNumberOfCells());
+    labelsSplitTime->SetName("SplitTime");
+
+
+    for (int i = 0; i < outputTriangles->GetNumberOfCells(); ++i) {
+      labelsSplitTime->SetValue(i, splitTimes[i]);
+    }
+
+    boundaries->GetCellData()->AddArray(labelsSplitTime);
+  }
 }

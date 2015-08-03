@@ -10,6 +10,7 @@
 #include "vtkMPIController.h"
 #include <vector>
 #include <algorithm>
+#include <map>
 #include "helper_math.h"
 
 void generateSeedPoints(vtkRectilinearGrid *input,
@@ -192,5 +193,17 @@ void generateBoundaries(vtkPoints *points,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords,
 			vtkPolyData *boundaries);
+
+void generateNewBoundaries(vtkPoints *points,
+			   vtkFloatArray *labels,
+			   vtkIntArray *connectivity,
+			   vtkShortArray *coords,
+			   int currentTimeStep,			  
+			   std::vector<float3> &vertices,
+			   std::vector<float3> &ivertices,
+			   std::map<int,std::pair<float3,float3> > &constrainedVertices,
+			   std::vector<int> &indices,
+			   std::vector<int> &splitTimes);
+
 
 #endif//VOFTOPOLOGY_H

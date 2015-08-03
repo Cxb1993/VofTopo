@@ -240,6 +240,35 @@ namespace
     constrainedVertices = constrainedVerticesTmp;
   }
 
+  void mergeTriangles(std::vector<float3>& vertices,
+		      std::vector<float3>& ivertices,
+		      std::vector<int>& indices,
+		      std::vector<float3>& mergedVertices,
+		      std::vector<float3>& mergedIvertices,
+		      int &vertexID)
+  {
+    std::map<float3, int, compare_float3> vertexMap;
+    int totalVerts = vertices.size();
+    
+    for (int t = 0; t < totalVerts; t++) {
+
+      float3 &key = ivertices[t];
+      
+      if (vertexMap.find(key) == vertexMap.end()) {
+	
+	vertexMap[key] = vertexID;
+	mergedVertices.push_back(vertices[t]);
+	mergedIvertices.push_back(ivertices[t]);
+	indices.push_back(vertexID);
+
+	vertexID++;	
+      }
+      else {	
+	indices.push_back(vertexMap[key]);
+      }
+    }
+  }
+
   void smoothSurface(std::vector<float3>& vertices,
 		     std::vector<int>& indices,
 		     std::map<int,std::pair<float3,float3> > &constrainedVertices)
@@ -850,5 +879,190 @@ void generateBoundaries(vtkPoints *points,
 
   boundaries->GetCellData()->AddArray(labelsBack);
   boundaries->GetCellData()->AddArray(labelsFront);
+}
+
+void generateNewBoundaries(vtkPoints *points,
+			   vtkFloatArray *labels,
+			   vtkIntArray *connectivity,
+			   vtkShortArray *coords,
+			   int currentTimeStep,
+			   std::vector<float3> &vertices,
+			   std::vector<float3> &ivertices,
+			   std::map<int,std::pair<float3,float3> > &constrainedVertices,
+			   std::vector<int> &indices,
+			   std::vector<int> &splitTimes)
+{
+  std::cout << "currentTimeStep = " << currentTimeStep << " "
+	    << "indices.size() = " << indices.size() << std::endl;
+  const int numPoints = points->GetNumberOfPoints();
+
+  // hack: compute cell size - should actually be taken from the grid
+  // find a seed point that has neighbors in x, y, and z directions - from 
+  // distance to these points we can compute the cell size; without the hack
+  // it must be taken from grid explicitely
+  float cellSize[3];
+
+  for (int i = 0; i < numPoints; ++i) {
+
+    int conn[3] = {connectivity->GetComponent(i, 0),
+  		   connectivity->GetComponent(i, 1),
+  		   connectivity->GetComponent(i, 2)};
+    if (conn[0] > -1 && conn[1] > -1 && conn[2] > -1) {
+      
+      double p0[3];
+      points->GetPoint(i, p0);
+      double p1[3];
+      points->GetPoint(conn[0], p1);
+      double p2[3];
+      points->GetPoint(conn[1], p2);
+      double p3[3];
+      points->GetPoint(conn[2], p3);
+
+      cellSize[0] = std::abs(p1[0]-p0[0]);
+      cellSize[1] = std::abs(p2[1]-p0[1]);
+      cellSize[2] = std::abs(p3[2]-p0[2]);
+      break;
+    }
+  }
+  // hack end
+  const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
+
+  std::vector<float3> iverticesTmp;
+  iverticesTmp.clear();
+  std::vector<float3> verticesTmp;
+  verticesTmp.clear();
+
+  const float co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
+			   {0,0,0, 1,0,0, 1,0,1, 0,0,1},
+			   {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float coc[3][3] = {{0,0.5f,0.5f},
+			   {0.5f,0,0.5f},
+			   {0.5f,0.5f,0}};
+  
+  const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
+  			    -cs2[0],-cs2[1], cs2[2], 
+  			    -cs2[0], cs2[1], cs2[2], 
+  			    -cs2[0], cs2[1],-cs2[2]},
+  			   {-cs2[0],-cs2[1],-cs2[2], 
+  			     cs2[0],-cs2[1],-cs2[2], 
+  			     cs2[0],-cs2[1], cs2[2], 
+  			    -cs2[0],-cs2[1], cs2[2]},
+  			   {-cs2[0],-cs2[1],-cs2[2], 
+  			    -cs2[0], cs2[1],-cs2[2], 
+  			     cs2[0], cs2[1],-cs2[2],
+  			     cs2[0],-cs2[1],-cs2[2]}};
+  const float poc[3][3] = {{-cs2[0],0,0},
+			   {0,-cs2[1],0},
+			   {0,0,-cs2[2]}};
+
+  // int vidx = 0;
+
+  static std::map<std::pair<int,int>, char> usedEdges;
+  if (vertices.size() == 0) {
+    usedEdges.clear();
+  }
+  static int vertexID = 0;
+  if (vertices.size() == 0) {
+    vertexID = 0;
+  }
+  
+  for (int i = 0; i < numPoints; ++i) {
+
+    int conn[3] = {connectivity->GetComponent(i, 0),
+  		   connectivity->GetComponent(i, 1),
+  		   connectivity->GetComponent(i, 2)};
+
+    float l0 = labels->GetValue(i);
+    float c0[3] = {coords->GetComponent(i, 0),
+		   coords->GetComponent(i, 1),
+		   coords->GetComponent(i, 2)};
+
+    double p0[3];
+    points->GetPoint(i, p0);
+    
+    for (int j = 0; j < 3; ++j) {
+      if (conn[j] > -1) {
+
+  	float l1 = labels->GetValue(conn[j]);
+  	double p1[3];
+  	points->GetPoint(conn[j], p1);
+      
+  	if (l0 != l1) {
+
+	  if (usedEdges.find(std::pair<int,int>(conn[j],i)) == usedEdges.end()) {
+	    usedEdges[std::pair<int,int>(conn[j],i)] = 1;
+	      
+	    splitTimes.push_back(currentTimeStep);
+	    splitTimes.push_back(currentTimeStep);
+	    splitTimes.push_back(currentTimeStep);
+	    splitTimes.push_back(currentTimeStep);
+
+	    float3 verts[5];
+	    float3 iverts[5];
+
+	    verts[4] = make_float3(p0[0]+poc[j][0], 
+				   p0[1]+poc[j][1], 
+				   p0[2]+poc[j][2]);
+	    iverts[4] = make_float3(c0[0]+coc[j][0], 
+				    c0[1]+coc[j][1], 
+				    c0[2]+coc[j][2]);
+
+	    // float3 constraint0 = make_float3(p0[0]+poc[j][0]+poc[j][0], 
+	    // 				     p0[1]+poc[j][1]+poc[j][1], 
+	    // 				     p0[2]+poc[j][2]+poc[j][2]);
+	    // float3 constraint1 = make_float3(p0[0], 
+	    // 				     p0[1], 
+	    // 				     p0[2]);
+	  
+	    for (int k = 0; k < 4; ++k) {
+
+	      float3 vertex = {p0[0]+po[j][k*3+0], 
+			       p0[1]+po[j][k*3+1], 
+			       p0[2]+po[j][k*3+2]};
+	      verts[k] = vertex;
+
+	      float3 ivertex = {c0[0]+co[j][k*3+0], 
+				c0[1]+co[j][k*3+1], 
+				c0[2]+co[j][k*3+2]};
+	      iverts[k] = ivertex;
+	    }
+	    verticesTmp.push_back(verts[0]);
+	    verticesTmp.push_back(verts[1]);
+	    verticesTmp.push_back(verts[4]);
+	    verticesTmp.push_back(verts[1]);
+	    verticesTmp.push_back(verts[2]);
+	    verticesTmp.push_back(verts[4]);
+	    verticesTmp.push_back(verts[2]);
+	    verticesTmp.push_back(verts[3]);
+	    verticesTmp.push_back(verts[4]);
+	    verticesTmp.push_back(verts[3]);
+	    verticesTmp.push_back(verts[0]);
+	    verticesTmp.push_back(verts[4]);
+	  
+	    iverticesTmp.push_back(iverts[0]);
+	    iverticesTmp.push_back(iverts[1]);
+	    iverticesTmp.push_back(iverts[4]);
+	    iverticesTmp.push_back(iverts[1]);
+	    iverticesTmp.push_back(iverts[2]);
+	    iverticesTmp.push_back(iverts[4]);
+	    iverticesTmp.push_back(iverts[2]);
+	    iverticesTmp.push_back(iverts[3]);
+	    iverticesTmp.push_back(iverts[4]);
+	    iverticesTmp.push_back(iverts[3]);
+	    iverticesTmp.push_back(iverts[0]);
+	    iverticesTmp.push_back(iverts[4]);
+
+	    // constrainedVertices[vidx+ 2] = std::pair<float3,float3>(constraint0,constraint1);
+	    // constrainedVertices[vidx+ 5] = std::pair<float3,float3>(constraint0,constraint1);
+	    // constrainedVertices[vidx+ 8] = std::pair<float3,float3>(constraint0,constraint1);
+	    // constrainedVertices[vidx+11] = std::pair<float3,float3>(constraint0,constraint1);
+	    // vidx += 12;
+	  }
+	}
+      }
+    }
+  }
+
+  mergeTriangles(verticesTmp, iverticesTmp, indices, vertices, ivertices, vertexID);
 }
 

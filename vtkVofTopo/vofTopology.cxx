@@ -15,19 +15,8 @@
 
 namespace
 {
-  typedef struct {
-    int x;
-    int y;
-    int z;
-  } int3_t;
 
-  inline int3_t operator/(int3_t a, int b)
-  {
-    int3_t c = {a.x/b, a.y/b, a.z/b};
-    return c;
-  }
-
-  bool int3_t_compare(const int3_t &a, const int3_t &b)
+  bool compare_int3(const int3 &a, const int3 &b)
   {
     return (a.x < b.x ||
   	    (a.x == b.x &&
@@ -50,7 +39,7 @@ namespace
 		  const float cellSize[3], const int refinement,
 		  const float f, const float gradf[3], const double bounds[6],
 		  const int cell_x, const int cell_y, const int cell_z, 
-		  std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> &seedPos,
+		  std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> &seedPos,
 		  int &seedIdx)
   {
     float originOffset[3] = {0.0f,0.0f,0.0f};
@@ -82,7 +71,7 @@ namespace
 	    // if (pointWithinBounds(seed, bounds) && f >= 0.99f) {
 
 	    seeds->InsertNextPoint(seed);
-	    int3_t pos = {cell_x*subdiv + xr, 
+	    int3 pos = {cell_x*subdiv + xr, 
 			  cell_y*subdiv + yr, 
 			  cell_z*subdiv + zr};
 	    seedPos[pos] = seedIdx;
@@ -210,50 +199,57 @@ namespace
     id[i] = j;
   }
 
-  class compare_int3 {
+  class compare_float3 {
   public:
-    bool operator()(const int3 a, const int3 b) const {
+    bool operator()(const float3 a, const float3 b) const {
       return (a.x < b.x || (a.x == b.x && (a.y < b.y || (a.y == b.y && (a.z < b.z)))));
     }
   };
 
   void mergeTriangles(std::vector<float3>& vertices,
-		      std::vector<int3>& ivertices,
+		      std::vector<float3>& ivertices,
+		      std::map<int,std::pair<float3,float3> > &constrainedVertices,
 		      std::vector<int>& indices,
 		      std::vector<float3>& mergedVertices)
   {
     int vertexID = 0;
-    std::map<int3, int, compare_int3> vertexMap;
+    std::map<float3, int, compare_float3> vertexMap;
     int totalVerts = vertices.size();
+    std::map<int,std::pair<float3,float3> > constrainedVerticesTmp;
     
     for (int t = 0; t < totalVerts; t++) {
 
-      int3 &key = ivertices[t];
+      float3 &key = ivertices[t];
       
       if (vertexMap.find(key) == vertexMap.end()) {
 	
 	vertexMap[key] = vertexID;
-
 	mergedVertices.push_back(vertices[t]);
-
 	indices.push_back(vertexID);
+
+	if (constrainedVertices.find(t) != constrainedVertices.end()) {
+	  constrainedVerticesTmp[vertexID] = constrainedVertices[t];
+	}
 	
-	vertexID++;
+	vertexID++;	
       }
       else {	
 	indices.push_back(vertexMap[key]);
       }
     }
+    constrainedVertices = constrainedVerticesTmp;
   }
 
   void smoothSurface(std::vector<float3>& vertices,
-		     std::vector<int>& indices)
+		     std::vector<int>& indices,
+		     std::map<int,std::pair<float3,float3> > &constrainedVertices)
   {
     std::vector<std::set<int> > neighbors(vertices.size());
     for (int i = 0; i < indices.size()/3; ++i) {
       
       int *tri = &indices[i*3];
       for (int j = 0; j < 3; j++) {
+	neighbors[tri[j]].insert(tri[(j+0)%3]);
 	neighbors[tri[j]].insert(tri[(j+1)%3]);
 	neighbors[tri[j]].insert(tri[(j+2)%3]);
       }
@@ -270,8 +266,22 @@ namespace
       for (it = neighbors[i].begin(); it != neighbors[i].end(); ++it) {
 	verticesTmp[i] += vertices[*it];
       }
-      verticesTmp[i] += vertices[i];
-      vertices[i] = verticesTmp[i]/(neighbors[i].size()+1);
+    }
+
+    for (int i = 0; i < verticesTmp.size(); ++i) {
+      vertices[i] = verticesTmp[i]/(neighbors[i].size());
+
+      if (constrainedVertices.find(i) != constrainedVertices.end()) {
+	float dist = length(constrainedVertices[i].first - constrainedVertices[i].second);
+	float distFirst = length(vertices[i] - constrainedVertices[i].first);
+	float distSecond = length(vertices[i] - constrainedVertices[i].second);
+	if (distFirst > dist*0.8f) {
+	  vertices[i] = 0.2f*constrainedVertices[i].first + 0.8f*constrainedVertices[i].second;
+	}
+	if (distSecond > dist*0.8f) {
+	  vertices[i] = 0.8f*constrainedVertices[i].first + 0.2f*constrainedVertices[i].second;
+	}
+      }
     }
   }
 }
@@ -311,7 +321,7 @@ void generateSeedPoints(vtkRectilinearGrid *input,
   int extent[6];
   input->GetExtent(extent);
 
-  std::map<int3_t, int, bool(*)(const int3_t &a, const int3_t &b)> seedPos(int3_t_compare);
+  std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> seedPos(compare_int3);
   seedPos.clear();
   int seedIdx = 0;
 
@@ -354,7 +364,7 @@ void generateSeedPoints(vtkRectilinearGrid *input,
   coords->SetNumberOfComponents(3);
   coords->SetNumberOfTuples(seedPos.size());
 
-  std::map<int3_t, int>::iterator it;
+  std::map<int3, int>::iterator it;
   for (it = seedPos.begin(); it != seedPos.end(); ++it) {
 
     int conn[3] = {-1,-1,-1};
@@ -363,15 +373,15 @@ void generateSeedPoints(vtkRectilinearGrid *input,
     int y = it->first.y;
     int z = it->first.z;
 
-    int3_t pos_xm = {x-1,y,z};
+    int3 pos_xm = {x-1,y,z};
     if (seedPos.find(pos_xm) != seedPos.end()) {
       conn[0] = seedPos[pos_xm];
     }
-    int3_t pos_ym = {x,y-1,z};
+    int3 pos_ym = {x,y-1,z};
     if (seedPos.find(pos_ym) != seedPos.end()) {
       conn[1] = seedPos[pos_ym];
     }
-    int3_t pos_zm = {x,y,z-1};
+    int3 pos_zm = {x,y,z-1};
     if (seedPos.find(pos_zm) != seedPos.end()) {
       conn[2] = seedPos[pos_zm];
     }
@@ -667,14 +677,18 @@ void generateBoundaries(vtkPoints *points,
   // hack end
   const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
 
-  std::vector<int3> ivertices;
+  std::vector<float3> ivertices;
   ivertices.clear();
   std::vector<float3> vertices;
   vertices.clear();
 
-  const int co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
-  			 {0,0,0, 1,0,0, 1,0,1, 0,0,1},
-  			 {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
+			   {0,0,0, 1,0,0, 1,0,1, 0,0,1},
+			   {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float coc[3][3] = {{0,0.5f,0.5f},
+			   {0.5f,0,0.5f},
+			   {0.5f,0.5f,0}};
+  
   const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
   			    -cs2[0],-cs2[1], cs2[2], 
   			    -cs2[0], cs2[1], cs2[2], 
@@ -687,6 +701,9 @@ void generateBoundaries(vtkPoints *points,
   			    -cs2[0], cs2[1],-cs2[2], 
   			     cs2[0], cs2[1],-cs2[2],
   			     cs2[0],-cs2[1],-cs2[2]}};
+  const float poc[3][3] = {{-cs2[0],0,0},
+			   {0,-cs2[1],0},
+			   {0,0,-cs2[2]}};
 
   vtkFloatArray *labelsBack = vtkFloatArray::New();
   labelsBack->SetNumberOfComponents(1);
@@ -695,6 +712,10 @@ void generateBoundaries(vtkPoints *points,
   labelsFront->SetNumberOfComponents(1);
   labelsFront->SetName("FrontLabels");
 
+  std::map<int,std::pair<float3,float3> > constrainedVertices;
+
+  int vidx = 0;
+
   for (int i = 0; i < numPoints; ++i) {
 
     int conn[3] = {connectivity->GetComponent(i, 0),
@@ -702,9 +723,9 @@ void generateBoundaries(vtkPoints *points,
   		   connectivity->GetComponent(i, 2)};
 
     float l0 = labels->GetValue(i);
-    int c0[3] = {coords->GetComponent(i, 0),
-  		 coords->GetComponent(i, 1),
-  		 coords->GetComponent(i, 2)};
+    float c0[3] = {coords->GetComponent(i, 0),
+		   coords->GetComponent(i, 1),
+		   coords->GetComponent(i, 2)};
 
     double p0[3];
     points->GetPoint(i, p0);
@@ -720,46 +741,85 @@ void generateBoundaries(vtkPoints *points,
 
   	  labelsBack->InsertNextValue(l0);
   	  labelsBack->InsertNextValue(l0);
+  	  labelsBack->InsertNextValue(l0);
+  	  labelsBack->InsertNextValue(l0);
+  	  labelsFront->InsertNextValue(l1);
+  	  labelsFront->InsertNextValue(l1);
   	  labelsFront->InsertNextValue(l1);
   	  labelsFront->InsertNextValue(l1);
 
-  	  float3 verts[4];
-  	  int3 iverts[4];
+  	  float3 verts[5];
+  	  float3 iverts[5];
 
+	  verts[4] = make_float3(p0[0]+poc[j][0], 
+				 p0[1]+poc[j][1], 
+				 p0[2]+poc[j][2]);
+	  iverts[4] = make_float3(c0[0]+coc[j][0], 
+				  c0[1]+coc[j][1], 
+				  c0[2]+coc[j][2]);
+
+	  float3 constraint0 = make_float3(p0[0]+poc[j][0]+poc[j][0], 
+					   p0[1]+poc[j][1]+poc[j][1], 
+					   p0[2]+poc[j][2]+poc[j][2]);
+	  float3 constraint1 = make_float3(p0[0], 
+					   p0[1], 
+					   p0[2]);
+	  
   	  for (int k = 0; k < 4; ++k) {
 
   	    float3 vertex = {p0[0]+po[j][k*3+0], 
-  			       p0[1]+po[j][k*3+1], 
-  			       p0[2]+po[j][k*3+2]};
+			     p0[1]+po[j][k*3+1], 
+			     p0[2]+po[j][k*3+2]};
   	    verts[k] = vertex;
 
-  	    int3 ivertex = {c0[0]+co[j][k*3+0], 
-  	    		      c0[1]+co[j][k*3+1], 
-  	    		      c0[2]+co[j][k*3+2]};
+  	    float3 ivertex = {c0[0]+co[j][k*3+0], 
+			      c0[1]+co[j][k*3+1], 
+			      c0[2]+co[j][k*3+2]};
   	    iverts[k] = ivertex;
   	  }
   	  vertices.push_back(verts[0]);
   	  vertices.push_back(verts[1]);
+	  vertices.push_back(verts[4]);
+  	  vertices.push_back(verts[1]);
   	  vertices.push_back(verts[2]);
+	  vertices.push_back(verts[4]);
   	  vertices.push_back(verts[2]);
   	  vertices.push_back(verts[3]);
-  	  vertices.push_back(verts[0]);
-
+	  vertices.push_back(verts[4]);
+	  vertices.push_back(verts[3]);
+	  vertices.push_back(verts[0]);
+	  vertices.push_back(verts[4]);
+	  
   	  ivertices.push_back(iverts[0]);
   	  ivertices.push_back(iverts[1]);
+	  ivertices.push_back(iverts[4]);
+  	  ivertices.push_back(iverts[1]);
   	  ivertices.push_back(iverts[2]);
+	  ivertices.push_back(iverts[4]);
   	  ivertices.push_back(iverts[2]);
   	  ivertices.push_back(iverts[3]);
+	  ivertices.push_back(iverts[4]);
+  	  ivertices.push_back(iverts[3]);
   	  ivertices.push_back(iverts[0]);
+	  ivertices.push_back(iverts[4]);
+
+	  constrainedVertices[vidx+ 2] = std::pair<float3,float3>(constraint0,constraint1);
+	  constrainedVertices[vidx+ 5] = std::pair<float3,float3>(constraint0,constraint1);
+	  constrainedVertices[vidx+ 8] = std::pair<float3,float3>(constraint0,constraint1);
+	  constrainedVertices[vidx+11] = std::pair<float3,float3>(constraint0,constraint1);
+	  vidx += 12;
   	}
       }
-    }    
+    }
   }
 
   std::vector<int> indices;
   std::vector<float3> mergedVertices;
-  mergeTriangles(vertices, ivertices, indices, mergedVertices);
-  smoothSurface(mergedVertices, indices);
+
+  mergeTriangles(vertices, ivertices, constrainedVertices, indices, mergedVertices);
+
+  for (int i = 0; i < 10; ++i)
+    smoothSurface(mergedVertices, indices, constrainedVertices);
   
   vtkPoints *outputPoints = vtkPoints::New();
   outputPoints->SetNumberOfPoints(mergedVertices.size());
@@ -791,3 +851,4 @@ void generateBoundaries(vtkPoints *points,
   boundaries->GetCellData()->AddArray(labelsBack);
   boundaries->GetCellData()->AddArray(labelsFront);
 }
+

@@ -269,6 +269,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  TemporalBoundaries->ivertices.clear();
 	  TemporalBoundaries->indices.clear();
 	  TemporalBoundaries->splitTimes.clear();
+	  TemporalBoundaries->constrVertices.clear();
 	}
       }
       // Since the particles are advected for time step t and we need components
@@ -855,39 +856,48 @@ void vtkVofTopo::GenerateTemporalBoundaries(vtkPolyData *boundaries)
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
+
+  meshTB_t *tb = TemporalBoundaries;
   
-  generateNewBoundaries(points, labels, connectivity, 
-			coords, CurrentTimeStep,
-			TemporalBoundaries->vertices, TemporalBoundaries->splitTimes);
+  generateNewBoundaries(points, labels, connectivity, coords, CurrentTimeStep,
+			tb->vertices, tb->ivertices,tb->indices,
+			tb->constrVertices, tb->splitTimes);
+
 
   if (boundaries != 0) {
 
-    TemporalBoundaries->indices.resize(TemporalBoundaries->vertices.size());
-    for (int i = 0; i < TemporalBoundaries->vertices.size(); ++i) {
-      TemporalBoundaries->indices[i] = i;
-    }
-    
+    std::vector<float3> vertices = tb->vertices;
+    std::vector<int> splitTimes = tb->splitTimes;
+    std::vector<int> indices = tb->indices;
+    std::map<int,std::pair<float3,float3> > constrVertices = tb->constrVertices;
+
+    mergePatches(vertices, tb->ivertices, indices,
+    		 constrVertices, splitTimes);
+
+    for (int i = 0; i < 4; ++i)
+      smoothSurface(vertices, indices, constrVertices);
+       
     vtkPoints *outputPoints = vtkPoints::New();
-    outputPoints->SetNumberOfPoints(TemporalBoundaries->vertices.size());
-    for (int i = 0; i < TemporalBoundaries->vertices.size(); ++i) {
+    outputPoints->SetNumberOfPoints(vertices.size());
+    for (int i = 0; i < vertices.size(); ++i) {
     
-      double p[3] = {TemporalBoundaries->vertices[i].x, TemporalBoundaries->vertices[i].y, TemporalBoundaries->vertices[i].z};
+      double p[3] = {vertices[i].x, vertices[i].y, vertices[i].z};
       outputPoints->SetPoint(i, p);        
     }
     boundaries->SetPoints(outputPoints);
 
     vtkIdTypeArray *cells = vtkIdTypeArray::New();
     cells->SetNumberOfComponents(1);
-    cells->SetNumberOfTuples(TemporalBoundaries->indices.size()/3*4);
-    for (int i = 0; i < TemporalBoundaries->indices.size()/3; ++i) {
+    cells->SetNumberOfTuples(indices.size()/3*4);
+    for (int i = 0; i < indices.size()/3; ++i) {
       cells->SetValue(i*4+0,3);
-      cells->SetValue(i*4+1,TemporalBoundaries->indices[i*3+0]);
-      cells->SetValue(i*4+2,TemporalBoundaries->indices[i*3+1]);
-      cells->SetValue(i*4+3,TemporalBoundaries->indices[i*3+2]);
+      cells->SetValue(i*4+1,indices[i*3+0]);
+      cells->SetValue(i*4+2,indices[i*3+1]);
+      cells->SetValue(i*4+3,indices[i*3+2]);
     }
     vtkCellArray *outputTriangles = vtkCellArray::New();
-    outputTriangles->SetNumberOfCells(TemporalBoundaries->indices.size()/3);
-    outputTriangles->SetCells(TemporalBoundaries->indices.size()/3, cells);
+    outputTriangles->SetNumberOfCells(indices.size()/3);
+    outputTriangles->SetCells(indices.size()/3, cells);
 
     boundaries->SetPolys(outputTriangles);
 
@@ -897,7 +907,7 @@ void vtkVofTopo::GenerateTemporalBoundaries(vtkPolyData *boundaries)
     labelsSplitTime->SetName("SplitTime");
 
     for (int i = 0; i < outputTriangles->GetNumberOfCells(); ++i) {
-      labelsSplitTime->SetValue(i, TemporalBoundaries->splitTimes[i]);
+      labelsSplitTime->SetValue(i, splitTimes[i]);
     }
     boundaries->GetCellData()->AddArray(labelsSplitTime);
   }

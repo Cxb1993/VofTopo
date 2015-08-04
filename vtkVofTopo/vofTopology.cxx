@@ -240,25 +240,24 @@ namespace
     constrainedVertices = constrainedVerticesTmp;
   }
 
-  void mergeTriangles(std::vector<float3>& vertices,
-		      std::vector<float3>& ivertices,
-		      std::vector<int>& indices,
-		      std::vector<float3>& mergedVertices,
-		      std::vector<float3>& mergedIvertices,
-		      int &vertexID)
+
+  void mergeVertices(const std::vector<float3>& ivertices,
+		     const int vertexOffset,
+		     std::vector<int>& indices,
+		     std::vector<int>& vertexList)
   {
     std::map<float3, int, compare_float3> vertexMap;
-    int totalVerts = vertices.size();
+    int totalVerts = ivertices.size();
+    int vertexID = vertexOffset;
     
     for (int t = 0; t < totalVerts; t++) {
 
-      float3 &key = ivertices[t];
+      const float3 &key = ivertices[t];
       
       if (vertexMap.find(key) == vertexMap.end()) {
 	
 	vertexMap[key] = vertexID;
-	mergedVertices.push_back(vertices[t]);
-	mergedIvertices.push_back(ivertices[t]);
+	vertexList.push_back(t);
 	indices.push_back(vertexID);
 
 	vertexID++;	
@@ -269,51 +268,57 @@ namespace
     }
   }
 
-  void smoothSurface(std::vector<float3>& vertices,
-		     std::vector<int>& indices,
-		     std::map<int,std::pair<float3,float3> > &constrainedVertices)
-  {
-    std::vector<std::set<int> > neighbors(vertices.size());
-    for (int i = 0; i < indices.size()/3; ++i) {
+}
+
+void smoothSurface(std::vector<float3>& vertices,
+		   std::vector<int>& indices,
+		   std::map<int,std::pair<float3,float3> > &constrainedVertices)
+{
+  std::vector<std::set<int> > neighbors(vertices.size());
+  for (int i = 0; i < indices.size()/3; ++i) {
       
-      int *tri = &indices[i*3];
-      for (int j = 0; j < 3; j++) {
-	neighbors[tri[j]].insert(tri[(j+0)%3]);
-	neighbors[tri[j]].insert(tri[(j+1)%3]);
-	neighbors[tri[j]].insert(tri[(j+2)%3]);
-      }
-    }
-
-    std::vector<float3> verticesTmp(vertices.size());
-    float3 vert = {0.0f,0.0f,0.0f};
-    for (int i = 0; i < verticesTmp.size(); ++i) {
-      verticesTmp[i] = vert;
-    }
-
-    for (int i = 0; i < neighbors.size(); ++i) {
-      std::set<int>::iterator it;
-      for (it = neighbors[i].begin(); it != neighbors[i].end(); ++it) {
-	verticesTmp[i] += vertices[*it];
-      }
-    }
-
-    for (int i = 0; i < verticesTmp.size(); ++i) {
-      vertices[i] = verticesTmp[i]/(neighbors[i].size());
-
-      if (constrainedVertices.find(i) != constrainedVertices.end()) {
-	float dist = length(constrainedVertices[i].first - constrainedVertices[i].second);
-	float distFirst = length(vertices[i] - constrainedVertices[i].first);
-	float distSecond = length(vertices[i] - constrainedVertices[i].second);
-	if (distFirst > dist*0.8f) {
-	  vertices[i] = 0.2f*constrainedVertices[i].first + 0.8f*constrainedVertices[i].second;
-	}
-	if (distSecond > dist*0.8f) {
-	  vertices[i] = 0.8f*constrainedVertices[i].first + 0.2f*constrainedVertices[i].second;
-	}
-      }
+    int *tri = &indices[i*3];
+    for (int j = 0; j < 3; j++) {
+      neighbors[tri[j]].insert(tri[(j+0)%3]);
+      neighbors[tri[j]].insert(tri[(j+1)%3]);
+      neighbors[tri[j]].insert(tri[(j+2)%3]);
     }
   }
+
+  std::vector<float3> verticesTmp(vertices.size());
+  float3 vert = {0.0f,0.0f,0.0f};
+  for (int i = 0; i < verticesTmp.size(); ++i) {
+    verticesTmp[i] = vert;
+  }
+
+  for (int i = 0; i < neighbors.size(); ++i) {
+    std::set<int>::iterator it;
+    for (it = neighbors[i].begin(); it != neighbors[i].end(); ++it) {
+      verticesTmp[i] += vertices[*it];
+    }
+  }
+
+  for (int i = 0; i < verticesTmp.size(); ++i) {
+    if (neighbors.size() > 5) {
+      vertices[i] = verticesTmp[i]/(neighbors[i].size());
+    }
+    // else if (constrainedVertices.find(i) != constrainedVertices.end()) {
+
+    //   vertices[i] = verticesTmp[i]/(neighbors[i].size());
+      
+    //   float dist = length(constrainedVertices[i].first - constrainedVertices[i].second);
+    //   float distFirst = length(vertices[i] - constrainedVertices[i].first);
+    //   float distSecond = length(vertices[i] - constrainedVertices[i].second);
+    //   if (distFirst > dist*0.8f) {
+    // 	vertices[i] = 0.2f*constrainedVertices[i].first + 0.8f*constrainedVertices[i].second;
+    //   }
+    //   if (distSecond > dist*0.8f) {
+    // 	vertices[i] = 0.8f*constrainedVertices[i].first + 0.2f*constrainedVertices[i].second;
+    //   }
+    // }
+  }
 }
+
 
 void generateSeedPoints(vtkRectilinearGrid *input,
 			int refinement,
@@ -846,7 +851,7 @@ void generateBoundaries(vtkPoints *points,
   std::vector<float3> mergedVertices;
 
   mergeTriangles(vertices, ivertices, constrainedVertices, indices, mergedVertices);
-
+  
   for (int i = 0; i < 10; ++i)
     smoothSurface(mergedVertices, indices, constrainedVertices);
   
@@ -881,12 +886,11 @@ void generateBoundaries(vtkPoints *points,
   boundaries->GetCellData()->AddArray(labelsFront);
 }
 
-void generateNewBoundaries(vtkPoints *points,
-			   vtkFloatArray *labels,
-			   vtkIntArray *connectivity,
-			   vtkShortArray *coords,
-			   int currentTimeStep,
-			   std::vector<float3> &vertices,
+void generateNewBoundaries(vtkPoints *points, vtkFloatArray *labels,
+			   vtkIntArray *connectivity, vtkShortArray *coords,
+			   int currentTimeStep, std::vector<float3> &vertices,
+			   std::vector<float3> &ivertices, std::vector<int> &indices,
+			   std::map<int, std::pair<float3, float3> > &constrVertices,			   
 			   std::vector<int> &splitTimes)
 {
   const int numPoints = points->GetNumberOfPoints();
@@ -922,6 +926,13 @@ void generateNewBoundaries(vtkPoints *points,
   // hack end
   const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
 
+  const float co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
+			   {0,0,0, 1,0,0, 1,0,1, 0,0,1},
+			   {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float coc[3][3] = {{0,0.5f,0.5f},
+			   {0.5f,0,0.5f},
+			   {0.5f,0.5f,0}};
+  
   const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
   			    -cs2[0],-cs2[1], cs2[2], 
   			    -cs2[0], cs2[1], cs2[2], 
@@ -938,11 +949,19 @@ void generateNewBoundaries(vtkPoints *points,
 			   {0,-cs2[1],0},
 			   {0,0,-cs2[2]}};
 
+  // detect if reset of usedEdges is necessary by checking the number of vertices  
   static std::map<std::pair<int,int>, char> usedEdges;
   if (vertices.size() == 0) {
     usedEdges.clear();
   }
 
+  int numPrevVertices = vertices.size();
+  int vidx = 0;
+
+  std::vector<float3> verticesTmp;
+  std::vector<float3> iverticesTmp;
+  std::map<int, std::pair<float3, float3> > constrVerticesTmp;
+  
   for (int i = 0; i < numPoints; ++i) {
 
     int conn[3] = {connectivity->GetComponent(i, 0),
@@ -977,31 +996,120 @@ void generateNewBoundaries(vtkPoints *points,
 	    float3 verts[5];
 	    verts[4] = make_float3(p0[0]+poc[j][0], 
 				   p0[1]+poc[j][1], 
-				   p0[2]+poc[j][2]);
-	  
-	    for (int k = 0; k < 4; ++k) {
+				   p0[2]+poc[j][2]);	 
+	    float3 iverts[5];
+	    iverts[4] = make_float3(c0[0]+coc[j][0], 
+				    c0[1]+coc[j][1], 
+				    c0[2]+coc[j][2]);
+		  
+	  float3 constraint0 = make_float3(p0[0]+poc[j][0]+poc[j][0], 
+					   p0[1]+poc[j][1]+poc[j][1], 
+					   p0[2]+poc[j][2]+poc[j][2]);
+	  float3 constraint1 = make_float3(p0[0], 
+					   p0[1], 
+					   p0[2]);
+
+	  for (int k = 0; k < 4; ++k) {
 
 	      float3 vertex = {p0[0]+po[j][k*3+0], 
 			       p0[1]+po[j][k*3+1], 
 			       p0[2]+po[j][k*3+2]};
 	      verts[k] = vertex;
+
+	      float3 ivertex = {c0[0]+co[j][k*3+0], 
+				c0[1]+co[j][k*3+1], 
+				c0[2]+co[j][k*3+2]};
+	      iverts[k] = ivertex;
 	    }
-	    vertices.push_back(verts[0]);
-	    vertices.push_back(verts[1]);
-	    vertices.push_back(verts[4]);
-	    vertices.push_back(verts[1]);
-	    vertices.push_back(verts[2]);
-	    vertices.push_back(verts[4]);
-	    vertices.push_back(verts[2]);
-	    vertices.push_back(verts[3]);
-	    vertices.push_back(verts[4]);
-	    vertices.push_back(verts[3]);
-	    vertices.push_back(verts[0]);
-	    vertices.push_back(verts[4]);
+	    verticesTmp.push_back(verts[0]);
+	    verticesTmp.push_back(verts[1]);
+	    verticesTmp.push_back(verts[4]);
+	    verticesTmp.push_back(verts[1]);
+	    verticesTmp.push_back(verts[2]);
+	    verticesTmp.push_back(verts[4]);
+	    verticesTmp.push_back(verts[2]);
+	    verticesTmp.push_back(verts[3]);
+	    verticesTmp.push_back(verts[4]);
+	    verticesTmp.push_back(verts[3]);
+	    verticesTmp.push_back(verts[0]);
+	    verticesTmp.push_back(verts[4]);
+	    
+	    iverticesTmp.push_back(iverts[0]);
+	    iverticesTmp.push_back(iverts[1]);
+	    iverticesTmp.push_back(iverts[4]);
+	    iverticesTmp.push_back(iverts[1]);
+	    iverticesTmp.push_back(iverts[2]);
+	    iverticesTmp.push_back(iverts[4]);
+	    iverticesTmp.push_back(iverts[2]);
+	    iverticesTmp.push_back(iverts[3]);
+	    iverticesTmp.push_back(iverts[4]);
+	    iverticesTmp.push_back(iverts[3]);
+	    iverticesTmp.push_back(iverts[0]);
+	    iverticesTmp.push_back(iverts[4]);
+
+	    constrVerticesTmp[vidx+ 2] = std::pair<float3,float3>(constraint0,constraint1);
+	    constrVerticesTmp[vidx+ 5] = std::pair<float3,float3>(constraint0,constraint1);
+	    constrVerticesTmp[vidx+ 8] = std::pair<float3,float3>(constraint0,constraint1);
+	    constrVerticesTmp[vidx+11] = std::pair<float3,float3>(constraint0,constraint1);
+	    vidx += 12;	  
 	  }
 	}
       }
     }
   }
+
+  std::vector<int> vertexList;
+  mergeVertices(iverticesTmp, vertices.size(), indices, vertexList);
+
+  for (int i = 0; i < vertexList.size(); ++i) {
+    int id = vertexList[i];    
+    vertices.push_back(verticesTmp[id]);
+    ivertices.push_back(iverticesTmp[id]);
+    if (constrVerticesTmp.find(id) != constrVerticesTmp.end()) {
+      constrVertices[vertices.size()-1] = constrVerticesTmp[id];
+    }
+  }
+}
+
+void mergePatches(std::vector<float3> &vertices,
+		  std::vector<float3> &ivertices,
+		  std::vector<int> &indices,
+		  std::map<int,std::pair<float3,float3> > &constrainedVertices,
+		  std::vector<int> &splitTimes)
+{
+  // find used vertices
+  std::map<float3, int, compare_float3> vertexMap;
+  vertexMap.clear();
+  std::vector<int> useMask(ivertices.size());
+  std::vector<float3> usedVertices(0);
+  // std::vector<int> usedSplitTimes(0);
+  std::map<int,std::pair<float3,float3> > usedConstrainedVertices;
+  std::vector<int> newIndices(indices.size());
+
+
+  for (int i = 0; i < ivertices.size(); ++i) {
+    const float3 &key = ivertices[i];
+
+    if (vertexMap.find(key) == vertexMap.end()) {	
+      useMask[i] = usedVertices.size();
+      vertexMap[key] = useMask[i];
+      usedVertices.push_back(vertices[i]);
+      //      usedSplitTimes.push_back(splitTimes[i]);
+      if (constrainedVertices.find(i) != constrainedVertices.end()) {
+	usedConstrainedVertices[useMask[i]] = constrainedVertices[i];	
+      }      
+    }
+    else {
+      useMask[i] = vertexMap[key];
+    }
+  }
+
+  for (int i = 0; i < indices.size(); ++i) {
+    newIndices[i] = useMask[indices[i]];
+  }
+
+  vertices = usedVertices;
+  // splitTimes = usedSplitTimes;
+  indices = newIndices;
 }
 

@@ -3,6 +3,7 @@
 
 #include "vtkPolyDataAlgorithm.h"
 #include "helper_math.h"
+#include <map>
 #include <vector>
 
 class vtkMPIController;
@@ -13,6 +14,7 @@ class vtkFloatArray;
 typedef struct {
   std::vector<float3> vertices;
   std::vector<float3> ivertices;
+  std::map<int, std::pair<float3, float3> > constrVertices;
   std::vector<int> indices;
   std::vector<int> splitTimes;
 } meshTB_t; // mesh for temporal boundaries

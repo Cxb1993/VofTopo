@@ -200,7 +200,19 @@ void generateNewBoundaries(vtkPoints *points,
 			   vtkShortArray *coords,
 			   int currentTimeStep,			  
 			   std::vector<float3> &vertices,
+			   std::vector<float3> &ivertices,
+			   std::vector<int> &indices,
+			   std::map<int, std::pair<float3, float3> > &constrVertices,
 			   std::vector<int> &splitTimes);
 
+void smoothSurface(std::vector<float3>& vertices,
+		   std::vector<int>& indices,
+		   std::map<int,std::pair<float3,float3> > &constrainedVertices);
+
+void mergePatches(std::vector<float3>& vertices,
+		  std::vector<float3>& ivertices,
+		  std::vector<int>& indices,
+		  std::map<int,std::pair<float3,float3> > &constrainedVertices,
+		  std::vector<int>& splitTimes);
 
 #endif//VOFTOPOLOGY_H

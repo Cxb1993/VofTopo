@@ -19,6 +19,12 @@ void generateSeedPoints(vtkRectilinearGrid *input,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords);
 
+void generateSeedPointsPLIC(vtkRectilinearGrid *input,
+			    int refinement,
+			    vtkPoints *points,
+			    vtkIntArray *connectivity,
+			    vtkShortArray *coords);
+
 void advectParticles(vtkRectilinearGrid *inputVof,
 		     vtkRectilinearGrid *inputVelocity,
 		     std::vector<float4> &particles,
@@ -90,6 +96,7 @@ void sendData(const std::vector<std::vector<T> > &dataToSend, std::vector<T> &da
 
 // components
 static const double g_emf0 = 0.000001;
+static const double g_emf1 = 0.999999;
 static int g_res[3];
 static int g_labelId = 0;
 

@@ -53,7 +53,8 @@ vtkVofTopo::vtkVofTopo() :
   LastComputedTimeStep(-1),
   UseCache(false),
   IterType(IterateOverTarget),
-  LabelType(LabelSplitTime),
+  // LabelType(LabelSplitTime),
+  LabelType(LabelComponents),
   Seeds(0)
 {
   this->SetNumberOfInputPorts(2);
@@ -139,7 +140,6 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
 
-
   if(FirstIteration) {
 
     if (IterType == IterateOverTarget) {
@@ -211,52 +211,60 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       // Stage I ---------------------------------------------------------------
       if (FirstIteration) {
-	if (!UseCache) {
-	  GenerateSeeds(inputVof);
-	  InitParticles();
-	}
+    	if (!UseCache) {
+    	  GenerateSeeds(inputVof);
+    	  InitParticles();
+    	}
       }
 
+      if (!FirstIteration) {
+    	bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
+    	if (finishedAdvection) {
+
+    	  // Stage III -----------------------------------------------------------
+    	  vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+    	  ExtractComponents(inputVof, components);
+
+    	  // Stage IV ------------------------------------------------------------
+    	  std::vector<float> particleLabels;
+    	  LabelAdvectedParticles(components, particleLabels);
+
+    	  // Stage V -------------------------------------------------------------
+    	  TransferLabelsToSeeds(particleLabels);
+
+    	  // Stage VI ------------------------------------------------------------
+    	  vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
+    	  GenerateBoundaries(boundaries);
+
+    	  // Generate output -----------------------------------------------------
+    	  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+    	  vtkPolyData *output =
+    	    vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+	  // output->SetPoints(Seeds->GetPoints());
+    	  output->SetPoints(boundaries->GetPoints());
+    	  output->SetPolys(boundaries->GetPolys());
+    	  output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("BackLabels"));
+    	  output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("FrontLabels"));
+    	}
+      }
+      
       // Stage II --------------------------------------------------------------
       if(CurrentTimeStep < TargetTimeStep) {
-	AdvectParticles(inputVof, inputVelocity);
-	LastComputedTimeStep = CurrentTimeStep;
+    	AdvectParticles(inputVof, inputVelocity);
+    	LastComputedTimeStep = CurrentTimeStep;
       }
-
+      
       bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
       if (finishedAdvection) {
-	request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-	FirstIteration = true;
-
-	// Stage III -----------------------------------------------------------
-	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
-	ExtractComponents(inputVof, components);
-
-	// Stage IV ------------------------------------------------------------
-	std::vector<float> particleLabels;
-	LabelAdvectedParticles(components, particleLabels);
-
-	// Stage V -------------------------------------------------------------
-	TransferLabelsToSeeds(particleLabels);
-
-	// Stage VI ------------------------------------------------------------
-	vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
-	GenerateBoundaries(boundaries);
-
-	// Generate output -----------------------------------------------------
-	vtkInformation *outInfo = outputVector->GetInformationObject(0);
-	vtkPolyData *output =
-	  vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-	output->SetPoints(boundaries->GetPoints());
-	output->SetPolys(boundaries->GetPolys());
-	output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("BackLabels"));
-	output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("FrontLabels"));
+    	request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+    	FirstIteration = true;
       }
       else {
-	request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
-	FirstIteration = false;
-	CurrentTimeStep++;
-      }      
+    	request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
+    	FirstIteration = false;
+    	CurrentTimeStep++;
+      }
     }
     if (LabelType == LabelSplitTime) {
 
@@ -277,8 +285,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // that the particles' time corresponds to the extracted components.
       // Component extraction makes sense only after particles advection.
       if (!FirstIteration) { 
-
-	std::cout << "comptuting components  for time step " << CurrentTimeStep << std::endl;
 
 	// Stage III -----------------------------------------------------------
 	vtkSmartPointer<vtkRectilinearGrid> components =vtkSmartPointer<vtkRectilinearGrid>::New();
@@ -314,7 +320,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // Stage II --------------------------------------------------------------
       if(CurrentTimeStep < TargetTimeStep) {
 
-	std::cout << "advecting particles for time step " << CurrentTimeStep << std::endl;
 	AdvectParticles(inputVof, inputVelocity);
 	LastComputedTimeStep = CurrentTimeStep;
       }
@@ -349,7 +354,9 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
   vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
   vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
-  generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+  // generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+  generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+  
   if (Seeds != 0) {
     Seeds->Delete();
   }

@@ -438,6 +438,24 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
   vtkDataArray *velocityArray = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
   vtkDataArray *vofArray = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
+  // vtkDataArray *coordCenters[3];
+  // vtkDataArray *coordNodes[3];
+
+  // coordNodes[0] = vofGrid->GetXCoordinates();
+  // coordNodes[1] = vofGrid->GetYCoordinates();
+  // coordNodes[2] = vofGrid->GetZCoordinates();
+
+  // for (int c = 0; c < 3; ++c) {
+  //   coordCenters[c] = vtkFloatArray::New();
+  //   coordCenters[c]->SetNumberOfComponents(1);
+  //   coordCenters[c]->SetNumberOfTuples(coordNodes[c]->GetNumberOfTuples()-1);
+  //   for (int i = 0; i < coordCenters[c]->GetNumberOfTuples(); ++i) {
+  //     coordCenters[c]->
+  // 	SetComponent(i,0,(coordNodes[c]->GetComponent(0,i) + 
+  // 			  coordNodes[c]->GetComponent(0,i+1))/2.0f);
+  //   }
+  // }
+
   std::vector<float4>::iterator it;
   for (it = particles.begin(); it != particles.end(); ++it) {
 
@@ -450,10 +468,26 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
       float f = vofArray->GetComponent(idx, 0);
       
       if (particleInsideGrid) {
+	// if (f <= g_emf0) {
+	//   float grad[3];
+	//   computeGradient(vofArray, cellRes, ijk[0], ijk[1], ijk[2], coordCenters, grad);
+	//   float dx = coordCenters[0]->GetComponent(1,0) - coordCenters[0]->GetComponent(0,0);
+	//   float dy = coordCenters[1]->GetComponent(1,0) - coordCenters[1]->GetComponent(0,0);
+	//   float dz = coordCenters[2]->GetComponent(1,0) - coordCenters[2]->GetComponent(0,0);
+	//   x[0] += grad[0]*dx;
+	//   x[1] += grad[1]*dy;
+	//   x[2] += grad[2]*dz;
+	//   particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+	//   idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+	//   f = vofArray->GetComponent(idx, 0);
 	if (f <= g_emf0) {
 	  it->w = 0.0f;
 	  continue;
 	}
+	//   else {
+	//     *it = make_float4(x[0],x[1],x[2],1.0f);
+	//   }
+	// }
 	float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
 	*it = *it + velocity*deltaT;
       }
@@ -672,11 +706,9 @@ void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
   }
 }
 
-void generateBoundaries(vtkPoints *points,
-			vtkFloatArray *labels,
-			vtkIntArray *connectivity,
-			vtkShortArray *coords,
-			vtkPolyData *boundaries)
+void setupNodeOffsets(vtkPoints *points, vtkIntArray *connectivity,
+		      float co[3][12], float coc[3][3],
+		      float po[3][12], float poc[3][3])
 {
   const int numPoints = points->GetNumberOfPoints();
 
@@ -711,33 +743,53 @@ void generateBoundaries(vtkPoints *points,
   // hack end
   const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
 
-  std::vector<float3> ivertices;
-  ivertices.clear();
-  std::vector<float3> vertices;
-  vertices.clear();
-
-  const float co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
-			   {0,0,0, 1,0,0, 1,0,1, 0,0,1},
-			   {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
-  const float coc[3][3] = {{0,0.5f,0.5f},
-			   {0.5f,0,0.5f},
-			   {0.5f,0.5f,0}};
+  const float coTmp[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
+			      {0,0,0, 1,0,0, 1,0,1, 0,0,1},
+			      {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
+  const float cocTmp[3][3] = {{0,0.5f,0.5f},
+			      {0.5f,0,0.5f},
+			      {0.5f,0.5f,0}};
   
-  const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
-  			    -cs2[0],-cs2[1], cs2[2], 
-  			    -cs2[0], cs2[1], cs2[2], 
-  			    -cs2[0], cs2[1],-cs2[2]},
-  			   {-cs2[0],-cs2[1],-cs2[2], 
-  			     cs2[0],-cs2[1],-cs2[2], 
-  			     cs2[0],-cs2[1], cs2[2], 
-  			    -cs2[0],-cs2[1], cs2[2]},
-  			   {-cs2[0],-cs2[1],-cs2[2], 
-  			    -cs2[0], cs2[1],-cs2[2], 
-  			     cs2[0], cs2[1],-cs2[2],
-  			     cs2[0],-cs2[1],-cs2[2]}};
-  const float poc[3][3] = {{-cs2[0],0,0},
-			   {0,-cs2[1],0},
-			   {0,0,-cs2[2]}};
+  const float poTmp[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
+			       -cs2[0],-cs2[1], cs2[2], 
+			       -cs2[0], cs2[1], cs2[2], 
+			       -cs2[0], cs2[1],-cs2[2]},
+			      {-cs2[0],-cs2[1],-cs2[2], 
+			       cs2[0],-cs2[1],-cs2[2], 
+			       cs2[0],-cs2[1], cs2[2], 
+			       -cs2[0],-cs2[1], cs2[2]},
+			      {-cs2[0],-cs2[1],-cs2[2], 
+			       -cs2[0], cs2[1],-cs2[2], 
+			       cs2[0], cs2[1],-cs2[2],
+			       cs2[0],-cs2[1],-cs2[2]}};
+  const float pocTmp[3][3] = {{-cs2[0],0,0},
+			      {0,-cs2[1],0},
+			      {0,0,-cs2[2]}};
+
+  for (int i = 0; i < 3; ++i) {
+    for (int j = 0; j < 12; ++j) {
+      co[i][j] = coTmp[i][j];
+      po[i][j] = poTmp[i][j];
+    }
+    for (int j = 0; j < 3; ++j) {
+      coc[i][j] = cocTmp[i][j];
+      poc[i][j] = pocTmp[i][j];
+    }
+  }
+}
+
+void generateBoundaries(vtkPoints *points,
+			vtkFloatArray *labels,
+			vtkIntArray *connectivity,
+			vtkShortArray *coords,
+			vtkPolyData *boundaries)
+{
+  float co[3][12];
+  float coc[3][3];  
+  float po[3][12];
+  float poc[3][3];
+
+  setupNodeOffsets(points, connectivity, co, coc, po, poc);
 
   vtkFloatArray *labelsBack = vtkFloatArray::New();
   labelsBack->SetNumberOfComponents(1);
@@ -746,10 +798,15 @@ void generateBoundaries(vtkPoints *points,
   labelsFront->SetNumberOfComponents(1);
   labelsFront->SetName("FrontLabels");
 
+  std::vector<float3> ivertices;
+  ivertices.clear();
+  std::vector<float3> vertices;
+  vertices.clear();
   std::map<int,std::pair<float3,float3> > constrainedVertices;
 
   int vidx = 0;
 
+  const int numPoints = points->GetNumberOfPoints();
   for (int i = 0; i < numPoints; ++i) {
 
     int conn[3] = {connectivity->GetComponent(i, 0),
@@ -886,68 +943,19 @@ void generateBoundaries(vtkPoints *points,
   boundaries->GetCellData()->AddArray(labelsFront);
 }
 
-void generateNewBoundaries(vtkPoints *points, vtkFloatArray *labels,
-			   vtkIntArray *connectivity, vtkShortArray *coords,
-			   int currentTimeStep, std::vector<float3> &vertices,
-			   std::vector<float3> &ivertices, std::vector<int> &indices,
-			   std::map<int, std::pair<float3, float3> > &constrVertices,			   
-			   std::vector<int> &splitTimes)
+void regenerateBoundaries(vtkPoints *points, vtkFloatArray *labels,
+			  vtkIntArray *connectivity, vtkShortArray *coords,
+			  int currentTimeStep, std::vector<float3> &vertices,
+			  std::vector<float3> &ivertices, std::vector<int> &indices,
+			  std::map<int, std::pair<float3, float3> > &constrVertices,			   
+			  std::vector<int> &splitTimes)
 {
-  const int numPoints = points->GetNumberOfPoints();
+  float co[3][12];
+  float coc[3][3];  
+  float po[3][12];
+  float poc[3][3];
 
-  // hack: compute cell size - should actually be taken from the grid
-  // find a seed point that has neighbors in x, y, and z directions - from 
-  // distance to these points we can compute the cell size; without the hack
-  // it must be taken from grid explicitely
-  float cellSize[3];
-
-  for (int i = 0; i < numPoints; ++i) {
-
-    int conn[3] = {connectivity->GetComponent(i, 0),
-  		   connectivity->GetComponent(i, 1),
-  		   connectivity->GetComponent(i, 2)};
-    if (conn[0] > -1 && conn[1] > -1 && conn[2] > -1) {
-      
-      double p0[3];
-      points->GetPoint(i, p0);
-      double p1[3];
-      points->GetPoint(conn[0], p1);
-      double p2[3];
-      points->GetPoint(conn[1], p2);
-      double p3[3];
-      points->GetPoint(conn[2], p3);
-
-      cellSize[0] = std::abs(p1[0]-p0[0]);
-      cellSize[1] = std::abs(p2[1]-p0[1]);
-      cellSize[2] = std::abs(p3[2]-p0[2]);
-      break;
-    }
-  }
-  // hack end
-  const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
-
-  const float co[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
-			   {0,0,0, 1,0,0, 1,0,1, 0,0,1},
-			   {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
-  const float coc[3][3] = {{0,0.5f,0.5f},
-			   {0.5f,0,0.5f},
-			   {0.5f,0.5f,0}};
-  
-  const float po[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
-  			    -cs2[0],-cs2[1], cs2[2], 
-  			    -cs2[0], cs2[1], cs2[2], 
-  			    -cs2[0], cs2[1],-cs2[2]},
-  			   {-cs2[0],-cs2[1],-cs2[2], 
-  			     cs2[0],-cs2[1],-cs2[2], 
-  			     cs2[0],-cs2[1], cs2[2], 
-  			    -cs2[0],-cs2[1], cs2[2]},
-  			   {-cs2[0],-cs2[1],-cs2[2], 
-  			    -cs2[0], cs2[1],-cs2[2], 
-  			     cs2[0], cs2[1],-cs2[2],
-  			     cs2[0],-cs2[1],-cs2[2]}};
-  const float poc[3][3] = {{-cs2[0],0,0},
-			   {0,-cs2[1],0},
-			   {0,0,-cs2[2]}};
+  setupNodeOffsets(points, connectivity, co, coc, po, poc);
 
   // detect if reset of usedEdges is necessary by checking the number of vertices  
   static std::map<std::pair<int,int>, char> usedEdges;
@@ -961,7 +969,8 @@ void generateNewBoundaries(vtkPoints *points, vtkFloatArray *labels,
   std::vector<float3> verticesTmp;
   std::vector<float3> iverticesTmp;
   std::map<int, std::pair<float3, float3> > constrVerticesTmp;
-  
+
+  const int numPoints = points->GetNumberOfPoints();
   for (int i = 0; i < numPoints; ++i) {
 
     int conn[3] = {connectivity->GetComponent(i, 0),
@@ -1058,6 +1067,8 @@ void generateNewBoundaries(vtkPoints *points, vtkFloatArray *labels,
     }
   }
 
+  // TODO:
+  // to generalize code, store the vertex map between function executions
   std::vector<int> vertexList;
   mergeVertices(iverticesTmp, vertices.size(), indices, vertexList);
 
@@ -1082,7 +1093,6 @@ void mergePatches(std::vector<float3> &vertices,
   vertexMap.clear();
   std::vector<int> useMask(ivertices.size());
   std::vector<float3> usedVertices(0);
-  // std::vector<int> usedSplitTimes(0);
   std::map<int,std::pair<float3,float3> > usedConstrainedVertices;
   std::vector<int> newIndices(indices.size());
 
@@ -1094,7 +1104,6 @@ void mergePatches(std::vector<float3> &vertices,
       useMask[i] = usedVertices.size();
       vertexMap[key] = useMask[i];
       usedVertices.push_back(vertices[i]);
-      //      usedSplitTimes.push_back(splitTimes[i]);
       if (constrainedVertices.find(i) != constrainedVertices.end()) {
 	usedConstrainedVertices[useMask[i]] = constrainedVertices[i];	
       }      
@@ -1107,9 +1116,7 @@ void mergePatches(std::vector<float3> &vertices,
   for (int i = 0; i < indices.size(); ++i) {
     newIndices[i] = useMask[indices[i]];
   }
-
   vertices = usedVertices;
-  // splitTimes = usedSplitTimes;
   indices = newIndices;
 }
 

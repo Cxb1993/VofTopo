@@ -859,10 +859,9 @@ void vtkVofTopo::GenerateTemporalBoundaries(vtkPolyData *boundaries)
 
   meshTB_t *tb = TemporalBoundaries;
   
-  generateNewBoundaries(points, labels, connectivity, coords, CurrentTimeStep,
-			tb->vertices, tb->ivertices,tb->indices,
-			tb->constrVertices, tb->splitTimes);
-
+  regenerateBoundaries(points, labels, connectivity, coords, CurrentTimeStep,
+		       tb->vertices, tb->ivertices,tb->indices,
+		       tb->constrVertices, tb->splitTimes);
 
   if (boundaries != 0) {
 

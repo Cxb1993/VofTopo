@@ -1,7 +1,8 @@
 #ifndef __vtkVofTopo_h
 #define __vtkVofTopo_h
 
-#include "vtkPolyDataAlgorithm.h"
+// #include "vtkPolyDataAlgorithm.h"
+#include "vtkMultiBlockDataSetAlgorithm.h"
 #include "helper_math.h"
 #include <map>
 #include <vector>
@@ -19,11 +20,11 @@ typedef struct {
   std::vector<int> splitTimes;
 } meshTB_t; // mesh for temporal boundaries
 
-class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm
+class VTK_EXPORT vtkVofTopo : public vtkMultiBlockDataSetAlgorithm
 {
 public:
   static vtkVofTopo* New();
-  vtkTypeMacro(vtkVofTopo, vtkPolyDataAlgorithm);
+  vtkTypeMacro(vtkVofTopo, vtkMultiBlockDataSetAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // GUI -------------------------------
@@ -115,7 +116,7 @@ private:
   std::vector<float4> Particles;
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
-
+  
   // Temporal boundaries
   meshTB_t *TemporalBoundaries;
 

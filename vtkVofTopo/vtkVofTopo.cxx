@@ -16,6 +16,7 @@
 #include "vtkMPIController.h"
 #include "vtkMPICommunicator.h"
 #include "vtkPolyData.h"
+#include "vtkMultiBlockDataSet.h"
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -187,11 +188,20 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   return 1;
 }
 
+// template<typename T, typename Compare>
+// std::vector<int> sort_permutation(std::vector<T>::iterator vecBegin,
+//                                   std::vector<T>::iterator vecEnd,
+//                                   Compare compare) {
+
+//   std::vector<int> t;
+//   return t;
+// }
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
 			    vtkInformationVector *outputVector)
 {
+  std::cout << "CurrentTimeStep = " << CurrentTimeStep << " TargetTimeStep = " << TargetTimeStep << std::endl;
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
@@ -228,6 +238,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     	  // Stage IV ------------------------------------------------------------
     	  std::vector<float> particleLabels;
     	  LabelAdvectedParticles(components, particleLabels);
+	  std::cout << "labeling data time step: " << CurrentTimeStep << std::endl;
 
     	  // Stage V -------------------------------------------------------------
     	  TransferLabelsToSeeds(particleLabels);
@@ -238,14 +249,29 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
     	  // Generate output -----------------------------------------------------
     	  vtkInformation *outInfo = outputVector->GetInformationObject(0);
-    	  vtkPolyData *output =
-    	    vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-	  // output->SetPoints(Seeds->GetPoints());
-    	  output->SetPoints(boundaries->GetPoints());
-    	  output->SetPolys(boundaries->GetPolys());
-    	  output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("BackLabels"));
-    	  output->GetCellData()->AddArray(boundaries->GetCellData()->GetArray("FrontLabels"));
+    	  vtkMultiBlockDataSet *output =
+    	    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+	  output->SetNumberOfBlocks(3);
+	  output->SetBlock(0, boundaries);
+	  output->SetBlock(1, Seeds);
+	  
+	  vtkPolyData *particles = vtkPolyData::New();
+	  vtkPoints *ppoints = vtkPoints::New();
+	  vtkFloatArray *labels = vtkFloatArray::New();
+	  ppoints->SetNumberOfPoints(Particles.size());
+	  labels->SetName("Labels");
+	  labels->SetNumberOfComponents(1);
+	  labels->SetNumberOfTuples(particleLabels.size());
+	  for (int i = 0; i < Particles.size(); ++i) {
+
+	    float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+	    ppoints->SetPoint(i, p);
+	    labels->SetValue(i, particleLabels[i]);
+	  }
+	  particles->SetPoints(ppoints);
+	  particles->GetPointData()->AddArray(labels);
+	  output->SetBlock(2, particles);
     	}
       }
       
@@ -253,6 +279,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       if(CurrentTimeStep < TargetTimeStep) {
     	AdvectParticles(inputVof, inputVelocity);
     	LastComputedTimeStep = CurrentTimeStep;
+	std::cout << "advection data time step: " << CurrentTimeStep << std::endl;
       }
       
       bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
@@ -354,8 +381,8 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
   vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
   vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
-  // generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
-  generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+  generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+  //generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
   
   if (Seeds != 0) {
     Seeds->Delete();
@@ -880,7 +907,7 @@ void vtkVofTopo::GenerateTemporalBoundaries(vtkPolyData *boundaries)
     mergePatches(vertices, tb->ivertices, indices,
     		 constrVertices, splitTimes);
 
-    for (int i = 0; i < 4; ++i)
+    // for (int i = 0; i < 4; ++i)
       smoothSurface(vertices, indices, constrVertices);
        
     vtkPoints *outputPoints = vtkPoints::New();

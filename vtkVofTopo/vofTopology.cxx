@@ -1070,6 +1070,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
   vtkDataArray *velocityArray = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
   vtkDataArray *vofArray = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
+  // // ---------------------------
   // vtkDataArray *coordCenters[3];
   // vtkDataArray *coordNodes[3];
 
@@ -1087,6 +1088,10 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
   // 			  coordNodes[c]->GetComponent(0,i+1))/2.0f);
   //   }
   // }
+  // float dx = coordCenters[0]->GetComponent(1,0) - coordCenters[0]->GetComponent(0,0);
+  // float dy = coordCenters[1]->GetComponent(1,0) - coordCenters[1]->GetComponent(0,0);
+  // float dz = coordCenters[2]->GetComponent(1,0) - coordCenters[2]->GetComponent(0,0);  
+  // // ---------------------------
 
   std::vector<float4>::iterator it;
   for (it = particles.begin(); it != particles.end(); ++it) {
@@ -1100,27 +1105,57 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
       float f = vofArray->GetComponent(idx, 0);
       
       if (particleInsideGrid) {
+	// // ---------------------------
 	// if (f <= g_emf0) {
 	//   float grad[3];
 	//   computeGradient(vofArray, cellRes, ijk[0], ijk[1], ijk[2], coordCenters, grad);
-	//   float dx = coordCenters[0]->GetComponent(1,0) - coordCenters[0]->GetComponent(0,0);
-	//   float dy = coordCenters[1]->GetComponent(1,0) - coordCenters[1]->GetComponent(0,0);
-	//   float dz = coordCenters[2]->GetComponent(1,0) - coordCenters[2]->GetComponent(0,0);
-	//   x[0] += grad[0]*dx;
-	//   x[1] += grad[1]*dy;
-	//   x[2] += grad[2]*dz;
+	//   float3 gr = make_float3(grad[0],grad[1],grad[2]);
+	//   if (length(gr) > 0.0f)
+	//     gr = normalize(gr);
+	//   x[0] += gr.x*dx;
+	//   x[1] += gr.y*dy;
+	//   x[2] += gr.z*dz;
+	//   int ijk2[3] = {ijk[0],ijk[1],ijk[2]};
 	//   particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+
+	//   if (ijk[0]==ijk2[0] &&
+	//       ijk[1]==ijk2[1] &&
+	//       ijk[2]==ijk2[2]) {
+
+	//     for (int k = ijk[2]-3; k <= ijk[2]+3; ++k) {
+	//       for (int j = ijk[1]-3; j <= ijk[1]+3; ++j) {
+	// 	for (int i = ijk[0]-3; i <= ijk[0]+3; ++i) {
+	// 	  int idx2 = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+	// 	  f = vofArray->GetComponent(idx2, 0);
+
+	// 	  if (f > g_emf0) {
+	// 	    ijk[0] = i;
+	// 	    ijk[1] = j;
+	// 	    ijk[2] = k;
+		    
+	// 	    i=ijk[0]+5;
+	// 	    j=ijk[1]+5;
+	// 	    k=ijk[2]+5;
+	// 	  }
+	// 	}
+	//       }
+	//     }
+	//   }
+	  
 	//   idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
 	//   f = vofArray->GetComponent(idx, 0);
-	if (f <= g_emf0) {
-	  it->w = 0.0f;
-	  continue;
-	}
+	//   // ---------------------------
+	  if (f <= g_emf0) {
+	    it->w = 0.0f;
+	    continue;
+	  }
+	//   // ---------------------------
 	//   else {
 	//     *it = make_float4(x[0],x[1],x[2],1.0f);
 	//   }
 	// }
-	float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords), 0.0f);
+	// // ---------------------------
+	float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
 	*it = *it + velocity*deltaT;
       }
     }
@@ -1541,7 +1576,7 @@ void generateBoundaries(vtkPoints *points,
 
   mergeTriangles(vertices, ivertices, constrainedVertices, indices, mergedVertices);
   
-  for (int i = 0; i < 10; ++i)
+  // for (int i = 0; i < 10; ++i)
     smoothSurface(mergedVertices, indices, constrainedVertices);
   
   vtkPoints *outputPoints = vtkPoints::New();

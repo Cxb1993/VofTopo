@@ -225,7 +225,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	TemporalBoundaries->ivertices.clear();
 	TemporalBoundaries->indices.clear();
 	TemporalBoundaries->splitTimes.clear();
-	TemporalBoundaries->constrVertices.clear();
       }
     }
     if (!FirstIteration) {
@@ -863,21 +862,18 @@ void vtkVofTopo::GenerateTemporalBoundaries(vtkPolyData *boundaries)
   meshTB_t *tb = TemporalBoundaries;
   
   regenerateBoundaries(points, labels, connectivity, coords, CurrentTimeStep,
-		       tb->vertices, tb->ivertices,tb->indices,
-		       tb->constrVertices, tb->splitTimes);
+		       tb->vertices, tb->ivertices,tb->indices, tb->splitTimes);
 
   if (boundaries != 0) {
 
     std::vector<float3> vertices = tb->vertices;
     std::vector<int> splitTimes = tb->splitTimes;
     std::vector<int> indices = tb->indices;
-    std::map<int,std::pair<float3,float3> > constrVertices = tb->constrVertices;
 
-    mergePatches(vertices, tb->ivertices, indices,
-    		 constrVertices, splitTimes);
+    mergePatches(vertices, tb->ivertices, indices, splitTimes);
 
     // for (int i = 0; i < 4; ++i)
-      smoothSurface(vertices, indices, constrVertices);
+      smoothSurface(vertices, indices);
        
     vtkPoints *outputPoints = vtkPoints::New();
     outputPoints->SetNumberOfPoints(vertices.size());

@@ -34,6 +34,16 @@ public:
 
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
+
+  vtkGetMacro(IntegrationStep, int);
+  vtkSetMacro(IntegrationStep, int);
+
+  vtkGetMacro(ComputeComponentLabels, int);
+  vtkSetMacro(ComputeComponentLabels, int);
+
+  vtkGetMacro(ComputeSplitTime, int);
+  vtkSetMacro(ComputeSplitTime, int);
+
 //~GUI -------------------------------
 
 protected:
@@ -79,15 +89,19 @@ private:
   int CurrentTimeStep;
   
   // we can iterate over t0 or t1
-  static const int IterateOverInit = 0;
-  static const int IterateOverTarget = 1;
+  static const int ITERATE_OVER_INIT = 0;
+  static const int ITERATE_OVER_TARGET = 1;
   int IterType;
   bool FirstIteration;
 
   // Visualization type
-  static const int LabelComponents = 0;
-  static const int LabelSplitTime = 1;
-  int LabelType;
+  int ComputeComponentLabels;
+  int ComputeSplitTime;
+
+  // Integration direction
+  static const int INTEGRATION_FORWARD = 1;
+  static const int INTEGRATION_BACKWARD = -1;
+  int IntegrationStep;
 
   // for data sets without or with incorrect time stamp information
   double TimeStepDelta;
@@ -115,6 +129,11 @@ private:
   // Caching  
   bool UseCache;
   int LastComputedTimeStep;
+
+  // Vof and velocity
+  vtkRectilinearGrid *VofGrid[2];
+  vtkRectilinearGrid *VelocityGrid[2];
+  int NumTimeStepsInMemory;
 };
 
 #endif

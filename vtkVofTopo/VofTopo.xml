@@ -81,6 +81,35 @@
       </IntVectorProperty>
 
       <IntVectorProperty
+          name="IntegrationStep"
+	  label="Integration direction"
+          command="SetIntegrationStep"
+          number_of_elements="1"
+          default_values="1">
+        <EnumerationDomain name="enum">
+          <Entry value="1" text="Forward"/>
+          <Entry value="-1" text="Backward"/>
+        </EnumerationDomain>
+      </IntVectorProperty>
+
+      <IntVectorProperty
+          name="ComputeComponentLabels"
+	  label="Compute component labels"
+          command="SetComputeComponentLabels"
+          number_of_elements="1"
+          default_values="1">
+	<BooleanDomain name="bool"/>
+      </IntVectorProperty>
+      <IntVectorProperty
+          name="ComputeSplitTime"
+	  label="Compute split time"
+          command="SetComputeSplitTime"
+          number_of_elements="1"
+          default_values="0">
+	<BooleanDomain name="bool"/>
+      </IntVectorProperty>
+     
+      <IntVectorProperty
 	  name="Refinement"
 	  label="Refinement"
 	  command="SetRefinement"

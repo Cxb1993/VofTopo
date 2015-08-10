@@ -53,14 +53,19 @@ vtkVofTopo::vtkVofTopo() :
   CurrentTimeStep(0),
   LastComputedTimeStep(-1),
   UseCache(false),
-  IterType(IterateOverTarget),
-  LabelType(LabelSplitTime),
-  // LabelType(LabelComponents),
-  Seeds(0)
+  IterType(ITERATE_OVER_TARGET),
+  ComputeComponentLabels(1),
+  ComputeSplitTime(0),
+  Seeds(0),
+  NumTimeStepsInMemory(0)
 {
   this->SetNumberOfInputPorts(2);
   this->Controller = vtkMPIController::New();
   this->Boundaries = vtkPolyData::New();
+  this->VofGrid[0] = 0;
+  this->VofGrid[1] = 0;
+  this->VelocityGrid[0] = 0;
+  this->VelocityGrid[1] = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -71,6 +76,20 @@ vtkVofTopo::~vtkVofTopo()
   }
   this->Controller->Delete();
   this->Boundaries->Delete();
+  if (VelocityGrid[1] != 0) {
+    VelocityGrid[1]->Delete();
+    VelocityGrid[1] = 0;
+  }
+  if (VelocityGrid[0] != 0) {
+    VelocityGrid[0]->Delete();
+  }
+  if (VofGrid[1] != 0) {
+    VofGrid[1]->Delete();
+    VofGrid[1] = 0;
+  }
+  if (VofGrid[0] != 0) {
+    VofGrid[0]->Delete();
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -132,6 +151,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 				    vtkInformationVector **inputVector,
 				    vtkInformationVector *outputVector)
 {
+
   // set one ghost level -----------------------------------------------------
   int numInputs = this->GetNumberOfInputPorts();
   for (int i = 0; i < numInputs; i++) {
@@ -143,59 +163,58 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 
   if(FirstIteration) {
 
-    if (IterType == IterateOverTarget) {
+    double targetTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+    if(targetTime > InputTimeValues.back()) {
+      targetTime = InputTimeValues.back();
+    }
+    TargetTimeStep = findClosestTimeStep(targetTime, InputTimeValues);
+    if (TargetTimeStep < 0) {
+      TargetTimeStep = 0;
+    }
+    if (TargetTimeStep > InputTimeValues.size()-1) {
+      TargetTimeStep = InputTimeValues.size()-1;
+    }
 
-      double targetTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
-      if(targetTime > InputTimeValues.back()) {
-      	targetTime = InputTimeValues.back();
-      }
-      TargetTimeStep = findClosestTimeStep(targetTime, InputTimeValues);
-      if (TargetTimeStep < 0) {
-	TargetTimeStep = 0;
-      }
-      if (TargetTimeStep > InputTimeValues.size()-1) {
-	TargetTimeStep = InputTimeValues.size()-1;
-      }
+    if (LastComputedTimeStep > -1 &&
+	LastComputedTimeStep < TargetTimeStep) {
+      UseCache = true;
+    }
+    else {
+      UseCache = false;
+      LastComputedTimeStep = -1;
+    }
 
-      if (LastComputedTimeStep > -1 &&
-      	  LastComputedTimeStep < TargetTimeStep) {
-      	UseCache = true;
-      }
-      else {
-      	UseCache = false;
-      	LastComputedTimeStep = -1;
-      }
-
-      if (UseCache) {
-        CurrentTimeStep = LastComputedTimeStep + 1;
-      }
-      else {
-	CurrentTimeStep = InitTimeStep;
-      }
+    if (UseCache) {
+      CurrentTimeStep = LastComputedTimeStep + 1;
+    }
+    else {
+      CurrentTimeStep = InitTimeStep;
     }
   }
-  if (CurrentTimeStep <= TargetTimeStep) {
+  if (CurrentTimeStep < TargetTimeStep) {
     int numInputs = this->GetNumberOfInputPorts();
+
+    int readAdvance = NumTimeStepsInMemory == 0 ? 0 : 1;
+    
     for (int i = 0; i < numInputs; i++) {
       vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
 
       if (CurrentTimeStep < static_cast<int>(InputTimeValues.size())) {
-	inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
-		    InputTimeValues[CurrentTimeStep]);
+	if (IntegrationStep == INTEGRATION_FORWARD) {
+	  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
+		      InputTimeValues[CurrentTimeStep+readAdvance]);
+	}
+	else if (IntegrationStep == INTEGRATION_BACKWARD) {
+	  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
+		      InputTimeValues[TargetTimeStep - (CurrentTimeStep-InitTimeStep)]);
+	}
       }
     }
-  }
+  }  
+  
   return 1;
 }
 
-// template<typename T, typename Compare>
-// std::vector<int> sort_permutation(std::vector<T>::iterator vecBegin,
-//                                   std::vector<T>::iterator vecEnd,
-//                                   Compare compare) {
-
-//   std::vector<int> t;
-//   return t;
-// }
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
@@ -209,87 +228,68 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     GetGlobalContext(inInfoVof);
   }
 
-  vtkRectilinearGrid *inputVelocity = vtkRectilinearGrid::
-    SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT()));
-  vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
-    SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT()));
-
-  if (IterType == IterateOverTarget) {
+  if (NumTimeStepsInMemory == 0) {
+    ++NumTimeStepsInMemory;
     
-    // Stage I ---------------------------------------------------------------
-    if (FirstIteration) {
-      if (!UseCache) {
-	GenerateSeeds(inputVof);
-	InitParticles();
-	Boundaries->SetPoints(vtkPoints::New());
+    request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
+
+    VofGrid[1] = vtkRectilinearGrid::New();
+    VofGrid[1]->DeepCopy(vtkRectilinearGrid::
+			 SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT())));
+    VelocityGrid[1] = vtkRectilinearGrid::New();
+    VelocityGrid[1]->DeepCopy(vtkRectilinearGrid::
+			      SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT())));
+    return 1;
+  }
+  VofGrid[0] = VofGrid[1];
+  VelocityGrid[0] = VelocityGrid[1];
+  VofGrid[1] = vtkRectilinearGrid::
+    SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT()));
+  VelocityGrid[1] = vtkRectilinearGrid::
+    SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT()));
+
+  // if (IterType == ITERATE_OVER_TARGET) {
+    
+  // Stage I ---------------------------------------------------------------
+  if (FirstIteration) {
+    if (!UseCache) {
+      // GenerateSeeds(inputVof);
+      GenerateSeeds(VofGrid[0]);
+      InitParticles();
+      Boundaries->SetPoints(vtkPoints::New());
+      vtkCellArray *cells = vtkCellArray::New();
+      Boundaries->SetPolys(cells);
+      vtkFloatArray *ivertices = vtkFloatArray::New();
+      ivertices->SetName("IVertices");
+      ivertices->SetNumberOfComponents(3);
+      Boundaries->GetPointData()->AddArray(ivertices);
+
+      if (ComputeSplitTime) {
 	vtkFloatArray *splitTimes = vtkFloatArray::New();
 	splitTimes->SetName("SplitTime");
 	splitTimes->SetNumberOfComponents(1);
-	Boundaries->GetCellData()->AddArray(splitTimes);
-	vtkCellArray *cells = vtkCellArray::New();
-	Boundaries->SetPolys(cells);
-	vtkFloatArray *ivertices = vtkFloatArray::New();
-	ivertices->SetName("IVertices");
-	ivertices->SetNumberOfComponents(3);
-	Boundaries->GetPointData()->AddArray(ivertices);
+	Boundaries->GetCellData()->AddArray(splitTimes);	  
       }
     }
-    if (!FirstIteration) {
-      if (LabelType == LabelComponents) {
-	bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
-	if (finishedAdvection) {
-	  // Stage III -----------------------------------------------------------
-	  vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
-	  ExtractComponents(inputVof, components);
+  }
 
-	  // Stage IV ------------------------------------------------------------
-	  std::vector<float> particleLabels;
-	  LabelAdvectedParticles(components, particleLabels);
-
-	  // Stage V -------------------------------------------------------------
-	  TransferLabelsToSeeds(particleLabels);
-
-	  // Stage VI ------------------------------------------------------------
-	  // vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
-	  GenerateBoundaries(Boundaries);
-
-	  // Generate output -----------------------------------------------------
-	  vtkInformation *outInfo = outputVector->GetInformationObject(0);
-
-	  vtkMultiBlockDataSet *output =
-	    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-	  output->SetNumberOfBlocks(3);
-	  output->SetBlock(0, Boundaries);
-	  output->SetBlock(1, Seeds);
-	  
-	  vtkPolyData *particles = vtkPolyData::New();
-	  vtkPoints *ppoints = vtkPoints::New();
-	  vtkFloatArray *labels = vtkFloatArray::New();
-	  ppoints->SetNumberOfPoints(Particles.size());
-	  labels->SetName("Labels");
-	  labels->SetNumberOfComponents(1);
-	  labels->SetNumberOfTuples(particleLabels.size());
-	  for (int i = 0; i < Particles.size(); ++i) {
-
-	    float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
-	    ppoints->SetPoint(i, p);
-	    labels->SetValue(i, particleLabels[i]);
-	  }
-	  particles->SetPoints(ppoints);
-	  particles->GetPointData()->AddArray(labels);
-	  output->SetBlock(2, particles);
-	}
-      }
-      if (LabelType == LabelSplitTime) {
-
-	// Since the particles are advected for time step t and we need components
-	// at time step t+1, we set the particle advection as the last stage so 
-	// that the particles' time corresponds to the extracted components.
-	// Component extraction makes sense only after particles advection.
-
+  // Stage II --------------------------------------------------------------
+  if(CurrentTimeStep < TargetTimeStep) {
+    AdvectParticles(VofGrid[0], VelocityGrid[0]);
+    LastComputedTimeStep = CurrentTimeStep;
+  }
+  
+  if (!FirstIteration) {
+    if (ComputeComponentLabels) {
+      bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
+      if (finishedAdvection) {
 	// Stage III -----------------------------------------------------------
-	vtkSmartPointer<vtkRectilinearGrid> components =vtkSmartPointer<vtkRectilinearGrid>::New();
-	ExtractComponents(inputVof, components);
+	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+
+	double ts = inInfoVof->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+	std::cout << "ts = " << ts << std::endl;
+	ExtractComponents(VofGrid[1], components);
+	// ExtractComponents(inputVof, components);
 
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
@@ -299,47 +299,91 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	TransferLabelsToSeeds(particleLabels);
 
 	// Stage VI ------------------------------------------------------------
-	bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
-	if (finishedAdvection) {
+	// vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
+	GenerateBoundaries(Boundaries);
 
-	  // vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
-	  GenerateTemporalBoundaries(Boundaries, finishedAdvection);
+	// Generate output -----------------------------------------------------
+	vtkInformation *outInfo = outputVector->GetInformationObject(0);
 
-	  // Generate output -----------------------------------------------------
-	  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+	vtkMultiBlockDataSet *output =
+	  vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+	output->SetNumberOfBlocks(3);
+	output->SetBlock(0, Boundaries);
+	output->SetBlock(1, Seeds);
+	  
+	vtkPolyData *particles = vtkPolyData::New();
+	vtkPoints *ppoints = vtkPoints::New();
+	vtkFloatArray *labels = vtkFloatArray::New();
+	ppoints->SetNumberOfPoints(Particles.size());
+	labels->SetName("Labels");
+	labels->SetNumberOfComponents(1);
+	labels->SetNumberOfTuples(particleLabels.size());
+	for (int i = 0; i < Particles.size(); ++i) {
 
-	  vtkMultiBlockDataSet *output =
-	    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-	  output->SetNumberOfBlocks(2);
-	  output->SetBlock(0, Boundaries);
-	  output->SetBlock(1, Seeds);
+	  float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+	  ppoints->SetPoint(i, p);
+	  labels->SetValue(i, particleLabels[i]);
 	}
-	else {
-	  GenerateTemporalBoundaries(Boundaries, finishedAdvection);
-	}
+	particles->SetPoints(ppoints);
+	particles->GetPointData()->AddArray(labels);
+	output->SetBlock(2, particles);
       }
     }
+    if (ComputeSplitTime) {
 
-    // Stage II --------------------------------------------------------------
-    if(CurrentTimeStep < TargetTimeStep) {
-      AdvectParticles(inputVof, inputVelocity);
-      LastComputedTimeStep = CurrentTimeStep;
+      // Since the particles are advected for time step t and we need components
+      // at time step t+1, we set the particle advection as the last stage so 
+      // that the particles' time corresponds to the extracted components.
+      // Component extraction makes sense only after particles advection.
+
+      // Stage III -----------------------------------------------------------
+      vtkSmartPointer<vtkRectilinearGrid> components =vtkSmartPointer<vtkRectilinearGrid>::New();
+      ExtractComponents(VofGrid[1], components);
+      // ExtractComponents(inputVof, components);
+
+      // Stage IV ------------------------------------------------------------
+      std::vector<float> particleLabels;
+      LabelAdvectedParticles(components, particleLabels);
+
+      // Stage V -------------------------------------------------------------
+      TransferLabelsToSeeds(particleLabels);
+
+      // Stage VI ------------------------------------------------------------
+      bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
+      if (finishedAdvection) {
+
+	// vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
+	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
+
+	// Generate output -----------------------------------------------------
+	vtkInformation *outInfo = outputVector->GetInformationObject(0);
+
+	vtkMultiBlockDataSet *output =
+	  vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+	output->SetNumberOfBlocks(2);
+	output->SetBlock(0, Boundaries);
+	output->SetBlock(1, Seeds);
+      }
+      else {
+	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
+      }
     }
+  }
       
-    bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
-    if (finishedAdvection) {
-      request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-      FirstIteration = true;
-    }
-    else {
-      request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
-      FirstIteration = false;
-      CurrentTimeStep++;
-    }
+  bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
+  if (finishedAdvection) {
+    request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+    FirstIteration = true;
   }
-  else { // IterType == IterateOverInit
+  else {
+    request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
+    FirstIteration = false;
+    CurrentTimeStep++;
+  }
+  // }
+  // else { // IterType == ITERATE_OVER_INIT
 
-  }
+  // }
 
   return 1;
 }
@@ -456,6 +500,7 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof,
 				 vtkRectilinearGrid *velocity)
 {
   float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+  dt *= IntegrationStep;
   advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
@@ -848,6 +893,7 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     return;
   }
   generateBoundaries(points, labels, connectivity, coords, boundaries);
+  boundaries->GetPointData()->RemoveArray("IVertices");
 }
 
 //----------------------------------------------------------------------------

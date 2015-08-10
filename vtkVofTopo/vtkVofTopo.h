@@ -12,13 +12,6 @@ class vtkRectilinearGrid;
 class vtkPolyData;
 class vtkFloatArray;
 
-typedef struct {
-  std::vector<float3> vertices;
-  std::vector<float3> ivertices;
-  std::vector<int> indices;
-  std::vector<int> splitTimes;
-} meshTB_t; // mesh for temporal boundaries
-
 class VTK_EXPORT vtkVofTopo : public vtkMultiBlockDataSetAlgorithm
 {
 public:
@@ -76,7 +69,7 @@ private:
   void TransferLabelsToSeeds(std::vector<float> &particleLabels);
 
   void GenerateBoundaries(vtkPolyData *boundaries);
-  void GenerateTemporalBoundaries(vtkPolyData *boundaries);
+  void GenerateTemporalBoundaries(vtkPolyData *boundaries, bool lastStep);
 
 
   std::vector<double> InputTimeValues;
@@ -117,7 +110,7 @@ private:
   std::vector<short> ParticleProcs;
   
   // Temporal boundaries
-  meshTB_t *TemporalBoundaries;
+  vtkPolyData *Boundaries;
 
   // Caching  
   bool UseCache;

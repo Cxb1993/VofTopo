@@ -211,12 +211,19 @@ void regenerateBoundaries(vtkPoints *points,
 			  std::vector<int> &indices,
 			  std::vector<int> &splitTimes);
 
+void regenerateBoundaries(vtkPoints *points, vtkFloatArray *labels,
+			  vtkIntArray *connectivity, vtkShortArray *coords,
+			  int currentTimeStep, vtkPolyData *boundaries);
+
 void smoothSurface(std::vector<float3>& vertices,
 		   std::vector<int>& indices);
+void smoothSurface(vtkPoints *vertices,
+		   vtkCellArray *cells);
 
 void mergePatches(std::vector<float3>& vertices,
 		  std::vector<float3>& ivertices,
-		  std::vector<int>& indices,
-		  std::vector<int>& splitTimes);
+		  std::vector<int>& indices);
+
+void mergePatches(vtkPolyData *boundaries);
 
 #endif//VOFTOPOLOGY_H

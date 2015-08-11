@@ -35,14 +35,14 @@ public:
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
 
-  vtkGetMacro(IntegrationStep, int);
-  vtkSetMacro(IntegrationStep, int);
-
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
 
   vtkGetMacro(ComputeSplitTime, int);
   vtkSetMacro(ComputeSplitTime, int);
+
+  vtkGetMacro(StepIncr, int);
+  vtkSetMacro(StepIncr, int);
 
 //~GUI -------------------------------
 
@@ -102,7 +102,7 @@ private:
   // Integration direction
   static const int INTEGRATION_FORWARD = 1;
   static const int INTEGRATION_BACKWARD = -1;
-  int IntegrationStep;
+  int StepIncr;
 
   // for data sets without or with incorrect time stamp information
   double TimeStepDelta;

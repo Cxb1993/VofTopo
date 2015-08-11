@@ -81,9 +81,9 @@
       </IntVectorProperty>
 
       <IntVectorProperty
-          name="IntegrationStep"
+          name="StepIncr"
 	  label="Integration direction"
-          command="SetIntegrationStep"
+          command="SetStepIncr"
           number_of_elements="1"
           default_values="1">
         <EnumerationDomain name="enum">

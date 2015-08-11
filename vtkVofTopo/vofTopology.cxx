@@ -367,6 +367,25 @@ namespace
 
 }
 
+// taken from vtkParticleTracerBase.cxx
+int findClosestTimeStep(double requestedTimeValue,
+			const std::vector<double>& timeSteps)
+{
+  int ts = 0;
+  double mindist = std::abs(timeSteps[0] - requestedTimeValue);
+
+  for (int i = 0; i < timeSteps.size(); i++) {
+
+    double tsv = timeSteps[i];
+    double dist = std::abs(tsv - requestedTimeValue);
+    if (dist < mindist) {
+      mindist = dist;
+      ts = i;
+    }
+  }
+  return ts;
+}
+
 void smoothSurface(std::vector<float3>& vertices,
 		   std::vector<int>& indices)
 {

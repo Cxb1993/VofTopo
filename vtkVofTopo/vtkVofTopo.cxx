@@ -25,28 +25,6 @@
 
 vtkStandardNewMacro(vtkVofTopo);
 
-// taken from vtkParticleTracerBase.cxx
-namespace
-{
-  int findClosestTimeStep(double requestedTimeValue,
-			  const std::vector<double>& timeSteps)
-  {
-    int ts = 0;
-    double mindist = std::abs(timeSteps[0] - requestedTimeValue);
-
-    for (int i = 0; i < timeSteps.size(); i++) {
-
-      double tsv = timeSteps[i];
-      double dist = std::abs(tsv - requestedTimeValue);
-      if (dist < mindist) {
-	mindist = dist;
-	ts = i;
-      }
-    }
-    return ts;
-  }
-};
-
 //----------------------------------------------------------------------------
 vtkVofTopo::vtkVofTopo() :
   FirstIteration(true),
@@ -62,10 +40,10 @@ vtkVofTopo::vtkVofTopo() :
   this->SetNumberOfInputPorts(2);
   this->Controller = vtkMPIController::New();
   this->Boundaries = vtkPolyData::New();
-  this->VofGrid[0] = 0;
-  this->VofGrid[1] = 0;
-  this->VelocityGrid[0] = 0;
-  this->VelocityGrid[1] = 0;
+  this->VofGrid[0] = vtkRectilinearGrid::New();//0;
+  this->VofGrid[1] = vtkRectilinearGrid::New();//0;
+  this->VelocityGrid[0] = vtkRectilinearGrid::New();//0;
+  this->VelocityGrid[1] = vtkRectilinearGrid::New();//0;
 }
 
 //----------------------------------------------------------------------------
@@ -76,20 +54,6 @@ vtkVofTopo::~vtkVofTopo()
   }
   this->Controller->Delete();
   this->Boundaries->Delete();
-  if (VelocityGrid[1] != 0) {
-    VelocityGrid[1]->Delete();
-    VelocityGrid[1] = 0;
-  }
-  if (VelocityGrid[0] != 0) {
-    VelocityGrid[0]->Delete();
-  }
-  if (VofGrid[1] != 0) {
-    VofGrid[1]->Delete();
-    VofGrid[1] = 0;
-  }
-  if (VofGrid[0] != 0) {
-    VofGrid[0]->Delete();
-  }
 }
 
 //----------------------------------------------------------------------------
@@ -168,6 +132,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       targetTime = InputTimeValues.back();
     }
     TargetTimeStep = findClosestTimeStep(targetTime, InputTimeValues);
+
     if (TargetTimeStep < 0) {
       TargetTimeStep = 0;
     }
@@ -184,30 +149,30 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       LastComputedTimeStep = -1;
     }
 
-    if (UseCache) {
-      CurrentTimeStep = LastComputedTimeStep + 1;
-    }
-    else {
-      CurrentTimeStep = InitTimeStep;
-    }
+    UseCache = false;
+
+    // if (UseCache) {
+    //   CurrentTimeStep = LastComputedTimeStep + 1;
+    // }
+    // else {
+       CurrentTimeStep = InitTimeStep;
+    // }
   }
-  if (CurrentTimeStep < TargetTimeStep) {
+  if (CurrentTimeStep <= TargetTimeStep) {
     int numInputs = this->GetNumberOfInputPorts();
 
-    int readAdvance = NumTimeStepsInMemory == 0 ? 0 : 1;
-    
     for (int i = 0; i < numInputs; i++) {
       vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
 
       if (CurrentTimeStep < static_cast<int>(InputTimeValues.size())) {
 	if (IntegrationStep == INTEGRATION_FORWARD) {
 	  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
-		      InputTimeValues[CurrentTimeStep+readAdvance]);
+		      InputTimeValues[CurrentTimeStep]);
 	}
-	else if (IntegrationStep == INTEGRATION_BACKWARD) {
-	  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
-		      InputTimeValues[TargetTimeStep - (CurrentTimeStep-InitTimeStep)]);
-	}
+	// else if (IntegrationStep == INTEGRATION_BACKWARD) {
+	//   inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
+	// 	      InputTimeValues[TargetTimeStep - (CurrentTimeStep-InitTimeStep)]);
+	// }
       }
     }
   }  
@@ -228,33 +193,28 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     GetGlobalContext(inInfoVof);
   }
 
-  if (NumTimeStepsInMemory == 0) {
-    ++NumTimeStepsInMemory;
-    
-    request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
-
-    VofGrid[1] = vtkRectilinearGrid::New();
+  if (FirstIteration) {
     VofGrid[1]->DeepCopy(vtkRectilinearGrid::
 			 SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT())));
-    VelocityGrid[1] = vtkRectilinearGrid::New();
     VelocityGrid[1]->DeepCopy(vtkRectilinearGrid::
 			      SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT())));
-    return 1;
+    VofGrid[0]->ShallowCopy(VofGrid[1]);
+    VelocityGrid[0]->ShallowCopy(VelocityGrid[1]);
   }
-  VofGrid[0] = VofGrid[1];
-  VelocityGrid[0] = VelocityGrid[1];
-  VofGrid[1] = vtkRectilinearGrid::
-    SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT()));
-  VelocityGrid[1] = vtkRectilinearGrid::
-    SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT()));
-
-  // if (IterType == ITERATE_OVER_TARGET) {
-    
+  else {
+    VofGrid[0]->ShallowCopy(VofGrid[1]);
+    VelocityGrid[0]->ShallowCopy(VelocityGrid[1]);
+ 
+    VofGrid[1]->DeepCopy(vtkRectilinearGrid::
+			 SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT())));
+    VelocityGrid[1]->DeepCopy(vtkRectilinearGrid::
+			      SafeDownCast(inInfoVelocity->Get(vtkDataObject::DATA_OBJECT())));
+  }
   // Stage I ---------------------------------------------------------------
   if (FirstIteration) {
     if (!UseCache) {
-      // GenerateSeeds(inputVof);
       GenerateSeeds(VofGrid[0]);
+
       InitParticles();
       Boundaries->SetPoints(vtkPoints::New());
       vtkCellArray *cells = vtkCellArray::New();
@@ -273,13 +233,13 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     }
   }
 
-  // Stage II --------------------------------------------------------------
-  if(CurrentTimeStep < TargetTimeStep) {
-    AdvectParticles(VofGrid[0], VelocityGrid[0]);
-    LastComputedTimeStep = CurrentTimeStep;
-  }
-  
+  // Stage II --------------------------------------------------------------  
   if (!FirstIteration) {
+    if(CurrentTimeStep < TargetTimeStep) {      
+      AdvectParticles(VofGrid[0], VelocityGrid[0]);
+      LastComputedTimeStep = CurrentTimeStep;
+    }
+    
     if (ComputeComponentLabels) {
       bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
       if (finishedAdvection) {
@@ -287,9 +247,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 
 	double ts = inInfoVof->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
-	std::cout << "ts = " << ts << std::endl;
 	ExtractComponents(VofGrid[1], components);
-	// ExtractComponents(inputVof, components);
 
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
@@ -299,7 +257,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	TransferLabelsToSeeds(particleLabels);
 
 	// Stage VI ------------------------------------------------------------
-	// vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
 	GenerateBoundaries(Boundaries);
 
 	// Generate output -----------------------------------------------------
@@ -339,7 +296,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // Stage III -----------------------------------------------------------
       vtkSmartPointer<vtkRectilinearGrid> components =vtkSmartPointer<vtkRectilinearGrid>::New();
       ExtractComponents(VofGrid[1], components);
-      // ExtractComponents(inputVof, components);
 
       // Stage IV ------------------------------------------------------------
       std::vector<float> particleLabels;
@@ -352,7 +308,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       bool finishedAdvection = CurrentTimeStep >= TargetTimeStep;
       if (finishedAdvection) {
 
-	// vtkSmartPointer<vtkPolyData> boundaries = vtkSmartPointer<vtkPolyData>::New();
 	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
 
 	// Generate output -----------------------------------------------------
@@ -380,11 +335,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     FirstIteration = false;
     CurrentTimeStep++;
   }
-  // }
-  // else { // IterType == ITERATE_OVER_INIT
-
-  // }
-
   return 1;
 }
 

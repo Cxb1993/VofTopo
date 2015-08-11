@@ -13,6 +13,10 @@
 #include <map>
 #include "helper_math.h"
 
+int findClosestTimeStep(double requestedTimeValue,
+			const std::vector<double>& timeSteps);
+
+
 void generateSeedPoints(vtkRectilinearGrid *input,
 			int refinement,
 			vtkPoints *points,

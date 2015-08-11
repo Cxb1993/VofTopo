@@ -86,13 +86,14 @@ private:
   
   int InitTimeStep; // time t0
   int TargetTimeStep; // time t1 = t0+T
-  int CurrentTimeStep;
+
+  int TimestepT0;
+  int TimestepT1;
   
   // we can iterate over t0 or t1
   static const int ITERATE_OVER_INIT = 0;
   static const int ITERATE_OVER_TARGET = 1;
   int IterType;
-  bool FirstIteration;
 
   // Visualization type
   int ComputeComponentLabels;
@@ -128,12 +129,11 @@ private:
 
   // Caching  
   bool UseCache;
-  int LastComputedTimeStep;
+  int LastLoadedTimestep;
 
   // Vof and velocity
   vtkRectilinearGrid *VofGrid[2];
   vtkRectilinearGrid *VelocityGrid[2];
-  int NumTimeStepsInMemory;
 };
 
 #endif

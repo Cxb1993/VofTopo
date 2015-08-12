@@ -191,6 +191,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
 			    vtkInformationVector *outputVector)
 {
+  std::cout << "TimestepT0 = " << TimestepT0 << std::endl;
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
@@ -242,7 +243,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   // Stage II --------------------------------------------------------------  
   if (TimestepT0 != TimestepT1) {    
     if(TimestepT0 < TargetTimeStep) {      
-      AdvectParticles(VofGrid[0], VelocityGrid[0]);
+      AdvectParticles(VofGrid, VelocityGrid);
     }
     
     if (ComputeComponentLabels) {
@@ -448,8 +449,8 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof,
-				 vtkRectilinearGrid *velocity)
+void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
+				 vtkRectilinearGrid *velocity[2])
 {
   float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
   dt *= StepIncr;

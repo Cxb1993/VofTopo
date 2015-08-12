@@ -69,8 +69,8 @@ private:
   void GetGlobalContext(vtkInformation *inInfo);
   void GenerateSeeds(vtkRectilinearGrid *vof);
   void InitParticles();
-  void AdvectParticles(vtkRectilinearGrid *vof,
-		       vtkRectilinearGrid *velocity);
+  void AdvectParticles(vtkRectilinearGrid *vof[2],
+		       vtkRectilinearGrid *velocity[2]);
   void ExchangeParticles();
   void ExtractComponents(vtkRectilinearGrid *vof,
 			 vtkRectilinearGrid *components);

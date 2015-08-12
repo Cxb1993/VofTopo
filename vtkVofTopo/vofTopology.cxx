@@ -1129,24 +1129,124 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 }
 
 
-void advectParticles(vtkRectilinearGrid *vofGrid,
-		     vtkRectilinearGrid *velocityGrid,
+// void advectParticles(vtkRectilinearGrid *vofGrid[2],
+// 		     vtkRectilinearGrid *velocityGrid[2],
+// 		     std::vector<float4> &particles,
+// 		     const float deltaT)
+// {
+//   int nodeRes[3];
+//   vofGrid[0]->GetDimensions(nodeRes);
+//   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+//   vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+//   vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+//   vtkDataArray *vofArray0 = vofGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+//   vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+
+//   int numSubsteps = 10;
+  
+//   for (int i = 0; i < particles.size(); ++i) {
+
+//     float4 p = particles[i];
+//     float deltaTSub = deltaT/numSubsteps;
+
+//     for (int j = 0; j < numSubsteps; ++j) {
+
+//       double x[3] = {p.x, p.y, p.z};
+//       int ijk[3];
+//       double pcoords[3];
+      
+//       velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//       float4 velocity0 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
+//       float4 velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+
+//       float a = float(j)/numSubsteps;
+
+//       float4 velocity = (1.0f-a)*velocity0 + a*velocity1;
+
+//       if (j == numSubsteps-1) {
+// 	deltaTSub = deltaT - j*deltaTSub;
+//       }
+//       p += velocity * deltaTSub;
+//     }
+
+//     particles[i] = p;
+
+//     double x1[3] = {particles[i].x, particles[i].y, particles[i].z};
+//     int ijk[3];
+//     double pcoords[3];
+//     vofGrid[1]->ComputeStructuredCoordinates(x1, ijk, pcoords);
+//     int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+//     float f = vofArray1->GetComponent(idx, 0);
+//     if (f <= g_emf0) {
+//       particles[i].w = 0.0f;
+//     }   
+//   }
+// }
+
+// 2615
+// Heun's
+// void advectParticles(vtkRectilinearGrid *vofGrid[2],
+// 		     vtkRectilinearGrid *velocityGrid[2],
+// 		     std::vector<float4> &particles,
+// 		     const float deltaT)
+// {
+//   int nodeRes[3];
+//   vofGrid[0]->GetDimensions(nodeRes);
+//   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+//   vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+//   vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+//   vtkDataArray *vofArray0 = vofGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+//   vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  
+//   for (int i = 0; i < particles.size(); ++i) {
+
+//     double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+//     int ijk[3];
+//     double pcoords[3];
+//     vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//     float4 velocity0 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
+
+//     float4 p1 = particles[i] + velocity0*deltaT;
+//     x[0] = p1.x;
+//     x[1] = p1.y;
+//     x[2] = p1.z;    
+//     vofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//     float4 velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+//     particles[i] += 0.5f*(velocity0 + velocity1)*deltaT;
+
+//     // particles[i] += velocity0*deltaT;
+
+//     x[0] = particles[i].x;
+//     x[1] = particles[i].y;
+//     x[2] = particles[i].z;
+//     vofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//     int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+//     float f = vofArray1->GetComponent(idx, 0);
+//     if (f <= g_emf0) {
+//       particles[i].w = 0.0f;
+//     }   
+//   }
+// }
+
+//2100
+void advectParticles(vtkRectilinearGrid *vofGrid[2],
+		     vtkRectilinearGrid *velocityGrid[2],
 		     std::vector<float4> &particles,
 		     const float deltaT)
 {
   int nodeRes[3];
-  vofGrid->GetDimensions(nodeRes);
+  vofGrid[0]->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  vtkDataArray *velocityArray = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
-  vtkDataArray *vofArray = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  vtkDataArray *velocityArray = velocityGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+  vtkDataArray *vofArray = vofGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
   // // ---------------------------
   // vtkDataArray *coordCenters[3];
   // vtkDataArray *coordNodes[3];
 
-  // coordNodes[0] = vofGrid->GetXCoordinates();
-  // coordNodes[1] = vofGrid->GetYCoordinates();
-  // coordNodes[2] = vofGrid->GetZCoordinates();
+  // coordNodes[0] = vofGrid[0]->GetXCoordinates();
+  // coordNodes[1] = vofGrid[0]->GetYCoordinates();
+  // coordNodes[2] = vofGrid[0]->GetZCoordinates();
 
   // for (int c = 0; c < 3; ++c) {
   //   coordCenters[c] = vtkFloatArray::New();
@@ -1170,7 +1270,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
       double x[3] = {it->x, it->y, it->z};
       int ijk[3];
       double pcoords[3];
-      int particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      int particleInsideGrid = vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
       float f = vofArray->GetComponent(idx, 0);
       
@@ -1186,7 +1286,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
 	//   x[1] += gr.y*dy;
 	//   x[2] += gr.z*dz;
 	//   int ijk2[3] = {ijk[0],ijk[1],ijk[2]};
-	//   particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+	//   particleInsideGrid = vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
 
 	//   if (ijk[0]==ijk2[0] &&
 	//       ijk[1]==ijk2[1] &&

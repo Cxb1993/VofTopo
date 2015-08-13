@@ -83,8 +83,10 @@ namespace
     }    
   }
 
-  void placeSeedsPLIC(vtkPoints *seeds, const float cellCenter[3], 
-		      const float cellSize[3], const int refinement,
+  void placeSeedsPLIC(vtkPoints *seeds,
+		      const float cellCenter[3], 
+		      const float cellSize[3],
+		      const int refinement,
 		      const int cellRes[3],
 		      const float f,
 		      const std::vector<float> &lstar,
@@ -118,9 +120,10 @@ namespace
 
     int idx = cell_x + cell_y*cellRes[0] + cell_z*cellRes[0]*cellRes[1];
 
-    float attachPoint[3] = {normalsInt[idx*3+0] > 0 ? 0 : 1,
-			    normalsInt[idx*3+1] > 0 ? 0 : 1,
-			    normalsInt[idx*3+2] > 0 ? 0 : 1};
+    float attachPoint[3] =
+      {normalsInt[idx*3+0]>0 ? cellCenter[0]-cellSize[0]/2.0f : cellCenter[0]+cellSize[0]/2.0f,
+       normalsInt[idx*3+1]>0 ? cellCenter[1]-cellSize[1]/2.0f : cellCenter[1]+cellSize[1]/2.0f,
+       normalsInt[idx*3+2]>0 ? cellCenter[2]-cellSize[2]/2.0f : cellCenter[2]+cellSize[2]/2.0f};
     float n[3] = {normalsInt[idx*3+0],
 		  normalsInt[idx*3+1],
 		  normalsInt[idx*3+2]};
@@ -136,15 +139,14 @@ namespace
 			   cellCenter[1]+dx[1],
 			   cellCenter[2]+dx[2]};
 
-	  float posAP[3] = {xr - attachPoint[0],
-			    yr - attachPoint[1],
-			    zr - attachPoint[2]};
-	  float d = posAP[0]*n[0] + posAP[1]*n[1] + posAP[2]*n[2];
+	  float posVec[3] = {seed[0] - attachPoint[0],
+			     seed[1] - attachPoint[1],
+			     seed[2] - attachPoint[2]};
+	  float d = posVec[0]*n[0] + posVec[1]*n[1] + posVec[2]*n[2];
 	  d = std::abs(d);
 
-	  if (pointWithinBounds(seed, bounds) && f > g_emf0 &&
-	      (f < g_emf1 && d < lstar[idx] || f >= g_emf1)) {
-	    
+	  if (pointWithinBounds(seed, bounds)  &&
+	      (f < g_emf1 && d < lstar[idx] || f >= g_emf1)) {	    
 
 	    seeds->InsertNextPoint(seed);
 	    int3 pos = {cell_x*subdiv + xr, 
@@ -605,18 +607,77 @@ void cross(float* a, float* b, float* c)
 
 #define PI 3.14159265
 
-void computeNormals(int cellRes[3],
+void computeNormals(int nodeRes[3],
 		    std::vector<float> &dx,
 		    std::vector<float> &dy,
 		    std::vector<float> &dz, 
 		    vtkDataArray *f,
 		    std::vector<float> &normals)
 {
-  const double contact = 90;
+  // {
+  //   float dfm1, dfm2;
+  //   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  //   for (int k = 0; k < nodeRes[2]; k++) {
+  //     int km = k - 1;
+  //     int kp = k;
+  //     if (km < 0) 
+  // 	km = 0;
+  //     if (kp > cellRes[2]-1) 
+  // 	kp = cellRes[2]-1;
+
+  //     float dzc = (dz[km] + dz[kp])*0.5f;
+      
+  //     for (int j = 0; j < nodeRes[1]; j++) {
+  // 	int jm = j - 1;
+  // 	int jp = j;
+  // 	if (jm < 0) 
+  // 	  jm = 0;
+  // 	if (jp > cellRes[1]-1) 
+  // 	  jp = cellRes[1]-1;
+
+  // 	float dyc = (dy[jm] + dy[jp])*0.5f;
+	
+  // 	for (int i = 0; i < nodeRes[0]; i++) {
+  // 	  int im = i - 1;
+  // 	  int ip = i;
+  // 	  if (im < 0) 
+  // 	    im = 0;
+  // 	  if (ip > cellRes[0]-1) 
+  // 	    ip = cellRes[0]-1;
+
+  // 	  float dxc = (dx[im] + dx[ip])*0.5f;
+	  
+  // 	  float fs[8] = {f->GetComponent(im + jm*cellRes[0] + km*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(ip + jm*cellRes[0] + km*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(im + jp*cellRes[0] + km*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(ip + jp*cellRes[0] + km*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(im + jm*cellRes[0] + kp*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(ip + jm*cellRes[0] + kp*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(im + jp*cellRes[0] + kp*cellRes[0]*cellRes[1], 0),
+  // 			 f->GetComponent(ip + jp*cellRes[0] + kp*cellRes[0]*cellRes[1], 0)};
+
+  // 	  float nx = (fs[1]+fs[3]+fs[5]+fs[7]) - (fs[0]+fs[2]+fs[4]+fs[6]);
+  // 	  float ny = (fs[2]+fs[3]+fs[6]+fs[7]) - (fs[0]+fs[1]+fs[4]+fs[5]);
+  // 	  float nz = (fs[4]+fs[5]+fs[6]+fs[7]) - (fs[0]+fs[1]+fs[2]+fs[3]);
+
+  // 	  int offset = i+j*nodeRes[0]+k*nodeRes[0]*nodeRes[1];
+  // 	  normals[offset*3+0] = -nx;// normal points from f outwards
+  // 	  normals[offset*3+1] = -ny;
+  // 	  normals[offset*3+2] = -nz;
+	  	  
+  // 	}
+  //     }
+  //   }
+  // }
+
+  // return;
+
+  
+  // const double contact = 90;
   int i, j, k;
   float dfm1, dfm2;
 
-  int nodeRes[3] = {cellRes[0]+1, cellRes[1]+1, cellRes[2]+1};
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
 
   for (k = 0; k < nodeRes[2]; k++) {
     int km = k - 1;
@@ -634,7 +695,7 @@ void computeNormals(int cellRes[3],
       if (jm < 0) 
 	jm = 0;
       if (jp > cellRes[1]-1) 
-	jp = cellRes[1]-1;
+      	jp = cellRes[1]-1;
 
       float dyc = (dy[jm] + dy[jp])*0.5f;
 
@@ -684,7 +745,7 @@ void computeNormals(int cellRes[3],
 	   f->GetComponent(im+jm*cellRes[0]+km*cellRes[0]*cellRes[1],0))*dy[jp];	    
 	float nz = 0.25f*(dfm1*dx[i]+dfm2*dx[ip]) / (dxc*dyc*dzc);
 
-	int offset = i+j*(cellRes[0]-1)+k*(cellRes[0]-1)*(cellRes[1]-1);
+	int offset = i+j*nodeRes[0]+k*nodeRes[0]*nodeRes[1];
 
 	normals[offset*3+0] = -nx;// normal points from f outwards
 	normals[offset*3+1] = -ny;
@@ -1004,17 +1065,18 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 			    int refinement,
 			    vtkPoints *points,
 			    vtkIntArray *connectivity,
-			    vtkShortArray *coords)
+			    vtkShortArray *coords,
+			    vtkFloatArray *cellNormals)
 {
-  vtkDataArray *vofArray = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
-  vtkDataArray *coordNodes[3];
-  coordNodes[0] = vofGrid->GetXCoordinates();
-  coordNodes[1] = vofGrid->GetYCoordinates();
-  coordNodes[2] = vofGrid->GetZCoordinates();
-  int nodeRes[3];
-  nodeRes[0] = coordNodes[0]->GetNumberOfTuples();
-  nodeRes[1] = coordNodes[1]->GetNumberOfTuples();
-  nodeRes[2] = coordNodes[2]->GetNumberOfTuples();
+  
+  vtkDataArray *vofArray =
+    vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  vtkDataArray *coordNodes[3] = {vofGrid->GetXCoordinates(),
+				 vofGrid->GetYCoordinates(),
+				 vofGrid->GetZCoordinates()};
+  int nodeRes[3] = {coordNodes[0]->GetNumberOfTuples(),
+		    coordNodes[1]->GetNumberOfTuples(),
+		    coordNodes[2]->GetNumberOfTuples()};
   int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
   
   std::vector<std::vector<float> > dx(3);
@@ -1031,7 +1093,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   std::vector<float> normals;  
   normals.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
 
-  computeNormals(cellRes, dx[0], dx[1], dx[2], vofArray, normals);
+  computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray, normals);
 
   std::vector<float> lstar(cellRes[0]*cellRes[1]*cellRes[2]);
   std::vector<float> normalsInt(cellRes[0]*cellRes[1]*cellRes[2]*3);
@@ -1072,7 +1134,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
       for (int i = 0; i < cellRes[0]; ++i) {
 
   	float f = data->GetComponent(0,idx);
-  	if (f > 0.0f) {
+  	if (f > g_emf0) {
   	  float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
   				 coordCenters[1]->GetComponent(j,0),
   				 coordCenters[2]->GetComponent(k,0)};
@@ -1100,6 +1162,14 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   coords->SetNumberOfComponents(3);
   coords->SetNumberOfTuples(seedPos.size());
 
+  cellNormals->SetName("CellNormals");
+  cellNormals->SetNumberOfComponents(1);
+  cellNormals->SetNumberOfTuples(seedPos.size());
+  int subdiv = 1;
+  for (int i = 0; i < refinement; ++i) {
+    subdiv *= 2;
+  }
+  
   std::map<int3, int>::iterator it;
   for (it = seedPos.begin(); it != seedPos.end(); ++it) {
 
@@ -1125,6 +1195,47 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
     int seedIdx = it->second;
     connectivity->SetTuple3(seedIdx, conn[0], conn[1], conn[2]);
     coords->SetTuple3(seedIdx, x, y, z);
+
+    int i = x/subdiv;
+    int j = y/subdiv;
+    int k = z/subdiv;
+    int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+    cellNormals->SetValue(seedIdx, lstar[idx]);
+    // set cell normals
+    // int im = x/subdiv;
+    // int ip = im+1;
+    // int jm = y/subdiv;
+    // int jp = jm+1;
+    // int km = z/subdiv;
+    // int kp = km+1;
+
+    // int idx[8] = {im + jm*nodeRes[0] + km*nodeRes[0]*nodeRes[1],
+    // 		  ip + jm*nodeRes[0] + km*nodeRes[0]*nodeRes[1],
+    // 		  im + jp*nodeRes[0] + km*nodeRes[0]*nodeRes[1],
+    // 		  ip + jp*nodeRes[0] + km*nodeRes[0]*nodeRes[1],
+    // 		  im + jm*nodeRes[0] + kp*nodeRes[0]*nodeRes[1],
+    // 		  ip + jm*nodeRes[0] + kp*nodeRes[0]*nodeRes[1],
+    // 		  im + jp*nodeRes[0] + kp*nodeRes[0]*nodeRes[1],
+    // 		  ip + jp*nodeRes[0] + kp*nodeRes[0]*nodeRes[1]};
+    // float3 n = make_float3(0.0f);
+    // for (int j = 0; j < 8; j++) {
+    //   n += make_float3(normals[idx[j]*3+0],
+    // 		       normals[idx[j]*3+1],
+    // 		       normals[idx[j]*3+2]);
+    // }
+    // if (length(n) > 0.0f)
+    //   n = normalize(n);
+    // cellNormals->SetTuple3(seedIdx, n.x, n.y, n.z);
+
+
+    
+    // int i = x/subdiv;
+    // int j = y/subdiv;
+    // int k = z/subdiv;
+    // int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+    
+    // cellNormals->SetTuple3(seedIdx, normalsInt[idx*3+0],
+    // 			   normalsInt[idx*3+1], normalsInt[idx*3+2]);
   }
 }
 

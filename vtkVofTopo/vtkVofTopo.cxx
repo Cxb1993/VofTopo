@@ -181,8 +181,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 	}
       }
     }
-  }  
-  
+  }    
   return 1;
 }
 
@@ -194,6 +193,11 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   std::cout << "TimestepT0 = " << TimestepT0 << std::endl;
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
+
+  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+  vtkMultiBlockDataSet *output =
+    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  output->SetBlock(0, Seeds);
 
   if (TimestepT0 == TimestepT1 && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds
@@ -264,14 +268,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	GenerateBoundaries(Boundaries);
 
 	// Generate output -----------------------------------------------------
-	vtkInformation *outInfo = outputVector->GetInformationObject(0);
-
-	vtkMultiBlockDataSet *output =
-	  vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-	output->SetNumberOfBlocks(3);
-	output->SetBlock(0, Boundaries);
-	output->SetBlock(1, Seeds);
-	  
 	vtkPolyData *particles = vtkPolyData::New();
 	vtkPoints *ppoints = vtkPoints::New();
 	vtkFloatArray *labels = vtkFloatArray::New();
@@ -287,7 +283,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	}
 	particles->SetPoints(ppoints);
 	particles->GetPointData()->AddArray(labels);
-	output->SetBlock(2, particles);
+	output->SetBlock(1, particles);
+
+	output->SetBlock(2, Boundaries);
       }
     }
     if (ComputeSplitTime) {
@@ -315,13 +313,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
 
 	// Generate output -----------------------------------------------------
-	vtkInformation *outInfo = outputVector->GetInformationObject(0);
-
-	vtkMultiBlockDataSet *output =
-	  vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-	output->SetNumberOfBlocks(2);
-	output->SetBlock(0, Boundaries);
-	output->SetBlock(1, Seeds);
+	output->SetBlock(1, Boundaries);
       }
       else {
 	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
@@ -353,8 +345,13 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
   vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
   vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
-  generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
-  //generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+
+  //generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
+
+  vtkSmartPointer<vtkFloatArray> cellNormals = vtkSmartPointer<vtkFloatArray>::New();
+  generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity, seedCoords,
+			 cellNormals);
+
   
   if (Seeds != 0) {
     Seeds->Delete();
@@ -363,6 +360,7 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   Seeds->SetPoints(seedPoints);
   Seeds->GetPointData()->AddArray(seedConnectivity);
   Seeds->GetPointData()->AddArray(seedCoords);
+  Seeds->GetPointData()->AddArray(cellNormals);
 }
 
 //----------------------------------------------------------------------------

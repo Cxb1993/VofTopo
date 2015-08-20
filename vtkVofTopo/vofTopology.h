@@ -21,14 +21,15 @@ void generateSeedPoints(vtkRectilinearGrid *input,
 			int refinement,
 			vtkPoints *points,
 			vtkIntArray *connectivity,
-			vtkShortArray *coords);
+			vtkShortArray *coords,
+			int onlyOnInterface);
 
 void generateSeedPointsPLIC(vtkRectilinearGrid *input,
 			    int refinement,
 			    vtkPoints *points,
 			    vtkIntArray *connectivity,
 			    vtkShortArray *coords,
-			    vtkFloatArray *cellNormals);
+			    int onlyOnInterface);
 
 void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     vtkRectilinearGrid *inputVelocity[2],

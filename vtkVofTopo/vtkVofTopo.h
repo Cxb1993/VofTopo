@@ -35,6 +35,9 @@ public:
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
 
+  vtkGetMacro(SeedOnInterfaceOnly, int);
+  vtkSetMacro(SeedOnInterfaceOnly, int);
+
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
 
@@ -117,6 +120,7 @@ private:
 
   // Seeds
   int Refinement;
+  int SeedOnInterfaceOnly;
   vtkPolyData *Seeds;
 
   // Particles

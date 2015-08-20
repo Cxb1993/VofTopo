@@ -100,6 +100,7 @@
           default_values="1">
 	<BooleanDomain name="bool"/>
       </IntVectorProperty>
+
       <IntVectorProperty
           name="ComputeSplitTime"
 	  label="Compute split time"
@@ -119,6 +120,16 @@
 	  Seed points refinement; numNewPoints = numCells*8^Refinement
 	</Documentation>
       </IntVectorProperty>
+
+      <IntVectorProperty
+          name="SeedOnInterfaceOnly"
+	  label="Seed only on interface"
+          command="SetSeedOnInterfaceOnly"
+          number_of_elements="1"
+          default_values="0">
+	<BooleanDomain name="bool"/>
+      </IntVectorProperty>
+
 
     </SourceProxy>
   </ProxyGroup>

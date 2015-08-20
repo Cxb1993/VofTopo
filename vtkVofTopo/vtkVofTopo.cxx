@@ -346,12 +346,8 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
   vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
 
-  //generateSeedPoints(vof, Refinement, seedPoints, seedConnectivity, seedCoords);
-
-  vtkSmartPointer<vtkFloatArray> cellNormals = vtkSmartPointer<vtkFloatArray>::New();
-  generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity, seedCoords,
-			 cellNormals);
-
+  generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity,
+			 seedCoords, SeedOnInterfaceOnly);
   
   if (Seeds != 0) {
     Seeds->Delete();
@@ -360,7 +356,6 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   Seeds->SetPoints(seedPoints);
   Seeds->GetPointData()->AddArray(seedConnectivity);
   Seeds->GetPointData()->AddArray(seedCoords);
-  Seeds->GetPointData()->AddArray(cellNormals);
 }
 
 //----------------------------------------------------------------------------

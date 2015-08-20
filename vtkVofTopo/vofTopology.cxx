@@ -159,7 +159,110 @@ namespace
       }
     }    
   }
-  
+
+  static float interpolateSca(vtkDataArray *vofField,
+			      const int* res, const int idxCell[3],
+			      const double bcoords[3])
+  {
+    int lx = idxCell[0];
+    int ly = idxCell[1];
+    int lz = idxCell[2];
+    float x = bcoords[0] - 0.5;
+    float y = bcoords[1] - 0.5;
+    float z = bcoords[2] - 0.5;
+
+    if (bcoords[0] < 0.5) {
+      lx -= 1;
+      x = bcoords[0] + 0.5;
+    }
+    if (bcoords[1] < 0.5) {
+      ly -= 1;
+      y = bcoords[1] + 0.5;
+    }
+    if (bcoords[2] < 0.5) {
+      lz -= 1;
+      z = bcoords[2] + 0.5;
+    }
+    
+    int ux = lx+1;
+    int uy = ly+1;
+    int uz = lz+1;
+
+    if (lx < 0) lx = 0;
+    if (ly < 0) ly = 0;
+    if (lz < 0) lz = 0;
+    if (ux > res[0]-1) ux = res[0]-1;
+    if (uy > res[1]-1) uy = res[1]-1;
+    if (uz > res[2]-1) uz = res[2]-1;
+
+    unsigned lzslab = lz*res[0]*res[1];
+    unsigned uzslab = uz*res[0]*res[1];
+    int lyr = ly*res[0];
+    int uyr = uy*res[0];
+
+    unsigned id[8] = {lx + lyr + lzslab,
+		      ux + lyr + lzslab,
+		      lx + uyr + lzslab,
+		      ux + uyr + lzslab,
+		      lx + lyr + uzslab,
+		      ux + lyr + uzslab,
+		      lx + uyr + uzslab,
+		      ux + uyr + uzslab};
+    float vv[8];
+    for (int i = 0; i < 8; i++) {
+      vv[i] = vofField->GetComponent(id[i], 0);
+    }
+
+    float a = (1.0f-x)*vv[0] + x*vv[1];
+    float b = (1.0f-x)*vv[2] + x*vv[3];
+    float c = (1.0f-y)*a + y*b;
+    a = (1.0f-x)*vv[4] + x*vv[5];
+    b = (1.0f-x)*vv[6] + x*vv[7];
+    float d = (1.0f-y)*a + y*b;
+
+    return (1.0f-z)*c + z*d;
+  }
+
+  void computeGradient(vtkRectilinearGrid *grid, vtkDataArray *data,
+		       const int res[3], int ijk[3],
+		       vtkDataArray *coordCenters[3],
+		       double pcoords[3], float grad[3])
+  {
+    int i = ijk[0];
+    int j = ijk[1];
+    int k = ijk[2];
+    int im = std::max(i-1,0);
+    int ip = std::min(i+1,res[0]-1);
+    float dx = coordCenters[0]->GetComponent(ip,0) - coordCenters[0]->GetComponent(im,0);
+    int jm = std::max(j-1,0);	  
+    int jp = std::min(j+1,res[1]-1);
+    float dy = coordCenters[1]->GetComponent(jp,0) - coordCenters[1]->GetComponent(jm,0);
+    int km = std::max(k-1,0);	  
+    int kp = std::min(k+1,res[2]-1);
+    float dz = coordCenters[2]->GetComponent(kp,0) - coordCenters[2]->GetComponent(km,0);
+
+    int id_left   = im + j*res[0] + k*res[0]*res[1];
+    int id_right  = ip + j*res[0] + k*res[0]*res[1];
+    int id_bottom = i + jm*res[0] + k*res[0]*res[1];
+    int id_top    = i + jp*res[0] + k*res[0]*res[1];
+    int id_back   = i + j*res[0] + km*res[0]*res[1];
+    int id_front  = i + j*res[0] + kp*res[0]*res[1];
+
+    // int f_left = ;
+    // int f_right;
+    // int f_bottom;
+    // int f_top;   
+    // int f_back;
+    // int f_front;
+    
+    grad[0] = (data->GetComponent(id_right,0) - 
+	       data->GetComponent(id_left,0))/dx;
+    grad[1] = (data->GetComponent(id_top,0) - 
+	       data->GetComponent(id_bottom,0))/dy;
+    grad[2] = (data->GetComponent(id_front,0) - 
+	       data->GetComponent(id_back,0))/dz;
+  }
+
   void computeGradient(vtkDataArray *data, const int res[3], 
 		       int i, int j, int k, 
 		       vtkDataArray *coordCenters[3], float grad[3])
@@ -1235,7 +1338,8 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 // 	do {
 // 	  iter++;
 // 	  float grad[3];
-// 	  computeGradient(vofArray, cellRes, ijk[0], ijk[1], ijk[2], coordCenters, grad);
+// 	  computeGradient(vofArray,  cellRes, ijk[0], ijk[1], ijk[2], coordCenters, grad);
+// 	  // computeGradient(vofGrid[0], vofArray, cellRes, ijk, coordCenters, pcoords, grad);
 // 	  float3 gr = make_float3(grad[0],grad[1],grad[2]);
 // 	  if (length(gr) > 0.0f)
 // 	    gr = normalize(gr);
@@ -1263,6 +1367,149 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 //   }
 // }
 
+
+// // dirty hack - sending particles to the nearest cell with f > 0
+// //2100
+// void advectParticles(vtkRectilinearGrid *vofGrid[2],
+// 		     vtkRectilinearGrid *velocityGrid[2],
+// 		     std::vector<float4> &particles,
+// 		     const float deltaT)
+// {
+//   int nodeRes[3];
+//   vofGrid[0]->GetDimensions(nodeRes);
+//   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+//   vtkDataArray *velocityArray = velocityGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+//   vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+
+//   // ---------------------------
+//   vtkDataArray *coordCenters[3];
+//   vtkDataArray *coordNodes[3];
+
+//   coordNodes[0] = vofGrid[0]->GetXCoordinates();
+//   coordNodes[1] = vofGrid[0]->GetYCoordinates();
+//   coordNodes[2] = vofGrid[0]->GetZCoordinates();
+
+//   for (int c = 0; c < 3; ++c) {
+//     coordCenters[c] = vtkFloatArray::New();
+//     coordCenters[c]->SetNumberOfComponents(1);
+//     coordCenters[c]->SetNumberOfTuples(coordNodes[c]->GetNumberOfTuples()-1);
+//     for (int i = 0; i < coordCenters[c]->GetNumberOfTuples(); ++i) {
+//       coordCenters[c]->
+//   	SetComponent(i,0,(coordNodes[c]->GetComponent(0,i) + 
+//   			  coordNodes[c]->GetComponent(0,i+1))/2.0f);
+//     }
+//   }
+//   float dx = coordCenters[0]->GetComponent(1,0) - coordCenters[0]->GetComponent(0,0);
+//   float dy = coordCenters[1]->GetComponent(1,0) - coordCenters[1]->GetComponent(0,0);
+//   float dz = coordCenters[2]->GetComponent(1,0) - coordCenters[2]->GetComponent(0,0);  
+//   // ---------------------------
+
+//   std::vector<float4>::iterator it;
+
+//   int numStranded = 0;
+//   for (it = particles.begin(); it != particles.end(); ++it) {
+//     if (it->w == 0.0f)
+//       numStranded++;
+//   }
+//   std::cout << "numStranded before = " << numStranded << std::endl;
+  
+//   for (it = particles.begin(); it != particles.end(); ++it) {
+
+//     if (it->w != 0.0f) {
+      
+//       double x[3] = {it->x, it->y, it->z};
+//       int ijk[3];
+//       double pcoords[3];
+//       vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+      
+//       float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
+//       *it = *it + velocity*deltaT;
+//       x[0] = it->x;
+//       x[1] = it->y;
+//       x[2] = it->z;
+//       int particleInsideGrid = vofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+//       float f = vofArray1->GetComponent(idx, 0);
+     
+//       if (particleInsideGrid) {
+
+// 	if (f <= g_emf0) {
+// 	  // find nearest cell with f > g_emf0
+// 	  int tol = 25;
+// 	  float minDist = std::numeric_limits<float>::max();
+// 	  int ci, cj, ck;
+// 	  for (int rk = -tol; rk <= tol; ++rk) {
+// 	    if (rk+ijk[2] < 0 || rk+ijk[2] >= cellRes[2])
+// 	      continue;
+// 	    for (int rj = -tol; rj <= tol; ++rj) {
+// 	      if (rj+ijk[1] < 0 || rj+ijk[1] >= cellRes[1])
+// 		continue;
+// 	      for (int ri = -tol; ri <= tol; ++ri) {
+// 		if (ri+ijk[0] < 0 || ri+ijk[0] >= cellRes[0])
+// 		  continue;
+
+// 		int idx = ri+ijk[0] + (rj+ijk[1])*cellRes[0] + (rk+ijk[2])*cellRes[0]*cellRes[1];
+// 		float f = vofArray1->GetComponent(idx, 0);
+// 		if (f > g_emf0) {
+// 		  float dist = ri*ri + rj*rj + rk*rk;
+// 		  if (dist < minDist) {
+// 		    minDist = dist;
+// 		    ci = ri;
+// 		    cj = rj;		
+// 		    ck = rk;
+// 		  }
+// 		}
+// 	      }
+// 	    }
+// 	  }
+// 	  if (minDist < std::numeric_limits<float>::max()) {
+// 	    *it = make_float4(x[0] + ci*dx,
+// 			      x[1] + cj*dy,
+// 			      x[2] + ck*dz,
+// 			      1.0f);
+// 	  }
+// 	  else {
+// 	    it->w = 0.0f;
+// 	  }
+// 	}
+// 	// int iter = 0;
+// 	// while (iter < 10 && f <= g_emf0) {
+// 	//   iter++;
+// 	//   float grad[3];
+// 	//   computeGradient(vofArray1,  cellRes, ijk[0], ijk[1], ijk[2], coordCenters, grad);
+// 	//   float3 gr = make_float3(grad[0],grad[1],grad[2]);
+// 	//   if (length(gr) > 0.0f)
+// 	//     gr = normalize(gr);
+// 	//   x[0] += gr.x*dx;
+// 	//   x[1] += gr.y*dy;
+// 	//   x[2] += gr.z*dz;
+
+// 	//   vofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);	  
+// 	//   idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+// 	//   f = vofArray1->GetComponent(idx, 0);	  
+// 	// }
+// 	// if (f > g_emf0) {
+// 	//   *it = make_float4(x[0],x[1],x[2],1.0f);
+// 	// }
+// 	// else {
+// 	//   it->w = 0.0f;
+// 	// }
+// 	// ---------------------------
+//       }      
+//       else {
+// 	it->w = 0.0f;
+//       }
+//     }
+//   }
+//   numStranded = 0;
+//   for (it = particles.begin(); it != particles.end(); ++it) {
+//     if (it->w == 0.0f)
+//       numStranded++;
+//   }
+//   std::cout << "numStranded after = " << numStranded << std::endl;
+
+// }
+
 // basic
 //2100
 void advectParticles(vtkRectilinearGrid *vofGrid[2],
@@ -1274,26 +1521,34 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
   vofGrid[0]->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
   vtkDataArray *velocityArray = velocityGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
-  vtkDataArray *vofArray = vofGrid[0]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
   std::vector<float4>::iterator it;
   for (it = particles.begin(); it != particles.end(); ++it) {
 
     if (it->w != 0.0f) {
+      
       double x[3] = {it->x, it->y, it->z};
       int ijk[3];
       double pcoords[3];
-      int particleInsideGrid = vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+      vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+      float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
+      *it = *it + velocity*deltaT;
+
+      x[0] = it->x;
+      x[1] = it->y;
+      x[2] = it->z;
+      int particleInsideGrid = vofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      float f = vofArray->GetComponent(idx, 0);
-      
+      float f = vofArray1->GetComponent(idx, 0);
+            
       if (particleInsideGrid) {
 	if (f <= g_emf0) {
 	  it->w = 0.0f;
-	  continue;
 	}
-	float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
-	*it = *it + velocity*deltaT;
+      }
+      else {
+	it->w = 0.0f;
       }
     }
   }

@@ -197,7 +197,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   vtkMultiBlockDataSet *output =
     vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-  output->SetBlock(0, Seeds);
 
   if (TimestepT0 == TimestepT1 && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds
@@ -325,6 +324,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+    output->SetBlock(0, Seeds);
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);

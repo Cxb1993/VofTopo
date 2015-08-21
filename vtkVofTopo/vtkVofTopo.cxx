@@ -285,6 +285,32 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	output->SetBlock(1, particles);
 
 	output->SetBlock(2, Boundaries);
+
+	//---------------
+	vtkPolyData *intermediateParticles = vtkPolyData::New();
+	vtkFloatArray *intermediateLabels = vtkFloatArray::New();
+	intermediateLabels->SetName("IntermediateLabels");
+	intermediateLabels->SetNumberOfComponents(1);
+	vtkFloatArray *intermediateTimesteps = vtkFloatArray::New();
+	intermediateTimesteps->SetName("IntermediateTimesteps");
+	intermediateTimesteps->SetNumberOfComponents(1);
+	vtkPoints *ippoints = vtkPoints::New();
+	for (int i = 0; i < IntermediateParticles.size(); ++i) {
+	  for (int j = 0; j < IntermediateParticles[i].size(); ++j) {
+
+	    float p[3] = {IntermediateParticles[i][j].x,
+			  IntermediateParticles[i][j].y,
+			  IntermediateParticles[i][j].z};
+	    ippoints->InsertNextPoint(p);
+	    intermediateLabels->InsertNextValue(particleLabels[j]);
+	    intermediateTimesteps->InsertNextValue(i);
+	  }
+	}
+	intermediateParticles->SetPoints(ippoints);
+	intermediateParticles->GetPointData()->AddArray(intermediateLabels);
+	intermediateParticles->GetPointData()->AddArray(intermediateTimesteps);
+	output->SetBlock(3, intermediateParticles);
+	//--------------
       }
     }
     if (ComputeSplitTime) {
@@ -383,6 +409,9 @@ void vtkVofTopo::InitParticles()
       ParticleProcs[i] = processId;
     }
   }
+
+  IntermediateParticles.clear();
+  IntermediateParticles.push_back(Particles);
 }
 
 //----------------------------------------------------------------------------
@@ -451,6 +480,8 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
+
+  IntermediateParticles.push_back(Particles);
 }
 
 //----------------------------------------------------------------------------

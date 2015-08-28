@@ -2320,3 +2320,28 @@ void mergePatches(vtkPolyData *boundaries)
   vertices->Delete();
   boundaries->SetPoints(usedVertices);
 }
+
+void computeParticleVelocities(std::vector<float4> &particles,
+			       vtkRectilinearGrid *velocityGrid,
+			       std::vector<float4> &velocities)
+{
+  int nodeRes[3];
+  velocityGrid->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  vtkDataArray *velocityArray = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+
+  velocities.resize(particles.size());
+  std::vector<float4>::iterator it;
+  int idx = 0;
+  
+  for (it = particles.begin(); it != particles.end(); ++it) {
+
+    double x[3] = {it->x, it->y, it->z};
+    int ijk[3];
+    double pcoords[3];
+    velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
+    velocities[idx] = velocity;
+    ++idx;
+  }
+}

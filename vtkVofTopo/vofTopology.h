@@ -232,4 +232,8 @@ void mergePatches(std::vector<float3>& vertices,
 
 void mergePatches(vtkPolyData *boundaries);
 
+void computeParticleVelocities(std::vector<float4> &particles,
+			       vtkRectilinearGrid *velocityGrid,
+			       std::vector<float4> &velocities);
+
 #endif//VOFTOPOLOGY_H

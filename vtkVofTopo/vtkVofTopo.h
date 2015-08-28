@@ -126,6 +126,7 @@ private:
   // Particles
   std::vector<float4> Particles;
   std::vector<std::vector<float4> > IntermediateParticles;
+  std::vector<std::vector<float4> > IntermediateVelocities;
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
   

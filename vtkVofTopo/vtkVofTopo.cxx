@@ -226,6 +226,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       GenerateSeeds(VofGrid[0]);
 
       InitParticles();
+      IntermediateParticles.clear();
+      IntermediateParticles.push_back(Particles);
+      IntermediateVelocities.clear();
+      IntermediateVelocities.resize(IntermediateVelocities.size()+1);
+      computeParticleVelocities(IntermediateParticles.back(),VelocityGrid[0],
+				IntermediateVelocities.back());
+
+      
       Boundaries->SetPoints(vtkPoints::New());
       vtkCellArray *cells = vtkCellArray::New();
       Boundaries->SetPolys(cells);
@@ -256,6 +264,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 	ExtractComponents(VofGrid[1], components);
 
+	
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
 	LabelAdvectedParticles(components, particleLabels);
@@ -294,8 +303,24 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkFloatArray *intermediateTimesteps = vtkFloatArray::New();
 	intermediateTimesteps->SetName("IntermediateTimesteps");
 	intermediateTimesteps->SetNumberOfComponents(1);
+	vtkFloatArray *intermediateVelocities = vtkFloatArray::New();
+	intermediateVelocities->SetName("IntermediateVelocities");
+	intermediateVelocities->SetNumberOfComponents(3);
+
+	// this will work only in serial mode
+	int numLabels;
+	double range[2];
+	components->GetCellData()->GetArray("Labels")->GetRange(range, 0);
+	numLabels = range[1] + 1;
+	std::vector<std::vector<float4> > momenta(IntermediateParticles.size());
+	
 	vtkPoints *ippoints = vtkPoints::New();
 	for (int i = 0; i < IntermediateParticles.size(); ++i) {
+	  momenta[i].resize(numLabels);
+	  for (int j = 0; j < numLabels; ++j) {
+	    momenta[i][j] = make_float4(0.0f);
+	  }
+	  
 	  for (int j = 0; j < IntermediateParticles[i].size(); ++j) {
 
 	    float p[3] = {IntermediateParticles[i][j].x,
@@ -304,11 +329,40 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	    ippoints->InsertNextPoint(p);
 	    intermediateLabels->InsertNextValue(particleLabels[j]);
 	    intermediateTimesteps->InsertNextValue(i);
-	  }
+	    intermediateVelocities->InsertNextTuple3(IntermediateVelocities[i][j].x,
+						     IntermediateVelocities[i][j].y,
+						     IntermediateVelocities[i][j].z);
+
+	    if (particleLabels[j] > -1) {
+	      momenta[i][particleLabels[j]] += IntermediateVelocities[i][j];
+	      momenta[i][particleLabels[j]].w += 1.0f;
+	    }
+	  }	  
 	}
+
+	vtkFloatArray *intermediateMomenta = vtkFloatArray::New();
+	intermediateMomenta->SetName("IntermediateMomenta");
+	intermediateMomenta->SetNumberOfComponents(1);
+	for (int i = 0; i < IntermediateParticles.size(); ++i) {
+	  for (int j = 0; j < IntermediateParticles[i].size(); ++j) {
+
+	    float magm = 0.0f;
+	    if (particleLabels[j] > -1) {
+	      float4 momentum = momenta[i][particleLabels[j]];
+	      if (momentum.w > 0.0f) {
+		momentum /= momentum.w;
+		magm = length(make_float3(momentum));
+	      }
+	    }
+	    intermediateMomenta->InsertNextValue(magm);
+	  }	  
+	}
+	
 	intermediateParticles->SetPoints(ippoints);
 	intermediateParticles->GetPointData()->AddArray(intermediateLabels);
 	intermediateParticles->GetPointData()->AddArray(intermediateTimesteps);
+	intermediateParticles->GetPointData()->AddArray(intermediateVelocities);
+	intermediateParticles->GetPointData()->AddArray(intermediateMomenta);
 	output->SetBlock(3, intermediateParticles);
 	//--------------
       }
@@ -409,9 +463,6 @@ void vtkVofTopo::InitParticles()
       ParticleProcs[i] = processId;
     }
   }
-
-  IntermediateParticles.clear();
-  IntermediateParticles.push_back(Particles);
 }
 
 //----------------------------------------------------------------------------
@@ -482,6 +533,10 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   }
 
   IntermediateParticles.push_back(Particles);
+  IntermediateVelocities.resize(IntermediateVelocities.size()+1);
+  computeParticleVelocities(IntermediateParticles.back(),velocity[0],
+			    IntermediateVelocities.back());
+  
 }
 
 //----------------------------------------------------------------------------

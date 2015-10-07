@@ -205,6 +205,7 @@ void generateBoundaries(vtkPoints *points,
 			vtkFloatArray *labels,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords,
+			vtkFloatArray *velos,
 			vtkPolyData *boundaries);
 
 void regenerateBoundaries(vtkPoints *points,

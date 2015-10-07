@@ -359,6 +359,53 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
+	//
+	std::vector<float4> finalVelocities;
+	computeParticleVelocities(Particles, VelocityGrid[0], finalVelocities);
+
+	// vtkFloatArray *finalVelocitiesArray = vtkFloatArray::New();
+	// finalVelocitiesArray->SetName("FinalVelocities");
+	// finalVelocitiesArray->SetNumberOfComponents(1);
+	// for (int i = 0; i < finalVelocities.size(); ++i) {
+
+	//   finalVelocitiesArray->InsertNextTuple3(finalVelocities[i].x,
+	// 					 finalVelocities[i].y,
+	// 					 finalVelocities[i].z);
+	// }
+
+
+	std::map<int, float4> momentum;
+	std::map<int, std::vector<int> > labelToParticles;
+	for (int i = 0; i < particleLabels.size(); ++i) {
+	  if (momentum.find(particleLabels[i]) == momentum.end()) {
+	    momentum[particleLabels[i]] = finalVelocities[i];
+	  }
+	  else {
+	    momentum[particleLabels[i]] += finalVelocities[i];
+	  }
+	  labelToParticles[particleLabels[i]].push_back(i);
+	}
+	
+	std::map<int, std::vector<int> >::iterator it = labelToParticles.begin();
+	for (; it != labelToParticles.end(); ++it) {
+	  int lab = it->first;
+	  std::vector<int> &parts = it->second;
+	  for (int i = 0; i < parts.size(); ++i) {
+	    finalVelocities[parts[i]] = momentum[lab];
+	  }
+	}
+	
+	vtkFloatArray *finalVelocitiesArray = vtkFloatArray::New();
+	finalVelocitiesArray->SetName("FinalVelocities");
+	finalVelocitiesArray->SetNumberOfComponents(1);
+	for (int i = 0; i < finalVelocities.size(); ++i) {
+
+	  float mom = length(make_float3(finalVelocities[i]));
+	  finalVelocitiesArray->InsertNextTuple1(mom);
+	}
+	Seeds->GetPointData()->AddArray(finalVelocitiesArray);      
+	//      
+
 	// Stage VI ------------------------------------------------------------
 	GenerateBoundaries(Boundaries);
 
@@ -380,25 +427,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->GetPointData()->AddArray(labels);
 	output->SetBlock(1, particles);
 
-
-	// //
-	// std::vector<float4> finalVelocities;
-	// computeParticleVelocities(Particles, VelocityGrid[0], finalVelocities);
-	// vtkFloatArray *finalVelocitiesArray = vtkFloatArray::New();
-	// finalVelocitiesArray->SetName("FinalVelocities");
-	// finalVelocitiesArray->SetNumberOfComponents(3);
-	// for (int i = 0; i < finalVelocities.size(); ++i) {
-	//   finalVelocitiesArray->InsertNextTuple3(finalVelocities[i].x,
-	// 					finalVelocities[i].y,
-	// 					finalVelocities[i].z);
-	// }
-	// Seeds->GetPointData()->AddArray(finalVelocitiesArray);      
-	// //
-      
 	//
-	// vtkPolyData *filteredBoundaries = vtkPolyData::New();
-	// filterBounadries(Boundaries, filteredBoundaries);
-	// output->SetBlock(2, filteredBoundaries);
+	vtkPolyData *filteredBoundaries = vtkPolyData::New();
+	filterBounadries(Boundaries, filteredBoundaries);
+	output->SetBlock(2, filteredBoundaries);
 	
 	output->SetBlock(2, Boundaries);
 
@@ -1040,12 +1072,14 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
   vtkShortArray *coords = vtkShortArray::
     SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
+  vtkFloatArray *velos = vtkFloatArray::
+    SafeDownCast(Seeds->GetPointData()->GetArray("FinalVelocities"));
 
   if (!labels || !connectivity || !coords) {
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
-  generateBoundaries(points, labels, connectivity, coords, boundaries);
+  generateBoundaries(points, labels, connectivity, coords, velos, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

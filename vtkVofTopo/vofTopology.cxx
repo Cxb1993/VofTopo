@@ -1915,6 +1915,7 @@ void generateBoundaries(vtkPoints *points,
 			vtkFloatArray *labels,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords,
+			vtkFloatArray *velos,
 			vtkPolyData *boundaries)
 {
   float co[3][12];
@@ -1931,6 +1932,14 @@ void generateBoundaries(vtkPoints *points,
   labelsFront->SetNumberOfComponents(1);
   labelsFront->SetName("FrontLabels");
 
+  // new
+  vtkFloatArray *velosBack = vtkFloatArray::New();
+  velosBack->SetNumberOfComponents(1);
+  velosBack->SetName("BackVelos");
+  vtkFloatArray *velosFront = vtkFloatArray::New();
+  velosFront->SetNumberOfComponents(1);
+  velosFront->SetName("FrontVelos");
+  
   std::vector<float3> ivertices;
   ivertices.clear();
   std::vector<float3> vertices;
@@ -1946,6 +1955,8 @@ void generateBoundaries(vtkPoints *points,
   		   connectivity->GetComponent(i, 2)};
 
     float l0 = labels->GetValue(i);
+    float m0 = velos->GetValue(i);
+    
     float c0[3] = {coords->GetComponent(i, 0),
 		   coords->GetComponent(i, 1),
 		   coords->GetComponent(i, 2)};
@@ -1957,6 +1968,8 @@ void generateBoundaries(vtkPoints *points,
       if (conn[j] > -1) {
 
   	float l1 = labels->GetValue(conn[j]);
+	float m1 = velos->GetValue(conn[j]);
+	
   	double p1[3];
   	points->GetPoint(conn[j], p1);
       
@@ -1971,6 +1984,15 @@ void generateBoundaries(vtkPoints *points,
   	  labelsFront->InsertNextValue(l1);
   	  labelsFront->InsertNextValue(l1);
 
+  	  velosBack->InsertNextValue(m0);
+  	  velosBack->InsertNextValue(m0);
+  	  velosBack->InsertNextValue(m0);
+  	  velosBack->InsertNextValue(m0);
+  	  velosFront->InsertNextValue(m1);
+  	  velosFront->InsertNextValue(m1);
+  	  velosFront->InsertNextValue(m1);
+  	  velosFront->InsertNextValue(m1);
+	  
   	  float3 verts[5];
   	  float3 iverts[5];
 
@@ -2062,6 +2084,9 @@ void generateBoundaries(vtkPoints *points,
 
   boundaries->GetCellData()->AddArray(labelsBack);
   boundaries->GetCellData()->AddArray(labelsFront);
+  // new
+  boundaries->GetCellData()->AddArray(velosBack);
+  boundaries->GetCellData()->AddArray(velosFront);
 }
 
 void regenerateBoundaries(vtkPoints *points, vtkFloatArray *labels,

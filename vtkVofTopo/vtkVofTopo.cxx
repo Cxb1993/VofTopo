@@ -427,10 +427,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->GetPointData()->AddArray(labels);
 	output->SetBlock(1, particles);
 
-	//
-	vtkPolyData *filteredBoundaries = vtkPolyData::New();
-	filterBounadries(Boundaries, filteredBoundaries);
-	output->SetBlock(2, filteredBoundaries);
+	// //
+	// vtkPolyData *filteredBoundaries = vtkPolyData::New();
+	// filterBounadries(Boundaries, filteredBoundaries);
+	// output->SetBlock(2, filteredBoundaries);
 	
 	output->SetBlock(2, Boundaries);
 

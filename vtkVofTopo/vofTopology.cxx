@@ -1510,7 +1510,8 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 
 // }
 
-// basic
+// iterative
+// https://en.wikipedia.org/wiki/Trapezoidal_rule_%28differential_equations%29
 // 2100
 void advectParticles(vtkRectilinearGrid *vofGrid[2],
 		     vtkRectilinearGrid *velocityGrid[2],
@@ -1532,7 +1533,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
       double x[3];
       int ijk[3];
       double pcoords[3];
-      const int numIter = 10;
+      const int maxNumIter = 20; //32//64 - moreIter
       
       float4 pos0 = *it;
       x[0] = pos0.x;
@@ -1541,9 +1542,11 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
       vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
       float4 velocity0 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
       float4 velocity = velocity0;
+      
+      // float4 velocityPrev = velocity;
+      
+      for (int i = 0; i < maxNumIter; ++i) {
 
-      for (int i = 0; i < numIter; ++i) {
-	
 	float4 pos1 = pos0 + velocity * deltaT;
 	x[0] = pos1.x;
 	x[1] = pos1.y;
@@ -1551,7 +1554,13 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 	velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
 	float4 velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
 	
-	velocity = (velocity0 + velocity1)/2.0f;
+	velocity = (velocity0 + velocity1)/2.0f;//velocity1;//
+
+	// if (length(make_float3(velocity) - make_float3(velocityPrev)) < 0.0001f) {
+	//   break;
+	// }
+	
+	// velocityPrev = velocity;
       }
       
       *it = *it + velocity*deltaT;
@@ -1574,7 +1583,6 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
     }
   }
 }
-
 
 // // basic
 // //2100

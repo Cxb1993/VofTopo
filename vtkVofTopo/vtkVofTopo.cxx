@@ -351,17 +351,19 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 	ExtractComponents(VofGrid[1], components);
 
-	
+	// new
+	std::vector<float4> finalVelocities;
+	computeParticleVelocities(Particles, VelocityGrid[0], finalVelocities);
+	//~new	
+
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
-	LabelAdvectedParticles(components, particleLabels);
+	LabelAdvectedParticles(components, particleLabels);//, finalVelocities);
 
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
 	//
-	std::vector<float4> finalVelocities;
-	computeParticleVelocities(Particles, VelocityGrid[0], finalVelocities);
 
 	// vtkFloatArray *finalVelocitiesArray = vtkFloatArray::New();
 	// finalVelocitiesArray->SetName("FinalVelocities");
@@ -377,6 +379,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	std::map<int, float4> momentum;
 	std::map<int, std::vector<int> > labelToParticles;
 	for (int i = 0; i < particleLabels.size(); ++i) {
+	  finalVelocities[i].w = 1.0f;
 	  if (momentum.find(particleLabels[i]) == momentum.end()) {
 	    momentum[particleLabels[i]] = finalVelocities[i];
 	  }
@@ -392,6 +395,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  std::vector<int> &parts = it->second;
 	  for (int i = 0; i < parts.size(); ++i) {
 	    finalVelocities[parts[i]] = momentum[lab];
+	    if (momentum[lab].w > 0.0f) {
+	      finalVelocities[parts[i]] /= momentum[lab].w;
+	    }
 	  }
 	}
 	
@@ -959,6 +965,102 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
     else {
       labels[i] = -1.0f;
     }
+  }
+}
+
+int hierarchicalClustering(const std::vector<float4> &momenta,
+			   std::vector<int> &assignments)
+{
+  const float tol = 0.25f;
+  assignments.resize(momenta.size());
+  
+  std::vector<std::pair<float,int> > vols;
+  for (int i = 0; i < momenta.size(); ++i) {
+    vols.push_back(std::pair<float,int>(length(make_float3(momenta[i])), i));
+  }
+
+  std::sort(vols.begin(), vols.end());
+
+  int clusterId = 0;
+  assignments[vols[0].second] = clusterId;
+  for (int i = 1; i < vols.size(); ++i) {
+    if (std::abs(vols[i-1].first - vols[i].first) < tol) {
+      assignments[vols[i].second] = clusterId;
+    }
+    else {
+      assignments[vols[i].second] = ++clusterId;
+    }
+  }
+
+  return clusterId + 1;
+}
+
+// //============================================================================
+// #include <mlpack/methods/kmeans/kmeans.hpp>
+
+// using namespace mlpack::kmeans;
+
+// void k_means(std::vector<float4> &attributes,
+// 	     std::vector<int> &assignments,
+// 	     const int K)
+// {
+//   // one column is one point
+//   arma::fmat data(3, attributes.size());
+//   for (int i = 0; i < attributes.size(); ++i) {
+//     float l = length(make_float3(attributes[i]));
+//     data[i*3+0] = attributes[i].x/l;
+//     data[i*3+1] = attributes[i].y/l;
+//     data[i*3+2] = attributes[i].z/l;
+//   }
+//   // The assignments will be stored in this vector.
+//   arma::Col<size_t> assignmentsTmp(assignments.size());
+//   // Initialize with the default arguments.
+//   KMeans<> k;
+//   k.Cluster(data, K, assignmentsTmp);
+
+//   assignments.resize(assignmentsTmp.n_rows);
+//   for (int i = 0; i < assignmentsTmp.n_rows; ++i) {
+//     assignments[i] = assignmentsTmp[i];
+//   }
+// }
+
+void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
+					std::vector<float> &labels,
+					std::vector<float4> &velocities)
+{
+  std::vector<int> assignments;
+  int numClusters = hierarchicalClustering(velocities, assignments);
+
+  labels.resize(Particles.size());
+
+  vtkDataArray *data =
+    components->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  int nodeRes[3];
+  components->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+
+  for (int i = 0; i < Particles.size(); ++i) {
+
+    labels[i] = assignments[i];
+    if (Particles[i].w == 0.0f) {
+      labels[i] = -1.0f;
+      continue;
+    }
+    
+    // double x[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+    // int ijk[3];
+    // double pcoords[3];
+    // int particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
+
+    // if (particleInsideGrid) {
+      
+    //   int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+    //   float label = data->GetComponent(idx,0);
+    //   labels[i] = label;
+    // }
+    // else {
+    //   labels[i] = -1.0f;
+    // }
   }
 }
 

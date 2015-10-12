@@ -395,9 +395,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  std::vector<int> &parts = it->second;
 	  for (int i = 0; i < parts.size(); ++i) {
 	    finalVelocities[parts[i]] = momentum[lab];
-	    if (momentum[lab].w > 0.0f) {
-	      finalVelocities[parts[i]] /= momentum[lab].w;
-	    }
+	    // if (momentum[lab].w > 0.0f) {
+	    //   finalVelocities[parts[i]] /= momentum[lab].w;
+	    // }
 	  }
 	}
 	
@@ -439,6 +439,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// output->SetBlock(2, filteredBoundaries);
 	
 	output->SetBlock(2, Boundaries);
+
+	//	output->SetBlock(3, components);
 
 	//---------------
 	// vtkPolyData *intermediateParticles = vtkPolyData::New();

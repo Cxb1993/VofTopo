@@ -261,53 +261,18 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 	ExtractComponents(VofGrid[1], components);
 
-	// new
-	std::vector<float4> finalVelocities;
-	computeParticleVelocities(Particles, VelocityGrid[0], finalVelocities);
-	//~new	
 
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
-	LabelAdvectedParticles(components, particleLabels);//, finalVelocities);
+	LabelAdvectedParticles(components, particleLabels);
 
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
-	std::map<int, float4> momentum;
 	std::map<int, std::vector<int> > labelToParticles;
 	for (int i = 0; i < particleLabels.size(); ++i) {
-	  finalVelocities[i].w = 1.0f;
-	  if (momentum.find(particleLabels[i]) == momentum.end()) {
-	    momentum[particleLabels[i]] = finalVelocities[i];
-	  }
-	  else {
-	    momentum[particleLabels[i]] += finalVelocities[i];
-	  }
 	  labelToParticles[particleLabels[i]].push_back(i);
 	}
-	
-	std::map<int, std::vector<int> >::iterator it = labelToParticles.begin();
-	for (; it != labelToParticles.end(); ++it) {
-	  int lab = it->first;
-	  std::vector<int> &parts = it->second;
-	  for (int i = 0; i < parts.size(); ++i) {
-	    finalVelocities[parts[i]] = momentum[lab];
-	    // if (momentum[lab].w > 0.0f) {
-	    //   finalVelocities[parts[i]] /= momentum[lab].w;
-	    // }
-	  }
-	}
-	
-	vtkFloatArray *finalVelocitiesArray = vtkFloatArray::New();
-	finalVelocitiesArray->SetName("FinalVelocities");
-	finalVelocitiesArray->SetNumberOfComponents(1);
-	for (int i = 0; i < finalVelocities.size(); ++i) {
-
-	  float mom = length(make_float3(finalVelocities[i]));
-	  finalVelocitiesArray->InsertNextTuple1(mom);
-	}
-	Seeds->GetPointData()->AddArray(finalVelocitiesArray);      
-	//      
 
 	// Stage VI ------------------------------------------------------------
 	GenerateBoundaries(Boundaries);
@@ -528,13 +493,6 @@ void vtkVofTopo::ExchangeParticles()
 
     int bound = outOfBounds(Particles[i], LocalBounds, GlobalBounds);
     if (bound > -1) {
-      // for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
-
-      // 	int neighborId = NeighborProcesses[bound][j];
-      // 	particlesToSend[neighborId].push_back(Particles[i]);
-      // 	particleIdsToSend[neighborId].push_back(ParticleIds[i]);
-      // 	particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
-      // }
       for (int j = 0; j < numProcesses; ++j) {
 
   	int neighborId = j;
@@ -552,6 +510,13 @@ void vtkVofTopo::ExchangeParticles()
       particleProcsToKeep.push_back(ParticleProcs[i]);
     }
   }
+
+  // for (int i = 0; i < particlesToSend.size(); ++i) {
+  //   std::cout << processId << " | " << "particlesToSend[" << i << "].size() = "
+  // 	      << particlesToSend[i].size() << std::endl;
+  // }
+
+  
   Particles = particlesToKeep;
   ParticleIds = particleIdsToKeep;
   ParticleProcs = particleProcsToKeep;
@@ -563,6 +528,9 @@ void vtkVofTopo::ExchangeParticles()
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
 
+  // std::cout << processId << " | " << "particlesToRecv.size() = " << particlesToRecv.size() << std::endl;
+
+  // int numAccepted = 0;
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
     int within = withinBounds(particlesToRecv[i], LocalBounds);
@@ -570,8 +538,10 @@ void vtkVofTopo::ExchangeParticles()
       Particles.push_back(particlesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
       ParticleProcs.push_back(particleProcsToRecv[i]);
+      // ++numAccepted;
     }
   }
+  // std::cout << processId << " | " << "number of accepted = " << numAccepted << std::endl;
 }
 
 //----------------------------------------------------------------------------
@@ -800,31 +770,6 @@ int hierarchicalClustering(const std::vector<float4> &momenta,
   return clusterId + 1;
 }
 
-void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
-					std::vector<float> &labels,
-					std::vector<float4> &velocities)
-{
-  std::vector<int> assignments;
-  int numClusters = hierarchicalClustering(velocities, assignments);
-
-  labels.resize(Particles.size());
-
-  vtkDataArray *data =
-    components->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
-  int nodeRes[3];
-  components->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
-  for (int i = 0; i < Particles.size(); ++i) {
-
-    labels[i] = assignments[i];
-    if (Particles[i].w == 0.0f) {
-      labels[i] = -1.0f;
-      continue;
-    }
-  }
-}
-
 //----------------------------------------------------------------------------
 void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
 {
@@ -935,14 +880,12 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
   vtkShortArray *coords = vtkShortArray::
     SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
-  vtkFloatArray *velos = vtkFloatArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("FinalVelocities"));
 
   if (!labels || !connectivity || !coords) {
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
-  generateBoundaries(points, labels, connectivity, coords, velos, boundaries);
+  generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

@@ -205,7 +205,6 @@ void generateBoundaries(vtkPoints *points,
 			vtkFloatArray *labels,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords,
-			vtkFloatArray *velos,
 			vtkPolyData *boundaries);
 
 void regenerateBoundaries(vtkPoints *points,
@@ -232,9 +231,5 @@ void mergePatches(std::vector<float3>& vertices,
 		  std::vector<int>& indices);
 
 void mergePatches(vtkPolyData *boundaries);
-
-void computeParticleVelocities(std::vector<float4> &particles,
-			       vtkRectilinearGrid *velocityGrid,
-			       std::vector<float4> &velocities);
 
 #endif//VOFTOPOLOGY_H

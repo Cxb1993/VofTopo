@@ -1533,7 +1533,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
       double x[3];
       int ijk[3];
       double pcoords[3];
-      const int maxNumIter = 20; //32//64 - moreIter
+      const int maxNumIter = 20;
       
       float4 pos0 = *it;
       x[0] = pos0.x;
@@ -1542,8 +1542,6 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
       vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
       float4 velocity0 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
       float4 velocity = velocity0;
-      
-      // float4 velocityPrev = velocity;
       
       for (int i = 0; i < maxNumIter; ++i) {
 
@@ -1554,13 +1552,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 	velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
 	float4 velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
 	
-	velocity = (velocity0 + velocity1)/2.0f;//velocity1;//
-
-	// if (length(make_float3(velocity) - make_float3(velocityPrev)) < 0.0001f) {
-	//   break;
-	// }
-	
-	// velocityPrev = velocity;
+	velocity = (velocity0 + velocity1)/2.0f;
       }
       
       *it = *it + velocity*deltaT;
@@ -1576,9 +1568,6 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 	if (f <= g_emf0) {
 	  it->w = 0.0f;
 	}
-      }
-      else {
-	it->w = 0.0f;
       }
     }
   }
@@ -1915,7 +1904,6 @@ void generateBoundaries(vtkPoints *points,
 			vtkFloatArray *labels,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords,
-			vtkFloatArray *velos,
 			vtkPolyData *boundaries)
 {
   float co[3][12];
@@ -1931,14 +1919,6 @@ void generateBoundaries(vtkPoints *points,
   vtkFloatArray *labelsFront = vtkFloatArray::New();
   labelsFront->SetNumberOfComponents(1);
   labelsFront->SetName("FrontLabels");
-
-  // new
-  vtkFloatArray *velosBack = vtkFloatArray::New();
-  velosBack->SetNumberOfComponents(1);
-  velosBack->SetName("BackVelos");
-  vtkFloatArray *velosFront = vtkFloatArray::New();
-  velosFront->SetNumberOfComponents(1);
-  velosFront->SetName("FrontVelos");
   
   std::vector<float3> ivertices;
   ivertices.clear();
@@ -1955,8 +1935,6 @@ void generateBoundaries(vtkPoints *points,
   		   connectivity->GetComponent(i, 2)};
 
     float l0 = labels->GetValue(i);
-    float m0 = velos->GetValue(i);
-    
     float c0[3] = {coords->GetComponent(i, 0),
 		   coords->GetComponent(i, 1),
 		   coords->GetComponent(i, 2)};
@@ -1968,7 +1946,6 @@ void generateBoundaries(vtkPoints *points,
       if (conn[j] > -1) {
 
   	float l1 = labels->GetValue(conn[j]);
-	float m1 = velos->GetValue(conn[j]);
 	
   	double p1[3];
   	points->GetPoint(conn[j], p1);
@@ -1984,15 +1961,6 @@ void generateBoundaries(vtkPoints *points,
   	  labelsFront->InsertNextValue(l1);
   	  labelsFront->InsertNextValue(l1);
 
-  	  velosBack->InsertNextValue(m0);
-  	  velosBack->InsertNextValue(m0);
-  	  velosBack->InsertNextValue(m0);
-  	  velosBack->InsertNextValue(m0);
-  	  velosFront->InsertNextValue(m1);
-  	  velosFront->InsertNextValue(m1);
-  	  velosFront->InsertNextValue(m1);
-  	  velosFront->InsertNextValue(m1);
-	  
   	  float3 verts[5];
   	  float3 iverts[5];
 
@@ -2084,9 +2052,6 @@ void generateBoundaries(vtkPoints *points,
 
   boundaries->GetCellData()->AddArray(labelsBack);
   boundaries->GetCellData()->AddArray(labelsFront);
-  // new
-  boundaries->GetCellData()->AddArray(velosBack);
-  boundaries->GetCellData()->AddArray(velosFront);
 }
 
 void regenerateBoundaries(vtkPoints *points, vtkFloatArray *labels,
@@ -2418,29 +2383,4 @@ void mergePatches(vtkPolyData *boundaries)
 
   vertices->Delete();
   boundaries->SetPoints(usedVertices);
-}
-
-void computeParticleVelocities(std::vector<float4> &particles,
-			       vtkRectilinearGrid *velocityGrid,
-			       std::vector<float4> &velocities)
-{
-  int nodeRes[3];
-  velocityGrid->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  vtkDataArray *velocityArray = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
-
-  velocities.resize(particles.size());
-  std::vector<float4>::iterator it;
-  int idx = 0;
-  
-  for (it = particles.begin(); it != particles.end(); ++it) {
-
-    double x[3] = {it->x, it->y, it->z};
-    int ijk[3];
-    double pcoords[3];
-    velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-    float4 velocity = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
-    velocities[idx] = velocity;
-    ++idx;
-  }
 }

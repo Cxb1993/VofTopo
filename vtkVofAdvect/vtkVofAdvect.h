@@ -73,6 +73,7 @@ class vtkVofAdvect : public vtkPolyDataAlgorithm
   int TerminationTimeStep;
   int CurrentTimeStep;
   bool FirstIteration;
+  double Incr;
 
   std::vector<f3u1_t> Particles;
   std::vector<short> PProcessId;

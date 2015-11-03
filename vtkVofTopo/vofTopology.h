@@ -21,15 +21,15 @@ void generateSeedPoints(vtkRectilinearGrid *input,
 			int refinement,
 			vtkPoints *points,
 			vtkIntArray *connectivity,
-			vtkShortArray *coords,
-			int onlyOnInterface);
+			vtkShortArray *coords);
 
 void generateSeedPointsPLIC(vtkRectilinearGrid *input,
 			    int refinement,
 			    vtkPoints *points,
 			    vtkIntArray *connectivity,
 			    vtkShortArray *coords,
-			    int onlyOnInterface);
+			    int globalExtent[6],
+			    int numGhostLevels);
 
 void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     vtkRectilinearGrid *inputVelocity[2],
@@ -37,8 +37,8 @@ void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     const float deltaT);
 
 // multiprocess
-void findGlobalExtents(std::vector<int> &allExtents, 
-		       int globalExtents[6]);
+void findGlobalExtent(std::vector<int> &allExtents, 
+		      int globalExtent[6]);
 void findGlobalBounds(std::vector<double> &allBounds, 
 		      double globalBounds[6]);
 void findNeighbors(const int myExtents[6], 

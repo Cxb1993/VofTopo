@@ -39,7 +39,8 @@ vtkVofTopo::vtkVofTopo() :
   Seeds(0),
   StepIncr(INTEGRATION_FORWARD),
   TimestepT0(-1),
-  TimestepT1(-1)
+  TimestepT1(-1),
+  NumGhostLevels(1)
 {
   this->SetNumberOfInputPorts(2);
   this->Controller = vtkMPIController::New();
@@ -126,10 +127,10 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   int numInputs = this->GetNumberOfInputPorts();
   for (int i = 0; i < numInputs; i++) {
     vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
-    inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+    inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), NumGhostLevels);
   }
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), 1);
+  outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), NumGhostLevels);
 
   if(TimestepT0 == TimestepT1) {
 
@@ -358,7 +359,7 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
 
   generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity,
-			 seedCoords, SeedOnInterfaceOnly);
+			 seedCoords, GlobalExtent, NumGhostLevels);
   
   if (Seeds != 0) {
     Seeds->Delete();
@@ -416,29 +417,28 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
   std::vector<int> AllExtents(NUM_SIDES*numProcesses);
   Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
 
-  int GlobalExtents[NUM_SIDES];
-  findGlobalExtents(AllExtents, GlobalExtents);
+  findGlobalExtent(AllExtents, GlobalExtent);
 
   // reduce extent to one without ghost cells
-  if (LocalExtents[0] > GlobalExtents[0])
-    LocalExtents[0] += 1;
-  if (LocalExtents[1] < GlobalExtents[1])
-    LocalExtents[1] -= 1;
-  if (LocalExtents[2] > GlobalExtents[2])
-    LocalExtents[2] += 1;
-  if (LocalExtents[3] < GlobalExtents[3])
-    LocalExtents[3] -= 1;
-  if (LocalExtents[4] > GlobalExtents[4])
-    LocalExtents[4] += 1;
-  if (LocalExtents[5] < GlobalExtents[5])
-    LocalExtents[5] -= 1;
+  if (LocalExtents[0] > GlobalExtent[0])
+    LocalExtents[0] += NumGhostLevels;
+  if (LocalExtents[1] < GlobalExtent[1])
+    LocalExtents[1] -= NumGhostLevels;
+  if (LocalExtents[2] > GlobalExtent[2])
+    LocalExtents[2] += NumGhostLevels;
+  if (LocalExtents[3] < GlobalExtent[3])
+    LocalExtents[3] -= NumGhostLevels;
+  if (LocalExtents[4] > GlobalExtent[4])
+    LocalExtents[4] += NumGhostLevels;
+  if (LocalExtents[5] < GlobalExtent[5])
+    LocalExtents[5] -= NumGhostLevels;
 
   // send extents again
   Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
 
   NeighborProcesses.clear();
   NeighborProcesses.resize(NUM_SIDES);
-  findNeighbors(LocalExtents, GlobalExtents, AllExtents, NeighborProcesses);
+  findNeighbors(LocalExtents, GlobalExtent, AllExtents, NeighborProcesses);
 
   NumNeighbors = 0;
   for (int i = 0; i < NeighborProcesses.size(); ++i) {

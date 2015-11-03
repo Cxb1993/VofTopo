@@ -121,15 +121,9 @@
 	</Documentation>
       </IntVectorProperty>
 
-      <IntVectorProperty
-          name="SeedOnInterfaceOnly"
-	  label="Seed only on interface"
-          command="SetSeedOnInterfaceOnly"
-          number_of_elements="1"
-          default_values="0">
-	<BooleanDomain name="bool"/>
-      </IntVectorProperty>
-
+      <Hints>
+      	<ShowInMenu category="Extensions" />
+      </Hints>
 
     </SourceProxy>
   </ProxyGroup>

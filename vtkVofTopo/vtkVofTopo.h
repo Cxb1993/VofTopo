@@ -1,7 +1,6 @@
 #ifndef __vtkVofTopo_h
 #define __vtkVofTopo_h
 
-// #include "vtkPolyDataAlgorithm.h"
 #include "vtkMultiBlockDataSetAlgorithm.h"
 #include "helper_math.h"
 #include <map>
@@ -34,9 +33,6 @@ public:
 
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
-
-  vtkGetMacro(SeedOnInterfaceOnly, int);
-  vtkSetMacro(SeedOnInterfaceOnly, int);
 
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
@@ -118,10 +114,11 @@ private:
   double GlobalBounds[NUM_SIDES];
   std::vector<std::vector<int> > NeighborProcesses;
   int NumNeighbors;
+  int NumGhostLevels;
+  int GlobalExtent[NUM_SIDES];
 
   // Seeds
   int Refinement;
-  int SeedOnInterfaceOnly;
   vtkPolyData *Seeds;
 
   // Particles

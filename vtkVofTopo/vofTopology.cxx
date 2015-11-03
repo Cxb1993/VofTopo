@@ -92,7 +92,8 @@ namespace
 		      const std::vector<float> &lstar,
 		      const std::vector<float> &normalsInt,
 		      const double bounds[6],
-		      const int cell_x, const int cell_y, const int cell_z, 
+		      const int cell_x, const int cell_y, const int cell_z,
+		      const int idx,
 		      std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> &seedPos,
 		      int &seedIdx)
   {
@@ -117,8 +118,6 @@ namespace
       scale[1] /= 2.0f;
       scale[2] /= 2.0f;
     }
-
-    int idx = cell_x + cell_y*cellRes[0] + cell_z*cellRes[0]*cellRes[1];
 
     float attachPoint[3] =
       {normalsInt[idx*3+0]>0 ? cellCenter[0]-cellSize[0]/2.0f : cellCenter[0]+cellSize[0]/2.0f,
@@ -145,7 +144,7 @@ namespace
 	  float d = posVec[0]*n[0] + posVec[1]*n[1] + posVec[2]*n[2];
 	  d = std::abs(d);
 
-	  if (pointWithinBounds(seed, bounds)  &&
+	  if (pointWithinBounds(seed, bounds) &&
 	      (f < g_emf1 && d < lstar[idx] || f >= g_emf1)) {	    
 
 	    seeds->InsertNextPoint(seed);
@@ -600,8 +599,7 @@ void generateSeedPoints(vtkRectilinearGrid *input,
 			int refinement,
 			vtkPoints *points,
 			vtkIntArray *connectivity,
-			vtkShortArray *coords,
-			int onlyOnInterface)
+			vtkShortArray *coords)
 {
   vtkDataArray *data =
     input->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
@@ -643,27 +641,24 @@ void generateSeedPoints(vtkRectilinearGrid *input,
     for (int j = 0; j < cellRes[1]; ++j) {
       for (int i = 0; i < cellRes[0]; ++i) {
 
-	if (!onlyOnInterface || cellOnInterface(data, cellRes, i, j, k)) {
+	float f = data->GetComponent(0,idx);
+	if (f > 0.0f) {
+	  float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
+				 coordCenters[1]->GetComponent(j,0),
+				 coordCenters[2]->GetComponent(k,0)};
+	  float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
+			       coordNodes[0]->GetComponent(i,0),
+			       coordNodes[1]->GetComponent(j+1,0) - 
+			       coordNodes[1]->GetComponent(j,0),
+			       coordNodes[2]->GetComponent(k+1,0) - 
+			       coordNodes[2]->GetComponent(k,0)};
 
-	  float f = data->GetComponent(0,idx);
-	  if (f > 0.0f) {
-	    float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
-				   coordCenters[1]->GetComponent(j,0),
-				   coordCenters[2]->GetComponent(k,0)};
-	    float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
-				 coordNodes[0]->GetComponent(i,0),
-				 coordNodes[1]->GetComponent(j+1,0) - 
-				 coordNodes[1]->GetComponent(j,0),
-				 coordNodes[2]->GetComponent(k+1,0) - 
-				 coordNodes[2]->GetComponent(k,0)};
+	  float gradf[3];
+	  computeGradient(data, cellRes, i, j, k, coordCenters, gradf);
 
-	    float gradf[3];
-	    computeGradient(data, cellRes, i, j, k, coordCenters, gradf);
-
-	    placeSeeds(points, cellCenter, cellSize, refinement, f, gradf,
-		       bounds, i+extent[0], j+extent[2], k+extent[4], seedPos,
-		       seedIdx);
-	  }
+	  placeSeeds(points, cellCenter, cellSize, refinement, f, gradf,
+		     bounds, i+extent[0], j+extent[2], k+extent[4], seedPos,
+		     seedIdx);
 	}
   	++idx;
       }
@@ -1059,9 +1054,9 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 			    vtkPoints *points,
 			    vtkIntArray *connectivity,
 			    vtkShortArray *coords,
-			    int onlyOnInterface)
-{
-  
+			    int globalExtent[6],
+			    int numGhostLevels)
+{  
   vtkDataArray *vofArray =
     vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   vtkDataArray *coordNodes[3] = {vofGrid->GetXCoordinates(),
@@ -1079,7 +1074,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 
   for (int c = 0; c < 3; ++c) {
     for (int i = 0; i < cellRes[c]; ++i) {
-      dx[c][i] = coordNodes[c]->GetComponent(0,i+1) - coordNodes[c]->GetComponent(0,i);
+      dx[c][i] = coordNodes[c]->GetComponent(i+1,0) - coordNodes[c]->GetComponent(i,0);
     }
   }
 
@@ -1121,33 +1116,44 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 
   //---------------------------------------------------------------------------
   // populate the grid with seed points
-  int idx = 0;
-  for (int k = 0; k < cellRes[2]; ++k) {
-    for (int j = 0; j < cellRes[1]; ++j) {
-      for (int i = 0; i < cellRes[0]; ++i) {
+  // int idx = 0;
+  float cellCenter[3];
+  float cellSize[3];
 
-	if (!onlyOnInterface || cellOnInterface(data, cellRes, i, j, k)) {
+  int imin = extent[0] > globalExtent[0] ? numGhostLevels : 0;
+  int imax = extent[1] < globalExtent[1] ? cellRes[0]-numGhostLevels : cellRes[0];
+  int jmin = extent[2] > globalExtent[2] ? numGhostLevels : 0;
+  int jmax = extent[3] < globalExtent[3] ? cellRes[1]-numGhostLevels : cellRes[1];
+  int kmin = extent[4] > globalExtent[4] ? numGhostLevels : 0;
+  int kmax = extent[5] < globalExtent[5] ? cellRes[2]-numGhostLevels : cellRes[2];
 
-	  float f = data->GetComponent(0,idx);
-	  if (f > g_emf0) {
-	    float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
-				   coordCenters[1]->GetComponent(j,0),
-				   coordCenters[2]->GetComponent(k,0)};
-	    float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
-				 coordNodes[0]->GetComponent(i,0),
-				 coordNodes[1]->GetComponent(j+1,0) - 
-				 coordNodes[1]->GetComponent(j,0),
-				 coordNodes[2]->GetComponent(k+1,0) - 
-				 coordNodes[2]->GetComponent(k,0)};
+  int kcur = kmin;
+  for (int k = kmin; k < kmax; ++k) {
+    cellCenter[2] = coordCenters[2]->GetComponent(kcur,0);
+    cellSize[2] = coordNodes[2]->GetComponent(kcur+1,0) - coordNodes[2]->GetComponent(kcur,0);
 
-	    placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes, f, lstar, normalsInt,
-			   bounds, i+extent[0], j+extent[2], k+extent[4], seedPos,
-			   seedIdx);
-	  }
+    int jcur = jmin;
+    for (int j = jmin; j < jmax; ++j) {      
+      cellCenter[1] = coordCenters[1]->GetComponent(jcur,0);
+      cellSize[1] = coordNodes[1]->GetComponent(jcur+1,0) - coordNodes[1]->GetComponent(jcur,0);
+
+      int icur = imin;
+      for (int i = imin; i < imax; ++i) {	
+	cellCenter[0] = coordCenters[0]->GetComponent(icur,0);
+	cellSize[0] = coordNodes[0]->GetComponent(icur+1,0) - coordNodes[0]->GetComponent(icur,0);
+
+	int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+	float f = data->GetComponent(0,idx);
+	if (f > g_emf0) {
+
+	  placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes, f, lstar, normalsInt,
+			 bounds, i, j, k, idx, seedPos, seedIdx);
 	}
-  	++idx;
+	++icur;
       }
+      ++jcur;
     }
+    ++kcur;
   }
 
   connectivity->SetName("Connectivity");
@@ -1618,19 +1624,19 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 // }
 
 // multiprocess
-void findGlobalExtents(std::vector<int> &allExtents, 
-		       int globalExtents[6])
+void findGlobalExtent(std::vector<int> &allExtents, 
+		      int globalExtent[6])
 {
-  globalExtents[0] = globalExtents[2] = globalExtents[4] = std::numeric_limits<int>::max();
-  globalExtents[1] = globalExtents[3] = globalExtents[5] = - globalExtents[0];
+  globalExtent[0] = globalExtent[2] = globalExtent[4] = std::numeric_limits<int>::max();
+  globalExtent[1] = globalExtent[3] = globalExtent[5] = - globalExtent[0];
 
   for (int i = 0; i < allExtents.size()/6; ++i) {
-    if (globalExtents[0] > allExtents[i*6+0]) globalExtents[0] = allExtents[i*6+0];
-    if (globalExtents[1] < allExtents[i*6+1]) globalExtents[1] = allExtents[i*6+1];
-    if (globalExtents[2] > allExtents[i*6+2]) globalExtents[2] = allExtents[i*6+2];
-    if (globalExtents[3] < allExtents[i*6+3]) globalExtents[3] = allExtents[i*6+3];
-    if (globalExtents[4] > allExtents[i*6+4]) globalExtents[4] = allExtents[i*6+4];
-    if (globalExtents[5] < allExtents[i*6+5]) globalExtents[5] = allExtents[i*6+5];
+    if (globalExtent[0] > allExtents[i*6+0]) globalExtent[0] = allExtents[i*6+0];
+    if (globalExtent[1] < allExtents[i*6+1]) globalExtent[1] = allExtents[i*6+1];
+    if (globalExtent[2] > allExtents[i*6+2]) globalExtent[2] = allExtents[i*6+2];
+    if (globalExtent[3] < allExtents[i*6+3]) globalExtent[3] = allExtents[i*6+3];
+    if (globalExtent[4] > allExtents[i*6+4]) globalExtent[4] = allExtents[i*6+4];
+    if (globalExtent[5] < allExtents[i*6+5]) globalExtent[5] = allExtents[i*6+5];
   }
 }
 
@@ -2021,7 +2027,7 @@ void generateBoundaries(vtkPoints *points,
   mergeTriangles(vertices, ivertices, indices, mergedVertices);
   
   // for (int i = 0; i < 10; ++i)
-    smoothSurface(mergedVertices, indices);
+  // smoothSurface(mergedVertices, indices);
   
   vtkPoints *outputPoints = vtkPoints::New();
   outputPoints->SetNumberOfPoints(mergedVertices.size());

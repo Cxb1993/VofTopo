@@ -25,15 +25,27 @@ class vtkVofComponents : public vtkRectilinearGridAlgorithm
   int FillInputPortInformation( int port, vtkInformation* info );
 
   // Generate output
-  virtual int RequestInformation(vtkInformation* request,
-				 vtkInformationVector** inputVector,
-				 vtkInformationVector* outputVector);
-
+  int RequestUpdateExtent(vtkInformation *,
+			  vtkInformationVector **,
+			  vtkInformationVector *);
   virtual int RequestData(vtkInformation *, 
 			  vtkInformationVector **, 
 			  vtkInformationVector *);
 
  private:
   vtkMPIController *Controller;
+  static const int NUM_SIDES = 6;
+  double LocalBounds[NUM_SIDES];
+  double GlobalBounds[NUM_SIDES];
+  std::vector<std::vector<int> > NeighborProcesses;
+  int NumNeighbors;
+  int NumGhostLevels;
+  int GlobalExtent[NUM_SIDES];
+  
+  void GetGlobalContext(vtkInformation *inInfo);
+  
+  void ExtractComponents(vtkRectilinearGrid *vof,
+			 vtkRectilinearGrid *components);
 };
+
 #endif

@@ -26,6 +26,7 @@
 #include <limits>
 #include <set>
 #include <map>
+#include <algorithm>
 
 vtkStandardNewMacro(vtkVofAdvect);
 
@@ -261,7 +262,8 @@ vtkVofAdvect::vtkVofAdvect() :
   StartTimeStep(0),
   TerminationTimeStep(0),
   CurrentTimeStep(0),
-  FirstIteration(true)
+  FirstIteration(true),
+  Incr(1.0)
 {
   this->SetNumberOfInputPorts(3);
 
@@ -323,6 +325,12 @@ int vtkVofAdvect::RequestInformation(vtkInformation *vtkNotUsed(request),
     this->InputTimeValues.resize(numberOfInputTimeSteps);
     inInfo->Get(vtkStreamingDemandDrivenPipeline::TIME_STEPS(),
 		&this->InputTimeValues[0]);
+    
+    if (InputTimeValues.size() > 1 &&
+	InputTimeValues[0] > InputTimeValues[1]) {
+      Incr = -1.0;
+    }
+    std::sort(InputTimeValues.begin(), InputTimeValues.end());
 
     if (numberOfInputTimeSteps == 1) {
       vtkWarningMacro(<<"Not enough input time steps for topology computation");
@@ -344,6 +352,11 @@ int vtkVofAdvect::RequestInformation(vtkInformation *vtkNotUsed(request),
     if (StartTimeStep > InputTimeValues.size()-1) {
       StartTimeStep = InputTimeValues.size()-1;
       vtkWarningMacro(<<"StartTimeStep out of range; setting to " << StartTimeStep);
+    }
+
+    std::cout << "InputTimeValues: " << std::endl;
+    for (double tv : InputTimeValues) {
+      std::cout << tv << std::endl;
     }
   }
   else {
@@ -367,19 +380,24 @@ int vtkVofAdvect::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 
   if(this->FirstIteration) {
     TerminationTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+    std::cout << __LINE__ << " TerminationTime = " << TerminationTime << std::endl;
     if(this->TerminationTime > this->InputTimeValues.back()) {
       this->TerminationTime = this->InputTimeValues.back();
     }
     TerminationTimeStep = findClosestTimeStep(TerminationTime, InputTimeValues);
 
+    std::cout << __LINE__ << " TerminationTimeStep = " << TerminationTimeStep << std::endl;
+    
     if (TerminationTimeStep < 0) {
       TerminationTimeStep = 0;
       vtkWarningMacro(<<"TerminationTimeStep out of range; setting to " << TerminationTimeStep);
     }
+    std::cout << __LINE__ << " TerminationTimeStep = " << TerminationTimeStep << std::endl;
     if (TerminationTimeStep > InputTimeValues.size()-1) {
       TerminationTimeStep = InputTimeValues.size()-1;
       vtkWarningMacro(<<"TerminationTimeStep out of range; setting to " << TerminationTimeStep);
     }
+    std::cout << __LINE__ << " TerminationTimeStep = " << TerminationTimeStep << std::endl;
     CurrentTimeStep = StartTimeStep;
   }
 
@@ -420,7 +438,10 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
     SafeDownCast(inInfoParticles->Get(vtkDataObject::DATA_OBJECT()));
 
   int processId = 0;
-  int numProcesses = Controller->GetNumberOfProcesses();
+  int numProcesses = 0;
+  if (Controller->GetCommunicator() != 0) {
+    numProcesses = Controller->GetNumberOfProcesses();
+  }
   if (numProcesses > 0) { 
     processId = Controller->GetLocalProcessId();
   }
@@ -496,7 +517,7 @@ int vtkVofAdvect::RequestData(vtkInformation *request,
   // processing here
   if (StartTimeStep < TerminationTimeStep && 
       CurrentTimeStep < TerminationTimeStep) {
-
+    std::cout << StartTimeStep << " " << CurrentTimeStep << " " << TerminationTimeStep << std::endl;
     std::cout << "{" << processId << "} [" << CurrentTimeStep << "] advection start" << std::endl;
     Advect(inputVofGrid, inputVelocityGrid);
     std::cout << "{" << processId << "} [" << CurrentTimeStep << "] advection end" << std::endl;
@@ -631,8 +652,11 @@ int vtkVofAdvect::Advect(vtkRectilinearGrid *inputVofGrid,
   getGridData(inputVelocityGrid, vtkDataSetAttributes::VECTORS, &velocityArray);  
 
   float dt = InputTimeValues[CurrentTimeStep+1] - InputTimeValues[CurrentTimeStep];
+  dt *= Incr;
+  std::cout << "dt = " << dt << std::endl;
+  
   // Time step in the simulation data might be incorrent, in which case we set it
-  // manually
+  // manually  
   if (TimeStepDelta != 0.0) {
     dt = TimeStepDelta;    
   }

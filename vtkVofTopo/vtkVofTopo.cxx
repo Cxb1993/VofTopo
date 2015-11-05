@@ -37,7 +37,7 @@ vtkVofTopo::vtkVofTopo() :
   ComputeComponentLabels(1),
   ComputeSplitTime(0),
   Seeds(0),
-  StepIncr(INTEGRATION_FORWARD),
+  Incr(1.0),
   TimestepT0(-1),
   TimestepT1(-1),
   NumGhostLevels(1)
@@ -92,6 +92,12 @@ int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
     this->InputTimeValues.resize(numberOfInputTimeSteps);
     inInfo->Get(vtkStreamingDemandDrivenPipeline::TIME_STEPS(),
 		&this->InputTimeValues[0]);
+
+    if (InputTimeValues.size() > 1 &&
+	InputTimeValues[0] > InputTimeValues[1]) {
+      Incr = -1.0;
+    }
+    std::sort(InputTimeValues.begin(), InputTimeValues.end());
 
     if (numberOfInputTimeSteps == 1) {
       vtkWarningMacro(<<"Not enough input time steps for topology computation");
@@ -156,10 +162,6 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       LastLoadedTimestep = -1;
     }
 
-    if (StepIncr < 0) {
-      UseCache = false;
-    }
-
     if (UseCache) {
       ++TimestepT1;
     }
@@ -175,15 +177,9 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
       vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
 
       if (TimestepT1 < static_cast<int>(InputTimeValues.size())) {	
-	if (StepIncr > 0) {
-	  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
-		      InputTimeValues[TimestepT1]);
-	  LastLoadedTimestep = TimestepT1;
-	}
-	if (StepIncr < 0) {
-	  inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
-		      InputTimeValues[TargetTimeStep - (TimestepT1 - InitTimeStep)]);
-	}
+	inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP(),
+		    InputTimeValues[TimestepT1]);
+	LastLoadedTimestep = TimestepT1;
       }
     }
   }    
@@ -461,7 +457,7 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
     dt = TimeStepDelta;
   }
   
-  dt *= StepIncr;
+  dt *= Incr;
   advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
@@ -510,13 +506,7 @@ void vtkVofTopo::ExchangeParticles()
       particleProcsToKeep.push_back(ParticleProcs[i]);
     }
   }
-
-  // for (int i = 0; i < particlesToSend.size(); ++i) {
-  //   std::cout << processId << " | " << "particlesToSend[" << i << "].size() = "
-  // 	      << particlesToSend[i].size() << std::endl;
-  // }
-
-  
+ 
   Particles = particlesToKeep;
   ParticleIds = particleIdsToKeep;
   ParticleProcs = particleProcsToKeep;
@@ -528,9 +518,6 @@ void vtkVofTopo::ExchangeParticles()
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
 
-  // std::cout << processId << " | " << "particlesToRecv.size() = " << particlesToRecv.size() << std::endl;
-
-  // int numAccepted = 0;
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
     int within = withinBounds(particlesToRecv[i], LocalBounds);
@@ -538,10 +525,8 @@ void vtkVofTopo::ExchangeParticles()
       Particles.push_back(particlesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
       ParticleProcs.push_back(particleProcsToRecv[i]);
-      // ++numAccepted;
     }
   }
-  // std::cout << processId << " | " << "number of accepted = " << numAccepted << std::endl;
 }
 
 //----------------------------------------------------------------------------

@@ -40,9 +40,6 @@ public:
   vtkGetMacro(ComputeSplitTime, int);
   vtkSetMacro(ComputeSplitTime, int);
 
-  vtkGetMacro(StepIncr, int);
-  vtkSetMacro(StepIncr, int);
-
 //~GUI -------------------------------
 
 protected:
@@ -99,10 +96,7 @@ private:
   int ComputeComponentLabels;
   int ComputeSplitTime;
 
-  // Integration direction
-  static const int INTEGRATION_FORWARD = 1;
-  static const int INTEGRATION_BACKWARD = -1;
-  int StepIncr;
+  double Incr;
 
   // for data sets without or with incorrect time stamp information
   double TimeStepDelta;

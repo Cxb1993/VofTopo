@@ -81,18 +81,6 @@
       </IntVectorProperty>
 
       <IntVectorProperty
-          name="StepIncr"
-	  label="Integration direction"
-          command="SetStepIncr"
-          number_of_elements="1"
-          default_values="1">
-        <EnumerationDomain name="enum">
-          <Entry value="1" text="Forward"/>
-          <Entry value="-1" text="Backward"/>
-        </EnumerationDomain>
-      </IntVectorProperty>
-
-      <IntVectorProperty
           name="ComputeComponentLabels"
 	  label="Compute component labels"
           command="SetComputeComponentLabels"

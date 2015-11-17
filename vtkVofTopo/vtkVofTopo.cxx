@@ -40,7 +40,7 @@ vtkVofTopo::vtkVofTopo() :
   Incr(1.0),
   TimestepT0(-1),
   TimestepT1(-1),
-  NumGhostLevels(1)
+  NumGhostLevels(4)
 {
   this->SetNumberOfInputPorts(2);
   this->Controller = vtkMPIController::New();
@@ -224,9 +224,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   // Stage I ---------------------------------------------------------------
   if (TimestepT0 == TimestepT1) {
     if (!UseCache) {
-      GenerateSeeds(VofGrid[0]);
-
-      InitParticles();
+      
+      InitParticles(VofGrid[0]);
+      InitVelocities(VelocityGrid[0]);
 
       Boundaries->SetPoints(vtkPoints::New());
       vtkCellArray *cells = vtkCellArray::New();
@@ -348,7 +348,7 @@ void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
+void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof)
 {
   vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
   vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
@@ -357,19 +357,6 @@ void vtkVofTopo::GenerateSeeds(vtkRectilinearGrid *vof)
   generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity,
 			 seedCoords, GlobalExtent, NumGhostLevels);
   
-  if (Seeds != 0) {
-    Seeds->Delete();
-  }
-  Seeds = vtkPolyData::New();
-  Seeds->SetPoints(seedPoints);
-  Seeds->GetPointData()->AddArray(seedConnectivity);
-  Seeds->GetPointData()->AddArray(seedCoords);
-}
-
-//----------------------------------------------------------------------------
-void vtkVofTopo::InitParticles()
-{
-  vtkPoints *seedPoints = Seeds->GetPoints();
   Particles.clear();
   ParticleIds.clear();
   ParticleProcs.clear();
@@ -391,8 +378,60 @@ void vtkVofTopo::InitParticles()
       ParticleProcs[i] = processId;
     }
   }
+
+  if (Seeds != 0) {
+    Seeds->Delete();
+  }
+  Seeds = vtkPolyData::New();
+  Seeds->SetPoints(seedPoints);
+  Seeds->GetPointData()->AddArray(seedConnectivity);
+  Seeds->GetPointData()->AddArray(seedCoords);
 }
 
+//----------------------------------------------------------------------------
+void vtkVofTopo::InitVelocities(vtkRectilinearGrid *velocity)
+{
+  Velocities.clear();
+  vtkPoints *seedPoints = Seeds->GetPoints();
+  Velocities.resize(seedPoints->GetNumberOfPoints());
+
+  initVelocities(velocity, Particles, Velocities);
+}
+void computeBoundsWithoutGhost(double globalBounds[6], double localBounds[6], 
+			       vtkDataArray *xCoordinates, 
+			       vtkDataArray *yCoordinates, 
+			       vtkDataArray *zCoordinates, 
+			       double boundsNoGhosts[6])
+{
+  boundsNoGhosts[0] = localBounds[0];
+  boundsNoGhosts[1] = localBounds[1];
+  boundsNoGhosts[2] = localBounds[2];
+  boundsNoGhosts[3] = localBounds[3];
+  boundsNoGhosts[4] = localBounds[4];
+  boundsNoGhosts[5] = localBounds[5];
+
+  if (localBounds[0] != globalBounds[0]) {
+    boundsNoGhosts[0] = xCoordinates->GetComponent(1,0);
+  }
+  if (localBounds[1] != globalBounds[1]) {
+    int numCoords = xCoordinates->GetNumberOfTuples();
+    boundsNoGhosts[1] = xCoordinates->GetComponent(numCoords-2,0);
+  }
+  if (localBounds[2] != globalBounds[2]) {
+    boundsNoGhosts[2] = yCoordinates->GetComponent(1,0);
+  }
+  if (localBounds[3] != globalBounds[3]) {
+    int numCoords = yCoordinates->GetNumberOfTuples();
+    boundsNoGhosts[3] = yCoordinates->GetComponent(numCoords-2,0);
+  }
+  if (localBounds[4] != globalBounds[4]) {
+    boundsNoGhosts[4] = zCoordinates->GetComponent(1,0);
+  }
+  if (localBounds[5] != globalBounds[5]) {
+    int numCoords = zCoordinates->GetNumberOfTuples();
+    boundsNoGhosts[5] = zCoordinates->GetComponent(numCoords-2,0);
+  }
+}
 //----------------------------------------------------------------------------
 void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 {
@@ -446,6 +485,12 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
   std::vector<double> AllBounds(NUM_SIDES*numProcesses);
   Controller->AllGatherV(&LocalBounds[0], &AllBounds[0], 6, &RecvLengths[0], &RecvOffsets[0]);
   findGlobalBounds(AllBounds, GlobalBounds);
+
+  computeBoundsWithoutGhost(GlobalBounds, LocalBounds, 
+			    inputVof->GetXCoordinates(), 
+			    inputVof->GetYCoordinates(), 
+			    inputVof->GetZCoordinates(), 
+			    BoundsNoGhosts);
 }
 
 //----------------------------------------------------------------------------
@@ -458,7 +503,8 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   }
   
   dt *= Incr;
-  advectParticles(vof, velocity, Particles, dt);
+  
+  advectParticles(vof[1], velocity[1], Particles, Velocities, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -472,28 +518,32 @@ void vtkVofTopo::ExchangeParticles()
 
   // one vector for each side of the process
   std::vector<std::vector<float4> > particlesToSend(numProcesses);
+  std::vector<std::vector<float4> > velocitiesToSend(numProcesses);
   std::vector<std::vector<int> > particleIdsToSend(numProcesses);
   std::vector<std::vector<short> > particleProcsToSend(numProcesses);
   for (int i = 0; i < numProcesses; ++i) {
     particlesToSend[i].resize(0);
+    velocitiesToSend[i].resize(0);
     particleIdsToSend[i].resize(0);
     particleProcsToSend[i].resize(0);
   }
 
   std::vector<float4>::iterator it;
   std::vector<float4> particlesToKeep;
+  std::vector<float4> velocitiesToKeep;
   std::vector<int> particleIdsToKeep;
   std::vector<short> particleProcsToKeep;
 
   for (int i = 0; i < Particles.size(); ++i) {
 
-    int bound = outOfBounds(Particles[i], LocalBounds, GlobalBounds);
+    int bound = outOfBounds(Particles[i], BoundsNoGhosts, GlobalBounds);
     if (bound > -1) {
       for (int j = 0; j < numProcesses; ++j) {
 
   	int neighborId = j;
 	if (neighborId != processId) {
 	  particlesToSend[neighborId].push_back(Particles[i]);
+	  velocitiesToSend[neighborId].push_back(Velocities[i]);
 	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
 	  particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
 	}
@@ -502,27 +552,32 @@ void vtkVofTopo::ExchangeParticles()
     }
     else {
       particlesToKeep.push_back(Particles[i]);
+      velocitiesToKeep.push_back(Velocities[i]);
       particleIdsToKeep.push_back(ParticleIds[i]);
       particleProcsToKeep.push_back(ParticleProcs[i]);
     }
   }
  
   Particles = particlesToKeep;
+  Velocities = velocitiesToKeep;
   ParticleIds = particleIdsToKeep;
   ParticleProcs = particleProcsToKeep;
 
   std::vector<float4> particlesToRecv;
+  std::vector<float4> velocitiesToRecv;
   std::vector<int> particleIdsToRecv;
   std::vector<short> particleProcsToRecv;
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
+  sendData(velocitiesToSend, velocitiesToRecv, numProcesses, Controller);
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
 
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
-    int within = withinBounds(particlesToRecv[i], LocalBounds);
+    int within = withinBounds(particlesToRecv[i], BoundsNoGhosts);
     if (within) {
       Particles.push_back(particlesToRecv[i]);
+      Velocities.push_back(velocitiesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
       ParticleProcs.push_back(particleProcsToRecv[i]);
     }
@@ -870,7 +925,8 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
-  generateBoundaries(points, labels, connectivity, coords, boundaries);
+  generateBoundaries(points, labels, VofGrid[1], boundaries);
+  // generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

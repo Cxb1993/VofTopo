@@ -63,8 +63,8 @@ private:
   void operator=(const vtkVofTopo&);  // Not implemented.
 
   void GetGlobalContext(vtkInformation *inInfo);
-  void GenerateSeeds(vtkRectilinearGrid *vof);
-  void InitParticles();
+  void InitParticles(vtkRectilinearGrid *vof);
+  void InitVelocities(vtkRectilinearGrid *velocity);
   void AdvectParticles(vtkRectilinearGrid *vof[2],
 		       vtkRectilinearGrid *velocity[2]);
   void ExchangeParticles();
@@ -106,6 +106,7 @@ private:
   static const int NUM_SIDES = 6;
   double LocalBounds[NUM_SIDES];
   double GlobalBounds[NUM_SIDES];
+  double BoundsNoGhosts[NUM_SIDES];
   std::vector<std::vector<int> > NeighborProcesses;
   int NumNeighbors;
   int NumGhostLevels;
@@ -117,6 +118,7 @@ private:
 
   // Particles
   std::vector<float4> Particles;
+  std::vector<float4> Velocities;
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
   

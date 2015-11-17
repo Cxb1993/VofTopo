@@ -31,9 +31,14 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *input,
 			    int globalExtent[6],
 			    int numGhostLevels);
 
-void advectParticles(vtkRectilinearGrid *inputVof[2],
-		     vtkRectilinearGrid *inputVelocity[2],
+void initVelocities(vtkRectilinearGrid *velocity,
+		    std::vector<float4> &particles,
+		    std::vector<float4> &velocities);
+
+void advectParticles(vtkRectilinearGrid *inputVof,
+		     vtkRectilinearGrid *inputVelocity,
 		     std::vector<float4> &particles,
+		     std::vector<float4> &velocities,
 		     const float deltaT);
 
 // multiprocess
@@ -205,6 +210,11 @@ void generateBoundaries(vtkPoints *points,
 			vtkFloatArray *labels,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords,
+			vtkPolyData *boundaries);
+
+void generateBoundaries(vtkPoints *points,
+			vtkFloatArray *labels,
+			vtkRectilinearGrid *grid,			
 			vtkPolyData *boundaries);
 
 void regenerateBoundaries(vtkPoints *points,

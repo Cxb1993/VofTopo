@@ -1381,18 +1381,67 @@ int withinBounds(const float4 particle, const double bounds[6])
 }
 
 void prepareLabelsToSend(std::vector<std::vector<int> > &NeighborProcesses,
-			 const int myExtent[6], int cellRes[3], vtkFloatArray *labels,
-			 std::vector<std::vector<float4> > &labelsToSend)
+			 const int myExtent[6], const int globalExtent[6],
+			 int cellRes[3], vtkFloatArray *labels,
+			 std::vector<std::vector<float4> > &labelsToSend, int numGhosts)
 {
   const int NUM_SIDES = 6;
-  const int slabs[NUM_SIDES][6] =
-    {{0,1,                       0,cellRes[1]-1,            0,cellRes[2]-1},
-     {cellRes[0]-2,cellRes[0]-1, 0,cellRes[1]-1,            0,cellRes[2]-1},
-     {0,cellRes[0]-1,            0,1,                       0,cellRes[2]-1},
-     {0,cellRes[0]-1,            cellRes[1]-2,cellRes[1]-1, 0,cellRes[2]-1},
-     {0,cellRes[0]-1,            0,cellRes[1]-1,            0,1},
-     {0,cellRes[0]-1,            0,cellRes[1]-1,            cellRes[2]-2,cellRes[2]-1}};
+  int slabs[NUM_SIDES][6] =
+    {{0,numGhosts, 0,cellRes[1]-1, 0,cellRes[2]-1},
+     {cellRes[0]-1-numGhosts,cellRes[0]-1, 0,cellRes[1]-1, 0,cellRes[2]-1},
+     {0,cellRes[0]-1, 0,numGhosts, 0,cellRes[2]-1},
+     {0,cellRes[0]-1, cellRes[1]-1-numGhosts,cellRes[1]-1, 0,cellRes[2]-1},
+     {0,cellRes[0]-1, 0,cellRes[1]-1, 0,numGhosts},
+     {0,cellRes[0]-1, 0,cellRes[1]-1, cellRes[2]-1-numGhosts,cellRes[2]-1}};
 
+  if (myExtent[0] == globalExtent[0]) {
+    slabs[0][0] = 0;
+    slabs[0][1] = 1;
+    slabs[2][0] = 0;
+    slabs[3][0] = 0;
+    slabs[4][0] = 0;
+    slabs[5][0] = 0;
+  }
+  if (myExtent[1] == globalExtent[1]) {
+    slabs[1][0] = cellRes[0]-2;
+    slabs[1][1] = cellRes[0]-1;
+    slabs[2][1] = cellRes[0]-1;
+    slabs[3][1] = cellRes[0]-1;
+    slabs[4][1] = cellRes[0]-1;
+    slabs[5][1] = cellRes[0]-1;    
+  }
+  if (myExtent[2] == globalExtent[2]) {
+    slabs[0][2] = 0;
+    slabs[1][2] = 0;
+    slabs[2][2] = 0;
+    slabs[2][3] = 1;
+    slabs[4][2] = 0;
+    slabs[5][2] = 0;
+  }
+  if (myExtent[3] == globalExtent[3]) {
+    slabs[0][3] = cellRes[1]-1;
+    slabs[1][3] = cellRes[1]-1;
+    slabs[3][2] = cellRes[1]-2;
+    slabs[3][3] = cellRes[1]-1;
+    slabs[4][3] = cellRes[1]-1;
+    slabs[5][3] = cellRes[1]-1;    
+  }
+  if (myExtent[4] == globalExtent[4]) {
+    slabs[0][4] = 0;
+    slabs[1][4] = 0;
+    slabs[2][4] = 0;
+    slabs[3][4] = 0;
+    slabs[4][4] = 0;
+    slabs[4][5] = 1;
+  }
+  if (myExtent[5] == globalExtent[5]) {
+    slabs[0][5] = cellRes[2]-1;
+    slabs[1][5] = cellRes[2]-1;
+    slabs[2][5] = cellRes[2]-1;
+    slabs[3][5] = cellRes[2]-1;
+    slabs[5][4] = cellRes[2]-2;
+    slabs[5][5] = cellRes[2]-1;    
+  }
   for (int p = 0; p < NeighborProcesses.size(); ++p) {
     if (NeighborProcesses[p].size() > 0) {
 
@@ -1686,7 +1735,7 @@ void generateBoundaries(vtkPoints *points,
   mergeTriangles(vertices, ivertices, indices, mergedVertices);
   
   // for (int i = 0; i < 10; ++i)
-  // smoothSurface(mergedVertices, indices);
+  smoothSurface(mergedVertices, indices);
   
   vtkPoints *outputPoints = vtkPoints::New();
   outputPoints->SetNumberOfPoints(mergedVertices.size());

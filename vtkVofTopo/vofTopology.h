@@ -193,8 +193,9 @@ static void extractComponents(const T *vofField,
 }
 
 void prepareLabelsToSend(std::vector<std::vector<int> > &NeighborProcesses,
-			 const int myExtent[6], int cellRes[3], vtkFloatArray *labels,
-			 std::vector<std::vector<float4> > &labelsToSend);
+			 const int myExtent[6], const int globalExtent[6],
+			 int cellRes[3], vtkFloatArray *labels,
+			 std::vector<std::vector<float4> > &labelsToSend, int numGhosts);
 
 void unifyLabelsInProcess(std::vector<std::vector<int> > &NeighborProcesses,
 			  const int myExtent[6], int cellRes[3], vtkFloatArray *labels,

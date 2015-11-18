@@ -292,7 +292,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->GetPointData()->AddArray(labels);
 	output->SetBlock(1, particles);
 
-	output->SetBlock(2, Boundaries);	
+	output->SetBlock(2, Boundaries);
+	
+	output->SetBlock(3, components);
       }
     }
     if (ComputeSplitTime) {
@@ -651,7 +653,8 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     vof->GetExtent(myExtent);
 
     std::vector<std::vector<float4> > labelsToSend(6);
-    prepareLabelsToSend(NeighborProcesses, myExtent, cellRes, labels, labelsToSend);
+    prepareLabelsToSend(NeighborProcesses, myExtent, GlobalExtent,
+			cellRes, labels, labelsToSend, NumGhostLevels);
 
     // -----------------------------------------------------------------------
     // send header to neighbors with the number of labels to be send
@@ -925,8 +928,8 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
-  generateBoundaries(points, labels, VofGrid[1], boundaries);
-  // generateBoundaries(points, labels, connectivity, coords, boundaries);
+  //generateBoundaries(points, labels, VofGrid[1], boundaries);
+  generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

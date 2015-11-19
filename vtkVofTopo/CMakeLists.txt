@@ -18,9 +18,10 @@ include_directories(${CUDA_SDK_ROOT_DIR}/common/inc)
 include_directories(${CUDA_INCLUDE_DIRS})
 
 add_library(vofTopology vofTopology.cxx)
+add_library(marchingCubes_cpu marchingCubes_cpu.cxx)
 
 add_paraview_plugin(VofTopo "1.0"
   SERVER_MANAGER_XML VofTopo.xml
   SERVER_MANAGER_SOURCES vtkVofTopo.cxx)
 
-target_link_libraries(VofTopo PRIVATE vofTopology)
+target_link_libraries(VofTopo PRIVATE vofTopology marchingCubes_cpu)

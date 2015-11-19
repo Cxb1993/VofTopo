@@ -12,6 +12,9 @@
 #include <limits>
 #include <set>
 #include <cmath>
+#include <array>
+
+#include "marchingCubes_cpu.h"
 
 namespace
 {
@@ -1773,36 +1776,128 @@ void generateBoundaries(vtkPoints *points,
 			vtkRectilinearGrid *grid,			
 			vtkPolyData *boundaries)
 {
-  int nodeRes[3];
-  grid->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  vtkDataArray *coords[3] = {grid->GetXCoordinates(), grid->GetYCoordinates(), grid->GetZCoordinates()};
+  
+  double range[2];
+  labels->GetRange(range, 0);
+  const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
 
-  std::map<int, std::vector<float4>> cellsWithPoints;
-  cellsWithPoints.clear();
-
-  int numPoints = points->GetNumberOfPoints();
-  for (int i = 0; i < numPoints; ++i) {
-
-    double p[3];
-    points->GetPoint(i, p);
-    int ijk[3];
-    double pcoords[3];
-    
-    int particleInsideGrid = grid->ComputeStructuredCoordinates(p, ijk, pcoords);
-    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-
-    if (cellsWithPoints.find(idx) == cellsWithPoints.end()) {
-      std::vector<float4> pf4(1);
-      pf4.push_back(make_float4(p[0],p[1],p[2],1.0f));
-      cellsWithPoints[idx] = pf4;
-    }
-    else {
-      float4 pf4 = make_float4(p[0],p[1],p[2],1.0f);
-      cellsWithPoints[idx].push_back(pf4);
-    }
+  // this vector stores the spatial bounds of particles with a given label
+  std::vector<std::array<float,6>> labelBounds(numLabels);
+  // this vector stores indices of all points with a given label
+  std::vector<std::vector<int>> labelPoints(numLabels);  
+  for (int i = 0; i < labelPoints.size(); ++i) {
+    labelPoints[i].clear();
+    labelBounds[i][0] = labelBounds[i][2] = labelBounds[i][4] = std::numeric_limits<float>::max();
+    labelBounds[i][1] = labelBounds[i][3] = labelBounds[i][5] = -1.0f*std::numeric_limits<float>::max();
   }
 
+  const int numPoints = points->GetNumberOfPoints();
+  for (int pIdx = 0; pIdx < numPoints; ++pIdx) {
+    
+    int pointLabel = labels->GetComponent(pIdx, 0);
+    if (pointLabel == -1) {
+      continue;
+    }
+    labelPoints[pointLabel].push_back(pIdx);
+
+    double p[3];
+    points->GetPoint(pIdx, p);
+    if (labelBounds[pointLabel][0] > p[0]) labelBounds[pointLabel][0] = p[0];
+    if (labelBounds[pointLabel][1] < p[0]) labelBounds[pointLabel][1] = p[0];
+    if (labelBounds[pointLabel][2] > p[1]) labelBounds[pointLabel][2] = p[1];
+    if (labelBounds[pointLabel][3] < p[1]) labelBounds[pointLabel][3] = p[1];
+    if (labelBounds[pointLabel][4] > p[2]) labelBounds[pointLabel][4] = p[2];
+    if (labelBounds[pointLabel][5] < p[2]) labelBounds[pointLabel][5] = p[2];	
+  }  
+
+  const float isoValue = 0.5f;
+  int vertexID = 0;
+  std::vector<unsigned int> indices;
+  std::vector<float4> vertices;
   
+  for (int i = 0; i < labelPoints.size(); ++i) {
+    
+    double x0[3] = {labelBounds[i][0], labelBounds[i][2], labelBounds[i][4]};
+    double x1[3] = {labelBounds[i][1], labelBounds[i][3], labelBounds[i][5]};
+    int ijk0[3];
+    int ijk1[3];
+    double pcoords[3];
+    
+    grid->ComputeStructuredCoordinates(x0, ijk0, pcoords);
+    grid->ComputeStructuredCoordinates(x1, ijk1, pcoords);
+
+    // this is a node-based grid
+    unsigned gridRes[3] = {ijk1[0]-ijk0[0]+2,
+			   ijk1[1]-ijk0[1]+2,
+			   ijk1[2]-ijk0[2]+2};
+    gridRes[0] += 2;
+    gridRes[1] += 2;
+    gridRes[2] += 2;
+    
+    int numElements = gridRes[0]*gridRes[1]*gridRes[2];
+    std::vector<float> field(numElements, 0.0f);
+
+    for (int j = 0; j < labelPoints[i].size(); ++j) {
+
+      double x[3];
+      points->GetPoint(labelPoints[i][j], x);
+      int ijk[3];
+      double pcoords[3];    
+      grid->ComputeStructuredCoordinates(x, ijk, pcoords);
+
+      ijk[0] = ijk[0] - ijk0[0] + 1;
+      ijk[1] = ijk[1] - ijk0[1] + 1;
+      ijk[2] = ijk[2] - ijk0[2] + 1;
+
+      int ids[8] = {ijk[0]   +  ijk[1]*gridRes[0]    +  ijk[2]*gridRes[0]*gridRes[1],
+		    ijk[0]+1 +  ijk[1]*gridRes[0]    +  ijk[2]*gridRes[0]*gridRes[1],
+		    ijk[0]+1 + (ijk[1]+1)*gridRes[0] +  ijk[2]*gridRes[0]*gridRes[1],
+		    ijk[0]   + (ijk[1]+1)*gridRes[0] +  ijk[2]*gridRes[0]*gridRes[1],
+		    ijk[0]   +  ijk[1]*gridRes[0]    + (ijk[2]+1)*gridRes[0]*gridRes[1],
+		    ijk[0]+1 +  ijk[1]*gridRes[0]    + (ijk[2]+1)*gridRes[0]*gridRes[1],
+		    ijk[0]+1 + (ijk[1]+1)*gridRes[0] + (ijk[2]+1)*gridRes[0]*gridRes[1],
+		    ijk[0]   + (ijk[1]+1)*gridRes[0] + (ijk[2]+1)*gridRes[0]*gridRes[1]};
+
+      field[ids[0]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
+      field[ids[1]] += (     pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
+      field[ids[2]] += (     pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
+      field[ids[3]] += (1.0f-pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
+      field[ids[4]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
+      field[ids[5]] += (     pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
+      field[ids[6]] += (     pcoords[0])*(     pcoords[1])*(     pcoords[2]);
+      field[ids[7]] += (1.0f-pcoords[0])*(     pcoords[1])*(     pcoords[2]);
+    }
+    extractSurface(field.data(), gridRes, coords, ijk0, isoValue,
+		   indices, vertices, vertexID);    
+  }
+  
+  vtkPoints *outputPoints = vtkPoints::New();
+  outputPoints->SetNumberOfPoints(vertices.size());
+  for (int i = 0; i < vertices.size(); ++i) {
+    
+    double p[3] = {vertices[i].x,
+  		   vertices[i].y,
+  		   vertices[i].z};
+    outputPoints->SetPoint(i, p);        
+  }
+
+  vtkIdTypeArray *cells = vtkIdTypeArray::New();
+  cells->SetNumberOfComponents(1);
+  cells->SetNumberOfTuples(indices.size()/3*4);
+  for (int i = 0; i < indices.size()/3; ++i) {
+    cells->SetValue(i*4+0,3);
+    cells->SetValue(i*4+1,indices[i*3+0]);
+    cells->SetValue(i*4+2,indices[i*3+1]);
+    cells->SetValue(i*4+3,indices[i*3+2]);
+  }
+
+  vtkCellArray *outputTriangles = vtkCellArray::New();
+  outputTriangles->SetNumberOfCells(indices.size()/3);
+  outputTriangles->SetCells(indices.size()/3, cells);
+
+  boundaries->SetPoints(outputPoints);
+  boundaries->SetPolys(outputTriangles);
 }
 
 void regenerateBoundaries(vtkPoints *points, vtkFloatArray *labels,

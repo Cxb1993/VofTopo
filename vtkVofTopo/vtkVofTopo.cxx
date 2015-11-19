@@ -928,8 +928,10 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     vtkDebugMacro("One of the input attributes is not present");
     return;
   }
-  //generateBoundaries(points, labels, VofGrid[1], boundaries);
-  generateBoundaries(points, labels, connectivity, coords, boundaries);
+
+  generateBoundaries(points, labels, VofGrid[1], boundaries);
+
+  // generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

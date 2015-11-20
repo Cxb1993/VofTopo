@@ -707,7 +707,6 @@ float4 computeNormal(const float* volume,
 void extractSurface(const float* volume, 
 		    const unsigned* res,
 		    vtkDataArray *coords[3],
-		    const int gridOffset[3],
 		    const float isoValue,		    	    
 		    std::vector<unsigned int>& indices,
 		    std::vector<float4>& vertices,
@@ -738,12 +737,12 @@ void extractSurface(const float* volume,
 		      i  + j*res[0]  + k*res[0]*res[1],
 		      im + j*res[0]  + k*res[0]*res[1]};
 
-	float vs[6] = {coords[0]->GetComponent(im+gridOffset[0],0),
-		       coords[0]->GetComponent(i +gridOffset[0],0),
-		       coords[1]->GetComponent(jm+gridOffset[1],0),
-		       coords[1]->GetComponent(j +gridOffset[1],0),
-		       coords[2]->GetComponent(km+gridOffset[2],0),
-		       coords[2]->GetComponent(k +gridOffset[2],0)};
+	float vs[6] = {coords[0]->GetComponent(im,0),
+		       coords[0]->GetComponent(i ,0),
+		       coords[1]->GetComponent(jm,0),
+		       coords[1]->GetComponent(j ,0),
+		       coords[2]->GetComponent(km,0),
+		       coords[2]->GetComponent(k ,0)};
 	
 	v[0] = make_float3(vs[0], vs[2], vs[4]);	
 	v[1] = make_float3(vs[1], vs[2], vs[4]);	

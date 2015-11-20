@@ -8,7 +8,6 @@
 void extractSurface(const float* volume, 
 		    const unsigned* resolution,
 		    vtkDataArray *coords[3],
-		    const int gridOffset[3],
 		    const float isoValue,		    	    
 		    std::vector<unsigned int>& indices,
 		    std::vector<float4>& vertices,

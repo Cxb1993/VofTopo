@@ -294,7 +294,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
 	output->SetBlock(2, Boundaries);
 	
-	output->SetBlock(3, components);
+	// output->SetBlock(3, components);
       }
     }
     if (ComputeSplitTime) {

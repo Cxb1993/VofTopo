@@ -604,8 +604,15 @@ void generateSeedPoints(vtkRectilinearGrid *input,
 			vtkIntArray *connectivity,
 			vtkShortArray *coords)
 {
+  int index;
   vtkDataArray *data =
-    input->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+    input->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  // vtkDataArray *data =
+  //   input->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   int inputRes[3];
   input->GetDimensions(inputRes);
   int cellRes[3] = {inputRes[0]-1, inputRes[1]-1, inputRes[2]-1};
@@ -714,8 +721,15 @@ void initVelocities(vtkRectilinearGrid *velocity,
   double x[3];
   int ijk[3];
   double pcoords[3];
+  int index;
   vtkDataArray *velocityArray = 
-    velocity->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+    velocity->GetCellData()->GetArray("Data", index);
+      // velocity->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  std::cout << "numParticles = " << particles.size() << std::endl;
 
   std::vector<float4>::iterator itp = particles.begin();
   std::vector<float4>::iterator itv = velocities.begin();
@@ -726,6 +740,7 @@ void initVelocities(vtkRectilinearGrid *velocity,
     x[2] = itp->z;        
     velocity->ComputeStructuredCoordinates(x, ijk, pcoords);
     *itv = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
+    std::cout << "velo: " << itv->x << " " << itv->y << " " << itv->z << std::endl;
   }
 }
 
@@ -1084,9 +1099,16 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 			    vtkShortArray *coords,
 			    int globalExtent[6],
 			    int numGhostLevels)
-{  
+{
+  int index;
   vtkDataArray *vofArray =
-    vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+    vofGrid->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+  
+  // vtkDataArray *vofArray =
+  //   vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   vtkDataArray *coordNodes[3] = {vofGrid->GetXCoordinates(),
 				 vofGrid->GetYCoordinates(),
 				 vofGrid->GetZCoordinates()};
@@ -1117,7 +1139,13 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 
   //--------------
   vtkDataArray *data =
-    vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+    vofGrid->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+  
+  // vtkDataArray *data =
+  //   vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   int inputRes[3];
   vofGrid->GetDimensions(inputRes);
   vtkDataArray *coordCenters[3];
@@ -1232,8 +1260,18 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
   int nodeRes[3];
   vofGrid->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
-  vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+  int index;
+  vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetArray("Data", index);
+    if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  // vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+  vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+  // vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
   std::vector<float4>::iterator itp = particles.begin();
   std::vector<float4>::iterator itv = velocities.begin();

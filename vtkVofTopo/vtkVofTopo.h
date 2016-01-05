@@ -37,9 +37,6 @@ public:
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
 
-  vtkGetMacro(ComputeSplitTime, int);
-  vtkSetMacro(ComputeSplitTime, int);
-
 //~GUI -------------------------------
 
 protected:
@@ -76,8 +73,6 @@ private:
   void TransferLabelsToSeeds(std::vector<float> &particleLabels);
 
   void GenerateBoundaries(vtkPolyData *boundaries);
-  void GenerateTemporalBoundaries(vtkPolyData *boundaries, bool lastStep);
-
 
   std::vector<double> InputTimeValues;
   
@@ -94,7 +89,6 @@ private:
 
   // Visualization type
   int ComputeComponentLabels;
-  int ComputeSplitTime;
 
   double Incr;
 

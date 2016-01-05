@@ -35,7 +35,6 @@ vtkVofTopo::vtkVofTopo() :
   UseCache(false),
   IterType(ITERATE_OVER_TARGET),
   ComputeComponentLabels(1),
-  ComputeSplitTime(0),
   Seeds(0),
   Incr(1.0),
   TimestepT0(-1),
@@ -235,13 +234,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       ivertices->SetName("IVertices");
       ivertices->SetNumberOfComponents(3);
       Boundaries->GetPointData()->AddArray(ivertices);
-
-      if (ComputeSplitTime) {
-	vtkFloatArray *splitTimes = vtkFloatArray::New();
-	splitTimes->SetName("SplitTime");
-	splitTimes->SetNumberOfComponents(1);
-	Boundaries->GetCellData()->AddArray(splitTimes);	  
-      }
     }
   }
 
@@ -295,37 +287,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	output->SetBlock(2, Boundaries);
 	
 	// output->SetBlock(3, components);
-      }
-    }
-    if (ComputeSplitTime) {
-
-      // Since the particles are advected for time step t and we need components
-      // at time step t+1, we set the particle advection as the last stage so 
-      // that the particles' time corresponds to the extracted components.
-      // Component extraction makes sense only after particles advection.
-
-      // Stage III -----------------------------------------------------------
-      vtkSmartPointer<vtkRectilinearGrid> components =vtkSmartPointer<vtkRectilinearGrid>::New();
-      ExtractComponents(VofGrid[1], components);
-
-      // Stage IV ------------------------------------------------------------
-      std::vector<float> particleLabels;
-      LabelAdvectedParticles(components, particleLabels);
-
-      // Stage V -------------------------------------------------------------
-      TransferLabelsToSeeds(particleLabels);
-
-      // Stage VI ------------------------------------------------------------
-      bool finishedAdvection = TimestepT1 >= TargetTimeStep;
-      if (finishedAdvection) {
-
-	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
-
-	// Generate output -----------------------------------------------------
-	output->SetBlock(1, Boundaries);
-      }
-      else {
-	GenerateTemporalBoundaries(Boundaries, finishedAdvection);
       }
     }
   }
@@ -786,33 +747,6 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
   }
 }
 
-int hierarchicalClustering(const std::vector<float4> &momenta,
-			   std::vector<int> &assignments)
-{
-  const float tol = 0.25f;
-  assignments.resize(momenta.size());
-  
-  std::vector<std::pair<float,int> > vols;
-  for (int i = 0; i < momenta.size(); ++i) {
-    vols.push_back(std::pair<float,int>(length(make_float3(momenta[i])), i));
-  }
-
-  std::sort(vols.begin(), vols.end());
-
-  int clusterId = 0;
-  assignments[vols[0].second] = clusterId;
-  for (int i = 1; i < vols.size(); ++i) {
-    if (std::abs(vols[i-1].first - vols[i].first) < tol) {
-      assignments[vols[i].second] = clusterId;
-    }
-    else {
-      assignments[vols[i].second] = ++clusterId;
-    }
-  }
-
-  return clusterId + 1;
-}
-
 //----------------------------------------------------------------------------
 void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
 {
@@ -929,38 +863,8 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     return;
   }
 
-  generateBoundaries(points, labels, VofGrid[1], boundaries);
+  generateBoundaries(points, labels, VofGrid[1], boundaries, Refinement);
 
   //generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
-}
-
-//----------------------------------------------------------------------------
-void vtkVofTopo::GenerateTemporalBoundaries(vtkPolyData *boundaries,
-					    bool lastStep)
-{
-  vtkPoints *points = Seeds->GetPoints();
-  vtkFloatArray *labels = vtkFloatArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
-  vtkIntArray *connectivity = vtkIntArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
-  vtkShortArray *coords = vtkShortArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
-
-  if (!labels || !connectivity || !coords) {
-    vtkDebugMacro("One of the input attributes is not present");
-    return;
-  }
-
-  regenerateBoundaries(points, labels, connectivity, coords, TimestepT1,
-  		       boundaries);
-
-  if (lastStep) {
-
-    mergePatches(boundaries);
-
-    // for (int i = 0; i < 4; ++i)
-    smoothSurface(boundaries->GetPoints(), boundaries->GetPolys());
-    boundaries->GetPointData()->RemoveArray("IVertices");
-  }
 }

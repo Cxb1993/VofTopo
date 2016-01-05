@@ -1,6 +1,7 @@
 #include "marchingCubes_cpu.h"
 
 #include "vtkDataArray.h"
+#include "vtkFloatArray.h"
 
 #include <vector>
 #include <cmath>
@@ -705,8 +706,8 @@ float4 computeNormal(const float* volume,
 }
 
 void extractSurface(const float* volume, 
-		    const unsigned* res,
-		    vtkDataArray *coords[3],
+		    const int*res,
+		    vtkFloatArray *coords[3],
 		    const float isoValue,		    	    
 		    std::vector<unsigned int>& indices,
 		    std::vector<float4>& vertices,

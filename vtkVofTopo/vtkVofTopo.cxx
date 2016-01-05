@@ -929,9 +929,9 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     return;
   }
 
-  //generateBoundaries(points, labels, VofGrid[1], boundaries);
+  generateBoundaries(points, labels, VofGrid[1], boundaries);
 
-  generateBoundaries(points, labels, connectivity, coords, boundaries);
+  //generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

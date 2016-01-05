@@ -729,8 +729,6 @@ void initVelocities(vtkRectilinearGrid *velocity,
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
 
-  std::cout << "numParticles = " << particles.size() << std::endl;
-
   std::vector<float4>::iterator itp = particles.begin();
   std::vector<float4>::iterator itv = velocities.begin();
   for (; itp != particles.end() && itv != velocities.end(); ++itp, ++itv) {
@@ -740,7 +738,6 @@ void initVelocities(vtkRectilinearGrid *velocity,
     x[2] = itp->z;        
     velocity->ComputeStructuredCoordinates(x, ijk, pcoords);
     *itv = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
-    std::cout << "velo: " << itv->x << " " << itv->y << " " << itv->z << std::endl;
   }
 }
 
@@ -1896,7 +1893,7 @@ void generateBoundaries(vtkPoints *points,
 			   ijk1[1]-ijk0[1]+2,
 			   ijk1[2]-ijk0[2]+2};
 
-    const int r = 2;
+    const int r = 3;
     // grid refinement comes here...
     gridRes[0] = gridRes[0]*r - 1;
     gridRes[1] = gridRes[1]*r - 1;

@@ -1549,6 +1549,7 @@ void generateBoundaries(vtkPoints *points,
   if (points->GetNumberOfPoints() == 0) {
     return;
   }
+  
   double range[2];
   labels->GetRange(range, 0);
   const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
@@ -1580,45 +1581,27 @@ void generateBoundaries(vtkPoints *points,
 
     int ijk0[3] = {labelBounds[i][0],labelBounds[i][2],labelBounds[i][4]};
     int ijk1[3] = {labelBounds[i][1],labelBounds[i][3],labelBounds[i][5]};
-    // // add one ghost cell on each side
-    ijk0[0] -= 1;
-    ijk0[1] -= 1;
-    ijk0[2] -= 1;
-    ijk1[0] += 1;
-    ijk1[1] += 1;
-    ijk1[2] += 1;
-
-    // int extent[6];
-    // grid->GetExtent(extent);
-    // std::cout << "BB: "
-    // 	      << ijk0[0] << " - " << ijk1[0] << " x "
-    //   	      << ijk0[1] << " - " << ijk1[1] << " x "
-    //   	      << ijk0[2] << " - " << ijk1[2] << std::endl
-    // 	      << "Extent: "
-    // 	      << extent[0] << " - " << extent[1] << " x "
-    //   	      << extent[2] << " - " << extent[3] << " x "
-    //   	      << extent[4] << " - " << extent[5] << std::endl;
      
     // this is a node-based grid so +1 for each dimension
-    int gridRes[3] = {ijk1[0]-ijk0[0]+1+1,
+    int subNodeRes[3] = {ijk1[0]-ijk0[0]+1+1,
 		      ijk1[1]-ijk0[1]+1+1,
 		      ijk1[2]-ijk0[2]+1+1};
 
     const int r = std::pow(2,refinement);
     // grid refinement comes here...
-    gridRes[0] = gridRes[0]*r - 1;
-    gridRes[1] = gridRes[1]*r - 1;
-    gridRes[2] = gridRes[2]*r - 1;
+    subNodeRes[0] = subNodeRes[0]*r - 1;
+    subNodeRes[1] = subNodeRes[1]*r - 1;
+    subNodeRes[2] = subNodeRes[2]*r - 1;
 
     vtkFloatArray *subcoords[3];
 
     for (int n = 0; n < 3; n++) {
       subcoords[n] = vtkFloatArray::New();
       subcoords[n]->SetNumberOfComponents(1);
-      subcoords[n]->SetNumberOfTuples(gridRes[n]);
+      subcoords[n]->SetNumberOfTuples(subNodeRes[n]);
 
       float xprev = coords[n]->GetComponent(ijk0[n], 0);    
-      int ires = gridRes[n]/r + 1;    
+      int ires = (subNodeRes[n] + 1)/r;    
       for (int j = 0; j < ires-1; ++j) {
 	float x = coords[n]->GetComponent(ijk0[n]+j+1, 0);
 	float dx = (x - xprev)/r;
@@ -1628,17 +1611,21 @@ void generateBoundaries(vtkPoints *points,
 	}
 	xprev = x;
       }
-      subcoords[n]->SetValue(gridRes[n]-1, coords[n]->GetComponent(ijk1[n]+1,0));
+      subcoords[n]->SetValue(subNodeRes[n]-1, coords[n]->GetComponent(ijk1[n],0)); // why it works??
     }
     
     vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
-    subGrid->SetDimensions(gridRes[0],gridRes[1],gridRes[2]);
+    subGrid->SetDimensions(subNodeRes[0],subNodeRes[1],subNodeRes[2]);
 
     subGrid->SetXCoordinates(subcoords[0]);
     subGrid->SetYCoordinates(subcoords[1]);
     subGrid->SetZCoordinates(subcoords[2]);
 
-    const int numElements = gridRes[0]*gridRes[1]*gridRes[2];
+    for (int j = 0; j < subcoords[1]->GetNumberOfTuples(); ++j) {
+      std::cout << j << ": " << subcoords[1]->GetComponent(j,0) << std::endl;
+    }
+
+    const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
     std::vector<float> field(numElements, 0.0f);
 
     for (int j = 0; j < labelPoints[i].size(); ++j) {
@@ -1650,14 +1637,14 @@ void generateBoundaries(vtkPoints *points,
       subGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
 
       int ids[8] =
-       {ijk[0]   +  ijk[1]*gridRes[0]    +  ijk[2]*gridRes[0]*gridRes[1],
-		    ijk[0]+1 +  ijk[1]*gridRes[0]    +  ijk[2]*gridRes[0]*gridRes[1],
-		    ijk[0]+1 + (ijk[1]+1)*gridRes[0] +  ijk[2]*gridRes[0]*gridRes[1],
-		    ijk[0]   + (ijk[1]+1)*gridRes[0] +  ijk[2]*gridRes[0]*gridRes[1],
-		    ijk[0]   +  ijk[1]*gridRes[0]    + (ijk[2]+1)*gridRes[0]*gridRes[1],
-		    ijk[0]+1 +  ijk[1]*gridRes[0]    + (ijk[2]+1)*gridRes[0]*gridRes[1],
-		    ijk[0]+1 + (ijk[1]+1)*gridRes[0] + (ijk[2]+1)*gridRes[0]*gridRes[1],
-		    ijk[0]   + (ijk[1]+1)*gridRes[0] + (ijk[2]+1)*gridRes[0]*gridRes[1]};
+	{ijk[0]   +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]+1 +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]+1 + (ijk[1]+1)*subNodeRes[0] +  ijk[2]*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]   + (ijk[1]+1)*subNodeRes[0] +  ijk[2]*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]   +  ijk[1]*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]+1 +  ijk[1]*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]+1 + (ijk[1]+1)*subNodeRes[0] + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
+	 ijk[0]   + (ijk[1]+1)*subNodeRes[0] + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1]};
 
       field[ids[0]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
       field[ids[1]] += (     pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
@@ -1669,7 +1656,7 @@ void generateBoundaries(vtkPoints *points,
       field[ids[7]] += (1.0f-pcoords[0])*(     pcoords[1])*(     pcoords[2]);
     }
 
-    extractSurface(field.data(), gridRes, subcoords, 0.501f, indices, vertices, vertexID);    
+    extractSurface(field.data(), subNodeRes, subcoords, 0.501f, indices, vertices, vertexID);    
     
     subGrid->Delete();
 

@@ -998,8 +998,6 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
   
-  // vtkDataArray *vofArray =
-  //   vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   vtkDataArray *coordNodes[3] = {vofGrid->GetXCoordinates(),
 				 vofGrid->GetYCoordinates(),
 				 vofGrid->GetZCoordinates()};
@@ -1472,232 +1470,6 @@ void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
   }
 }
 
-void setupNodeOffsets(vtkPoints *points, vtkIntArray *connectivity,
-		      float co[3][12], float coc[3][3],
-		      float po[3][12], float poc[3][3])
-{
-  const int numPoints = points->GetNumberOfPoints();
-
-  // hack: compute cell size - should actually be taken from the grid
-  // find a seed point that has neighbors in x, y, and z directions - from 
-  // distance to these points we can compute the cell size; without the hack
-  // it must be taken from grid explicitely
-  float cellSize[3];
-
-  for (int i = 0; i < numPoints; ++i) {
-
-    int conn[3] = {connectivity->GetComponent(i, 0),
-  		   connectivity->GetComponent(i, 1),
-  		   connectivity->GetComponent(i, 2)};
-    if (conn[0] > -1 && conn[1] > -1 && conn[2] > -1) {
-      
-      double p0[3];
-      points->GetPoint(i, p0);
-      double p1[3];
-      points->GetPoint(conn[0], p1);
-      double p2[3];
-      points->GetPoint(conn[1], p2);
-      double p3[3];
-      points->GetPoint(conn[2], p3);
-
-      cellSize[0] = std::abs(p1[0]-p0[0]);
-      cellSize[1] = std::abs(p2[1]-p0[1]);
-      cellSize[2] = std::abs(p3[2]-p0[2]);
-      break;
-    }
-  }
-  // hack end
-  const float cs2[3] = {cellSize[0]/2.0f, cellSize[1]/2.0f, cellSize[2]/2.0f};
-
-  const float coTmp[3][12] = {{0,0,0, 0,0,1, 0,1,1, 0,1,0},
-			      {0,0,0, 1,0,0, 1,0,1, 0,0,1},
-			      {0,0,0, 0,1,0, 1,1,0, 1,0,0}};
-  const float cocTmp[3][3] = {{0,0.5f,0.5f},
-			      {0.5f,0,0.5f},
-			      {0.5f,0.5f,0}};
-  
-  const float poTmp[3][12] = {{-cs2[0],-cs2[1],-cs2[2], 
-			       -cs2[0],-cs2[1], cs2[2], 
-			       -cs2[0], cs2[1], cs2[2], 
-			       -cs2[0], cs2[1],-cs2[2]},
-			      {-cs2[0],-cs2[1],-cs2[2], 
-			       cs2[0],-cs2[1],-cs2[2], 
-			       cs2[0],-cs2[1], cs2[2], 
-			       -cs2[0],-cs2[1], cs2[2]},
-			      {-cs2[0],-cs2[1],-cs2[2], 
-			       -cs2[0], cs2[1],-cs2[2], 
-			       cs2[0], cs2[1],-cs2[2],
-			       cs2[0],-cs2[1],-cs2[2]}};
-  const float pocTmp[3][3] = {{-cs2[0],0,0},
-			      {0,-cs2[1],0},
-			      {0,0,-cs2[2]}};
-
-  for (int i = 0; i < 3; ++i) {
-    for (int j = 0; j < 12; ++j) {
-      co[i][j] = coTmp[i][j];
-      po[i][j] = poTmp[i][j];
-    }
-    for (int j = 0; j < 3; ++j) {
-      coc[i][j] = cocTmp[i][j];
-      poc[i][j] = pocTmp[i][j];
-    }
-  }
-}
-
-void generateBoundaries(vtkPoints *points,
-			vtkFloatArray *labels,
-			vtkIntArray *connectivity,
-			vtkShortArray *coords,
-			vtkPolyData *boundaries)
-{
-  float co[3][12];
-  float coc[3][3];  
-  float po[3][12];
-  float poc[3][3];
-
-  setupNodeOffsets(points, connectivity, co, coc, po, poc);
-
-  vtkFloatArray *labelsBack = vtkFloatArray::New();
-  labelsBack->SetNumberOfComponents(1);
-  labelsBack->SetName("BackLabels");
-  vtkFloatArray *labelsFront = vtkFloatArray::New();
-  labelsFront->SetNumberOfComponents(1);
-  labelsFront->SetName("FrontLabels");
-  
-  std::vector<float3> ivertices;
-  ivertices.clear();
-  std::vector<float3> vertices;
-  vertices.clear();
-
-  int vidx = 0;
-
-  const int numPoints = points->GetNumberOfPoints();
-  for (int i = 0; i < numPoints; ++i) {
-
-    int conn[3] = {connectivity->GetComponent(i, 0),
-  		   connectivity->GetComponent(i, 1),
-  		   connectivity->GetComponent(i, 2)};
-
-    float l0 = labels->GetValue(i);
-    float c0[3] = {coords->GetComponent(i, 0),
-		   coords->GetComponent(i, 1),
-		   coords->GetComponent(i, 2)};
-
-    double p0[3];
-    points->GetPoint(i, p0);
-
-    for (int j = 0; j < 3; ++j) {
-      if (conn[j] > -1) {
-
-  	float l1 = labels->GetValue(conn[j]);
-	
-  	double p1[3];
-  	points->GetPoint(conn[j], p1);
-      
-  	if (l0 != l1) {
-
-  	  labelsBack->InsertNextValue(l0);
-  	  labelsBack->InsertNextValue(l0);
-  	  labelsBack->InsertNextValue(l0);
-  	  labelsBack->InsertNextValue(l0);
-  	  labelsFront->InsertNextValue(l1);
-  	  labelsFront->InsertNextValue(l1);
-  	  labelsFront->InsertNextValue(l1);
-  	  labelsFront->InsertNextValue(l1);
-
-  	  float3 verts[5];
-  	  float3 iverts[5];
-
-	  verts[4] = make_float3(p0[0]+poc[j][0], 
-				 p0[1]+poc[j][1], 
-				 p0[2]+poc[j][2]);
-	  iverts[4] = make_float3(c0[0]+coc[j][0], 
-				  c0[1]+coc[j][1], 
-				  c0[2]+coc[j][2]);
-
-  	  for (int k = 0; k < 4; ++k) {
-
-  	    float3 vertex = {p0[0]+po[j][k*3+0], 
-			     p0[1]+po[j][k*3+1], 
-			     p0[2]+po[j][k*3+2]};
-  	    verts[k] = vertex;
-
-  	    float3 ivertex = {c0[0]+co[j][k*3+0], 
-			      c0[1]+co[j][k*3+1], 
-			      c0[2]+co[j][k*3+2]};
-  	    iverts[k] = ivertex;
-  	  }
-  	  vertices.push_back(verts[0]);
-  	  vertices.push_back(verts[1]);
-	  vertices.push_back(verts[4]);
-  	  vertices.push_back(verts[1]);
-  	  vertices.push_back(verts[2]);
-	  vertices.push_back(verts[4]);
-  	  vertices.push_back(verts[2]);
-  	  vertices.push_back(verts[3]);
-	  vertices.push_back(verts[4]);
-	  vertices.push_back(verts[3]);
-	  vertices.push_back(verts[0]);
-	  vertices.push_back(verts[4]);
-	  
-  	  ivertices.push_back(iverts[0]);
-  	  ivertices.push_back(iverts[1]);
-	  ivertices.push_back(iverts[4]);
-  	  ivertices.push_back(iverts[1]);
-  	  ivertices.push_back(iverts[2]);
-	  ivertices.push_back(iverts[4]);
-  	  ivertices.push_back(iverts[2]);
-  	  ivertices.push_back(iverts[3]);
-	  ivertices.push_back(iverts[4]);
-  	  ivertices.push_back(iverts[3]);
-  	  ivertices.push_back(iverts[0]);
-	  ivertices.push_back(iverts[4]);
-
-	  vidx += 12;
-  	}
-      }
-    }
-  }
-
-  std::vector<int> indices;
-  std::vector<float3> mergedVertices;
-
-  mergeTriangles(vertices, ivertices, indices, mergedVertices);
-  
-  // for (int i = 0; i < 10; ++i)
-  smoothSurface(mergedVertices, indices);
-  
-  vtkPoints *outputPoints = vtkPoints::New();
-  outputPoints->SetNumberOfPoints(mergedVertices.size());
-  for (int i = 0; i < mergedVertices.size(); ++i) {
-    
-    double p[3] = {mergedVertices[i].x,
-  		   mergedVertices[i].y,
-  		   mergedVertices[i].z};
-    outputPoints->SetPoint(i, p);        
-  }
-
-  vtkIdTypeArray *cells = vtkIdTypeArray::New();
-  cells->SetNumberOfComponents(1);
-  cells->SetNumberOfTuples(indices.size()/3*4);
-  for (int i = 0; i < indices.size()/3; ++i) {
-    cells->SetValue(i*4+0,3);
-    cells->SetValue(i*4+1,indices[i*3+0]);
-    cells->SetValue(i*4+2,indices[i*3+1]);
-    cells->SetValue(i*4+3,indices[i*3+2]);
-  }
-
-  vtkCellArray *outputTriangles = vtkCellArray::New();
-  outputTriangles->SetNumberOfCells(indices.size()/3);
-  outputTriangles->SetCells(indices.size()/3, cells);
-
-  boundaries->SetPoints(outputPoints);
-  boundaries->SetPolys(outputTriangles);
-
-  boundaries->GetCellData()->AddArray(labelsBack);
-  boundaries->GetCellData()->AddArray(labelsFront);
-}
-
 void calcLabelPoints(vtkFloatArray *labels,
 		     std::vector<std::vector<int>> &labelPoints)
 {
@@ -1774,6 +1546,9 @@ void generateBoundaries(vtkPoints *points,
 			vtkPolyData *boundaries,
 			const int refinement)
 {
+  if (points->GetNumberOfPoints() == 0) {
+    return;
+  }
   double range[2];
   labels->GetRange(range, 0);
   const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
@@ -1805,20 +1580,31 @@ void generateBoundaries(vtkPoints *points,
 
     int ijk0[3] = {labelBounds[i][0],labelBounds[i][2],labelBounds[i][4]};
     int ijk1[3] = {labelBounds[i][1],labelBounds[i][3],labelBounds[i][5]};
-    // add one ghost cell on each side
+    // // add one ghost cell on each side
     ijk0[0] -= 1;
     ijk0[1] -= 1;
     ijk0[2] -= 1;
     ijk1[0] += 1;
     ijk1[1] += 1;
     ijk1[2] += 1;
+
+    // int extent[6];
+    // grid->GetExtent(extent);
+    // std::cout << "BB: "
+    // 	      << ijk0[0] << " - " << ijk1[0] << " x "
+    //   	      << ijk0[1] << " - " << ijk1[1] << " x "
+    //   	      << ijk0[2] << " - " << ijk1[2] << std::endl
+    // 	      << "Extent: "
+    // 	      << extent[0] << " - " << extent[1] << " x "
+    //   	      << extent[2] << " - " << extent[3] << " x "
+    //   	      << extent[4] << " - " << extent[5] << std::endl;
      
     // this is a node-based grid so +1 for each dimension
-    int gridRes[3] = {ijk1[0]-ijk0[0]+2,
-			   ijk1[1]-ijk0[1]+2,
-			   ijk1[2]-ijk0[2]+2};
+    int gridRes[3] = {ijk1[0]-ijk0[0]+1+1,
+		      ijk1[1]-ijk0[1]+1+1,
+		      ijk1[2]-ijk0[2]+1+1};
 
-    const int r = refinement+1;
+    const int r = std::pow(2,refinement);
     // grid refinement comes here...
     gridRes[0] = gridRes[0]*r - 1;
     gridRes[1] = gridRes[1]*r - 1;
@@ -1930,7 +1716,3 @@ void generateBoundaries(vtkPoints *points,
   boundaries->GetPointData()->AddArray(boundaryLabels);
 
 }
-
-
-
-

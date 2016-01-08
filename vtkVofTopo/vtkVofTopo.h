@@ -36,8 +36,7 @@ public:
 
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
-
-//~GUI -------------------------------
+  //~GUI -------------------------------
 
 protected:
   vtkVofTopo();

@@ -17,7 +17,6 @@
 #include "vtkMPICommunicator.h"
 #include "vtkPolyData.h"
 #include "vtkMultiBlockDataSet.h"
-#include "vtkConnectivityFilter.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkDataSetSurfaceFilter.h"
 #include <iostream>
@@ -316,11 +315,8 @@ void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
 void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof)
 {
   vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
-  vtkSmartPointer<vtkIntArray> seedConnectivity = vtkSmartPointer<vtkIntArray>::New();
-  vtkSmartPointer<vtkShortArray> seedCoords = vtkSmartPointer<vtkShortArray>::New();
 
-  generateSeedPointsPLIC(vof, Refinement, seedPoints, seedConnectivity,
-			 seedCoords, GlobalExtent, NumGhostLevels);
+  generateSeedPointsPLIC(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels);
   
   Particles.clear();
   ParticleIds.clear();
@@ -349,8 +345,6 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof)
   }
   Seeds = vtkPolyData::New();
   Seeds->SetPoints(seedPoints);
-  Seeds->GetPointData()->AddArray(seedConnectivity);
-  Seeds->GetPointData()->AddArray(seedCoords);
 }
 
 //----------------------------------------------------------------------------
@@ -855,19 +849,9 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
   vtkPoints *points = Seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::
     SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
-  // vtkIntArray *connectivity = vtkIntArray::
-  //   SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
-  // vtkShortArray *coords = vtkShortArray::
-  //   SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
-
-  // if (!labels || !connectivity || !coords) {
-  //   vtkDebugMacro("One of the input attributes is not present");
-  //   return;
-  // }
 
   generateBoundaries(points, labels, this->VofGrid[1], boundaries, this->Refinement);
 
-  //generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
 }
 

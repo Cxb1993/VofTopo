@@ -39,54 +39,6 @@ namespace
     return false;
   }
 
-  void placeSeeds(vtkPoints *seeds, const float cellCenter[3], 
-		  const float cellSize[3], const int refinement,
-		  const float f, const float gradf[3], const double bounds[6],
-		  const int cell_x, const int cell_y, const int cell_z, 
-		  std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> &seedPos,
-		  int &seedIdx)
-  {
-    float originOffset[3] = {0.0f,0.0f,0.0f};
-    float cellSizeTmp[3] = {cellSize[0], cellSize[1], cellSize[2]};
-    int subdiv = 1;
-    for (int i = 0; i < refinement; ++i) {
-      cellSizeTmp[0] /= 2.0f;
-      cellSizeTmp[1] /= 2.0f;
-      cellSizeTmp[2] /= 2.0f;
-      originOffset[0] -= cellSizeTmp[0]/2.0f;
-      originOffset[1] -= cellSizeTmp[1]/2.0f;
-      originOffset[2] -= cellSizeTmp[2]/2.0f;
-      subdiv *= 2;
-    }
-
-    for (int zr = 0; zr < subdiv; ++zr) {
-      for (int yr = 0; yr < subdiv; ++yr) {
-	for (int xr = 0; xr < subdiv; ++xr) {
-
-	  float dx[3] = {originOffset[0] + xr*cellSizeTmp[0],
-			 originOffset[1] + yr*cellSizeTmp[1],
-			 originOffset[2] + zr*cellSizeTmp[2]};
-	  float seed[3] = {cellCenter[0]+dx[0],
-			   cellCenter[1]+dx[1],
-			   cellCenter[2]+dx[2]};
-	  float df = gradf[0]*dx[0] + gradf[1]*dx[1] + gradf[2]*dx[2];
-
-	  if (pointWithinBounds(seed, bounds) && f + df >= 0.06125f) {
-	    // if (pointWithinBounds(seed, bounds) && f >= 0.99f) {
-
-	    seeds->InsertNextPoint(seed);
-	    int3 pos = {cell_x*subdiv + xr, 
-			  cell_y*subdiv + yr, 
-			  cell_z*subdiv + zr};
-	    seedPos[pos] = seedIdx;
-	    ++seedIdx;
-
-	  }
-	}
-      }
-    }    
-  }
-
   void placeSeedsPLIC(vtkPoints *seeds,
 		      const float cellCenter[3], 
 		      const float cellSize[3],
@@ -492,118 +444,6 @@ bool cellOnInterface(vtkDataArray *data, int res[3], int i, int j, int k)
   return false;
 }
 
-void generateSeedPoints(vtkRectilinearGrid *input,
-			int refinement,
-			vtkPoints *points,
-			vtkIntArray *connectivity,
-			vtkShortArray *coords)
-{
-  int index;
-  vtkDataArray *data =
-    input->GetCellData()->GetArray("Data", index);
-  if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
-
-  // vtkDataArray *data =
-  //   input->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
-  int inputRes[3];
-  input->GetDimensions(inputRes);
-  int cellRes[3] = {inputRes[0]-1, inputRes[1]-1, inputRes[2]-1};
-
-  vtkDataArray *coordCenters[3];
-  vtkDataArray *coordNodes[3];
-
-  coordNodes[0] = input->GetXCoordinates();
-  coordNodes[1] = input->GetYCoordinates();
-  coordNodes[2] = input->GetZCoordinates();
-
-  for (int c = 0; c < 3; ++c) {
-    coordCenters[c] = vtkFloatArray::New();
-    coordCenters[c]->SetNumberOfComponents(1);
-    coordCenters[c]->SetNumberOfTuples(coordNodes[c]->GetNumberOfTuples()-1);
-    for (int i = 0; i < coordCenters[c]->GetNumberOfTuples(); ++i) {
-      coordCenters[c]->
-	SetComponent(i,0,(coordNodes[c]->GetComponent(0,i) + 
-			  coordNodes[c]->GetComponent(0,i+1))/2.0f);
-    }
-  }
-
-  double bounds[6];
-  input->GetBounds(bounds);
-  int extent[6];
-  input->GetExtent(extent);
-
-  std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> seedPos(compare_int3);
-  seedPos.clear();
-  int seedIdx = 0;
-
-  //---------------------------------------------------------------------------
-  // populate the grid with seed points
-  int idx = 0;
-  for (int k = 0; k < cellRes[2]; ++k) {
-    for (int j = 0; j < cellRes[1]; ++j) {
-      for (int i = 0; i < cellRes[0]; ++i) {
-
-	float f = data->GetComponent(0,idx);
-	if (f > 0.0f) {
-	  float cellCenter[3] = {coordCenters[0]->GetComponent(i,0),
-				 coordCenters[1]->GetComponent(j,0),
-				 coordCenters[2]->GetComponent(k,0)};
-	  float cellSize[3] = {coordNodes[0]->GetComponent(i+1,0) - 
-			       coordNodes[0]->GetComponent(i,0),
-			       coordNodes[1]->GetComponent(j+1,0) - 
-			       coordNodes[1]->GetComponent(j,0),
-			       coordNodes[2]->GetComponent(k+1,0) - 
-			       coordNodes[2]->GetComponent(k,0)};
-
-	  float gradf[3];
-	  computeGradient(data, cellRes, i, j, k, coordCenters, gradf);
-
-	  placeSeeds(points, cellCenter, cellSize, refinement, f, gradf,
-		     bounds, i+extent[0], j+extent[2], k+extent[4], seedPos,
-		     seedIdx);
-	}
-  	++idx;
-      }
-    }
-  }
-
-  connectivity->SetName("Connectivity");
-  connectivity->SetNumberOfComponents(3);
-  connectivity->SetNumberOfTuples(seedPos.size());
-
-  coords->SetName("Coords");
-  coords->SetNumberOfComponents(3);
-  coords->SetNumberOfTuples(seedPos.size());
-
-  std::map<int3, int>::iterator it;
-  for (it = seedPos.begin(); it != seedPos.end(); ++it) {
-
-    int conn[3] = {-1,-1,-1};
-
-    int x = it->first.x;
-    int y = it->first.y;
-    int z = it->first.z;
-
-    int3 pos_xm = {x-1,y,z};
-    if (seedPos.find(pos_xm) != seedPos.end()) {
-      conn[0] = seedPos[pos_xm];
-    }
-    int3 pos_ym = {x,y-1,z};
-    if (seedPos.find(pos_ym) != seedPos.end()) {
-      conn[1] = seedPos[pos_ym];
-    }
-    int3 pos_zm = {x,y,z-1};
-    if (seedPos.find(pos_zm) != seedPos.end()) {
-      conn[2] = seedPos[pos_zm];
-    }
-    
-    int seedIdx = it->second;
-    connectivity->SetTuple3(seedIdx, conn[0], conn[1], conn[2]);
-    coords->SetTuple3(seedIdx, x, y, z);
-  }
-}
 
 void initVelocities(vtkRectilinearGrid *velocity,
 		    std::vector<float4> &particles,
@@ -986,8 +826,6 @@ void computeL(int cellRes[3],
 void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 			    int refinement,
 			    vtkPoints *points,
-			    vtkIntArray *connectivity,
-			    vtkShortArray *coords,
 			    int globalExtent[6],
 			    int numGhostLevels)
 {
@@ -1099,41 +937,6 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
       ++jcur;
     }
     ++kcur;
-  }
-
-  connectivity->SetName("Connectivity");
-  connectivity->SetNumberOfComponents(3);
-  connectivity->SetNumberOfTuples(seedPos.size());
-
-  coords->SetName("Coords");
-  coords->SetNumberOfComponents(3);
-  coords->SetNumberOfTuples(seedPos.size());
-  
-  std::map<int3, int>::iterator it;
-  for (it = seedPos.begin(); it != seedPos.end(); ++it) {
-
-    int conn[3] = {-1,-1,-1};
-
-    int x = it->first.x;
-    int y = it->first.y;
-    int z = it->first.z;
-
-    int3 pos_xm = {x-1,y,z};
-    if (seedPos.find(pos_xm) != seedPos.end()) {
-      conn[0] = seedPos[pos_xm];
-    }
-    int3 pos_ym = {x,y-1,z};
-    if (seedPos.find(pos_ym) != seedPos.end()) {
-      conn[1] = seedPos[pos_ym];
-    }
-    int3 pos_zm = {x,y,z-1};
-    if (seedPos.find(pos_zm) != seedPos.end()) {
-      conn[2] = seedPos[pos_zm];
-    }
-    
-    int seedIdx = it->second;
-    connectivity->SetTuple3(seedIdx, conn[0], conn[1], conn[2]);
-    coords->SetTuple3(seedIdx, x, y, z);
   }
 }
 

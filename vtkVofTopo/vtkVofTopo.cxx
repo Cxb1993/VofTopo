@@ -250,7 +250,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 	ExtractComponents(VofGrid[1], components);
 
-
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
 	LabelAdvectedParticles(components, particleLabels);
@@ -258,13 +257,15 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
-	std::map<int, std::vector<int> > labelToParticles;
-	for (int i = 0; i < particleLabels.size(); ++i) {
-	  labelToParticles[particleLabels[i]].push_back(i);
-	}
+	// // Transfer seed points from neighbors ---------------------------------
+	// vtkPolyData *boundarySeeds = vtkPolyData::New();
+	// ExchangeBoundarySeedPoints(boundarySeeds);
+	
 
 	// Stage VI ------------------------------------------------------------
 	GenerateBoundaries(Boundaries);
+
+	// boundarySeeds->Delete();
 
 	// Generate output -----------------------------------------------------
 	vtkPolyData *particles = vtkPolyData::New();
@@ -853,17 +854,17 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
   vtkPoints *points = Seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::
     SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
-  vtkIntArray *connectivity = vtkIntArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
-  vtkShortArray *coords = vtkShortArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
+  // vtkIntArray *connectivity = vtkIntArray::
+  //   SafeDownCast(Seeds->GetPointData()->GetArray("Connectivity"));
+  // vtkShortArray *coords = vtkShortArray::
+  //   SafeDownCast(Seeds->GetPointData()->GetArray("Coords"));
 
-  if (!labels || !connectivity || !coords) {
-    vtkDebugMacro("One of the input attributes is not present");
-    return;
-  }
+  // if (!labels || !connectivity || !coords) {
+  //   vtkDebugMacro("One of the input attributes is not present");
+  //   return;
+  // }
 
-  generateBoundaries(points, labels, VofGrid[1], boundaries, Refinement);
+  generateBoundaries(points, labels, this->VofGrid[1], boundaries, this->Refinement);
 
   //generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");

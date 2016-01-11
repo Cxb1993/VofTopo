@@ -73,6 +73,8 @@ private:
 
   void GenerateBoundaries(vtkPolyData *boundaries);
 
+  void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds);
+
   std::vector<double> InputTimeValues;
   
   int InitTimeStep; // time t0

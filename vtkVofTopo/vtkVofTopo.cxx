@@ -257,15 +257,16 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
-	// // Transfer seed points from neighbors ---------------------------------
-	// vtkPolyData *boundarySeeds = vtkPolyData::New();
-	// ExchangeBoundarySeedPoints(boundarySeeds);
+	// Transfer seed points from neighbors ---------------------------------
+	vtkPolyData *boundarySeeds = vtkPolyData::New();
+	if (Controller->GetCommunicator() != 0) {
+	  ExchangeBoundarySeedPoints(boundarySeeds);
+	}
 	
-
 	// Stage VI ------------------------------------------------------------
 	GenerateBoundaries(Boundaries);
 
-	// boundarySeeds->Delete();
+	boundarySeeds->Delete();
 
 	// Generate output -----------------------------------------------------
 	vtkPolyData *particles = vtkPolyData::New();
@@ -868,4 +869,10 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
 
   //generateBoundaries(points, labels, connectivity, coords, boundaries);
   boundaries->GetPointData()->RemoveArray("IVertices");
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
+{
+  
 }

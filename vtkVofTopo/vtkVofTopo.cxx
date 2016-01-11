@@ -229,10 +229,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       Boundaries->SetPoints(vtkPoints::New());
       vtkCellArray *cells = vtkCellArray::New();
       Boundaries->SetPolys(cells);
-      vtkFloatArray *ivertices = vtkFloatArray::New();
-      ivertices->SetName("IVertices");
-      ivertices->SetNumberOfComponents(3);
-      Boundaries->GetPointData()->AddArray(ivertices);
     }
   }
 
@@ -851,12 +847,34 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
     SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
 
   generateBoundaries(points, labels, this->VofGrid[1], boundaries, this->Refinement);
-
-  boundaries->GetPointData()->RemoveArray("IVertices");
 }
 
 //----------------------------------------------------------------------------
 void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 {
+  int bids[6];
+  
+  int extent[6];
+  this->VofGrid[1]->GetExtent(extent);
+
+  int nodeRes[3] = {this->VofGrid[1]->GetXCoordinates()->GetNumberOfTuples(), 
+		    this->VofGrid[1]->GetYCoordinates()->GetNumberOfTuples(), 
+		    this->VofGrid[1]->GetZCoordinates()->GetNumberOfTuples()};
+  int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
+  
+  int imin = extent[0] > GlobalExtent[0] ? NumGhostLevels : 0;
+  int imax = extent[1] < GlobalExtent[1] ? cellRes[0]-NumGhostLevels : cellRes[0];
+  int jmin = extent[2] > GlobalExtent[2] ? NumGhostLevels : 0;
+  int jmax = extent[3] < GlobalExtent[3] ? cellRes[1]-NumGhostLevels : cellRes[1];
+  int kmin = extent[4] > GlobalExtent[4] ? NumGhostLevels : 0;
+  int kmax = extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels : cellRes[2];
+
+  bids[0] = extent[0] > GlobalExtent[0] ? NumGhostLevels : -1;
+  bids[1] = extent[1] < GlobalExtent[1] ? cellRes[0]-NumGhostLevels : -1;
+  bids[2] = extent[2] > GlobalExtent[2] ? NumGhostLevels : -1;
+  bids[3] = extent[3] < GlobalExtent[3] ? cellRes[1]-NumGhostLevels : -1;
+  bids[4] = extent[4] > GlobalExtent[4] ? NumGhostLevels : -1;
+  bids[5] = extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels : -1;
+
   
 }

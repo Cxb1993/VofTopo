@@ -1501,9 +1501,13 @@ void calcLabelBounds(vtkPoints *points,
   std::vector<std::array<float,6>> labelBoundsTmp(numLabels);
   
   for (int i = 0; i < numLabels; ++i) {
-    labelBoundsTmp[i][0] = labelBoundsTmp[i][2] = labelBoundsTmp[i][4] = 
+    labelBoundsTmp[i][0] = 
+      labelBoundsTmp[i][2] = 
+      labelBoundsTmp[i][4] = 
       std::numeric_limits<float>::max();
-    labelBoundsTmp[i][1] = labelBoundsTmp[i][3] = labelBoundsTmp[i][5] = 
+    labelBoundsTmp[i][1] = 
+      labelBoundsTmp[i][3] = 
+      labelBoundsTmp[i][5] = 
       -1.0f*std::numeric_limits<float>::max();
   }
 
@@ -1534,9 +1538,13 @@ void calcLabelBounds(vtkPoints *points,
     double pcoords[3];
     
     grid->ComputeStructuredCoordinates(x0, ijk0, pcoords);
+    std::cout << "pcoords : " << pcoords[0] << " " << pcoords[1] << " " << pcoords[2] << std::endl;
     grid->ComputeStructuredCoordinates(x1, ijk1, pcoords);
+    std::cout << "pcoords : " << pcoords[0] << " " << pcoords[1] << " " << pcoords[2] << std::endl;
 
-    labelBounds[i] = {ijk0[0],ijk1[0],ijk0[1],ijk1[1],ijk0[2],ijk1[2]};
+    labelBounds[i] = {ijk0[0],ijk1[0],
+		      ijk0[1],ijk1[1],
+		      ijk0[2],ijk1[2]};
   }
 }
 
@@ -1581,6 +1589,20 @@ void generateBoundaries(vtkPoints *points,
 
     int ijk0[3] = {labelBounds[i][0],labelBounds[i][2],labelBounds[i][4]};
     int ijk1[3] = {labelBounds[i][1],labelBounds[i][3],labelBounds[i][5]};
+
+    // subgrid
+    // 112 - 144 x 104 - 144 x 106 - 150
+    // ijk
+    // 112 - 143 x 105 - 142 x 107 - 148
+
+    std::cout << "ijk0: " << ijk0[0] << " " << ijk0[1] << " " << ijk0[2] << std::endl;
+    std::cout << "ijk1: " << ijk1[0] << " " << ijk1[1] << " " << ijk1[2] << std::endl;
+    // ijk0[0] -= 1;
+    // ijk0[1] -= 1;
+    // ijk0[2] -= 1;
+    // ijk1[0] += 1;
+    // ijk1[1] += 1;
+    // ijk1[2] += 1;
      
     // this is a node-based grid so +1 for each dimension
     int subNodeRes[3] = {ijk1[0]-ijk0[0]+1+1,
@@ -1611,7 +1633,9 @@ void generateBoundaries(vtkPoints *points,
 	}
 	xprev = x;
       }
-      subcoords[n]->SetValue(subNodeRes[n]-1, coords[n]->GetComponent(ijk1[n],0)); // why it works??
+      subcoords[n]->SetValue(subNodeRes[n]-1, 
+			     coords[n]->GetComponent(ijk1[n],0)); 
+      // why it works without ijk1[n]+1??
     }
     
     vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
@@ -1621,9 +1645,9 @@ void generateBoundaries(vtkPoints *points,
     subGrid->SetYCoordinates(subcoords[1]);
     subGrid->SetZCoordinates(subcoords[2]);
 
-    for (int j = 0; j < subcoords[1]->GetNumberOfTuples(); ++j) {
-      std::cout << j << ": " << subcoords[1]->GetComponent(j,0) << std::endl;
-    }
+    // for (int j = 0; j < subcoords[1]->GetNumberOfTuples(); ++j) {
+    //   std::cout << j << ": " << subcoords[1]->GetComponent(j,0) << std::endl;
+    // }
 
     const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
     std::vector<float> field(numElements, 0.0f);
@@ -1657,7 +1681,7 @@ void generateBoundaries(vtkPoints *points,
     }
 
     extractSurface(field.data(), subNodeRes, subcoords, 0.501f, indices, vertices, vertexID);    
-    
+
     subGrid->Delete();
 
     labelOffsets[i+1] = vertices.size();

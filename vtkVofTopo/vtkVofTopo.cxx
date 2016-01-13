@@ -857,6 +857,20 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *bounda
 		     this->VofGrid[1], boundaries, this->Refinement);
 }
 
+int isInside(const int ijk[3], const int cellRes[3],
+	     const int numGhostLevels, const int outerBoundary)
+{
+  if (ijk[0] >= numGhostLevels-outerBoundary &&
+      ijk[0] < cellRes[0]-numGhostLevels+outerBoundary &&
+      ijk[1] >= numGhostLevels-outerBoundary &&
+      ijk[1] < cellRes[1]-numGhostLevels+outerBoundary &&
+      ijk[2] >= numGhostLevels-outerBoundary &&
+      ijk[2] < cellRes[2]-numGhostLevels+outerBoundary) {
+    return 1;
+  } 
+  return 0;
+}
+
 //----------------------------------------------------------------------------
 void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 {
@@ -974,11 +988,24 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
     int ijk[3];
     double pcoords[3];
     int inside = VofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    if (inside) {
+    int insideGrid = isInside(ijk,cellRes,NumGhostLevels,1);
+    if (inside && insideGrid) {
+    
       boundarySeedPoints->InsertNextPoint(x);
       boundarySeedLabels->InsertNextTuple1(labelsToRecv[i]);
     }
   }
+
+  // if (pointsToRecv.size() > 0) {
+  //   std::cout << "be: "
+  // 	      << be[0] << "-" << be[1] << " x "
+  // 	      << be[2] << "-" << be[3] << " x "
+  // 	      << be[4] << "-" << be[5] << std::endl
+  // 	      << "extent: "
+  // 	      << extent[0] << "-" << extent[1] << " x "
+  // 	      << extent[2] << "-" << extent[3] << " x "
+  // 	      << extent[4] << "-" << extent[5] << std::endl;
+  // }
   
   boundarySeeds->SetPoints(boundarySeedPoints);
   boundarySeeds->GetPointData()->AddArray(boundarySeedLabels);

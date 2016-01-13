@@ -1539,17 +1539,12 @@ void generateBoundaries(vtkPoints *points,
       continue;
     }
 
-    int ijk0[3] = {labelBounds[i][0],labelBounds[i][2],labelBounds[i][4]};
-    int ijk1[3] = {labelBounds[i][1],labelBounds[i][3],labelBounds[i][5]};
-
-    // --
-    if (labelBounds[i][0] > labelNeighborBounds[i][0]) ijk0[0] -= 1;
-    if (labelBounds[i][2] > labelNeighborBounds[i][2]) ijk0[1] -= 1;
-    if (labelBounds[i][4] > labelNeighborBounds[i][4]) ijk0[2] -= 1;
-    if (labelBounds[i][1] < labelNeighborBounds[i][1]) ijk1[0] += 1;
-    if (labelBounds[i][3] < labelNeighborBounds[i][3]) ijk1[1] += 1;
-    if (labelBounds[i][5] < labelNeighborBounds[i][5]) ijk1[2] += 1;    
-    // -- 
+    int ijk0[3] = {std::min(labelBounds[i][0], labelNeighborBounds[i][0]),
+		   std::min(labelBounds[i][2], labelNeighborBounds[i][2]),
+		   std::min(labelBounds[i][4], labelNeighborBounds[i][4])};
+    int ijk1[3] = {std::max(labelBounds[i][1], labelNeighborBounds[i][1]),
+		   std::max(labelBounds[i][3], labelNeighborBounds[i][3]),
+		   std::max(labelBounds[i][5], labelNeighborBounds[i][5])};
 
     // this is a node-based grid so +1 for each dimension
     int subNodeRes[3] = {ijk1[0]-ijk0[0]+1+1,
@@ -1561,19 +1556,19 @@ void generateBoundaries(vtkPoints *points,
     subNodeRes[0] = subNodeRes[0]*r - subone;
     subNodeRes[1] = subNodeRes[1]*r - subone;
     subNodeRes[2] = subNodeRes[2]*r - subone;
-
+    
     int extent[6] = {0, subNodeRes[0]-1,
 		     0, subNodeRes[1]-1,
 		     0, subNodeRes[2]-1};
+
     // --
     if (labelBounds[i][0] > labelNeighborBounds[i][0]) extent[0] += r;
-    if (labelBounds[i][2] > labelNeighborBounds[i][2]) extent[2] += r;
-    if (labelBounds[i][4] > labelNeighborBounds[i][4]) extent[4] += r;
     if (labelBounds[i][1] < labelNeighborBounds[i][1]) extent[1] -= r;
+    if (labelBounds[i][2] > labelNeighborBounds[i][2]) extent[2] += r;
     if (labelBounds[i][3] < labelNeighborBounds[i][3]) extent[3] -= r;
+    if (labelBounds[i][4] > labelNeighborBounds[i][4]) extent[4] += r;
     if (labelBounds[i][5] < labelNeighborBounds[i][5]) extent[5] -= r;    
     // -- 
-
 
     vtkFloatArray *subcoords[3];
     for (int n = 0; n < 3; n++) {

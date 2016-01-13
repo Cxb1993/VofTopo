@@ -71,7 +71,7 @@ private:
 			      std::vector<float> &labels);
   void TransferLabelsToSeeds(std::vector<float> &particleLabels);
 
-  void GenerateBoundaries(vtkPolyData *boundaries);
+  void GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *boundarySeeds);
 
   void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds);
 

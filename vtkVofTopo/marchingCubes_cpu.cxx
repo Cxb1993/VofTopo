@@ -708,6 +708,7 @@ float4 computeNormal(const float* volume,
 void extractSurface(const float* volume, 
 		    const int*res,
 		    vtkFloatArray *coords[3],
+		    const int extent[6],
 		    const float isoValue,		    	    
 		    std::vector<unsigned int>& indices,
 		    std::vector<float4>& vertices,
@@ -720,13 +721,13 @@ void extractSurface(const float* volume,
   float field[8];
   float3 v[8];
   
-  for (int k = 1; k < res[2]; k++) {
+  for (int k = extent[4]+1; k <= extent[5]; k++) {
     int km = k-1;
 
-    for (int j = 1; j < res[1]; j++) {
+    for (int j = extent[2]+1; j <= extent[3]; j++) {
       int jm = j-1;
       
-      for (int i = 1; i < res[0]; i++) {
+      for (int i = extent[0]; i <= extent[1]; i++) {
 	int im = i-1;
 	
 	int ids[8] = {im + jm*res[0] + km*res[0]*res[1],

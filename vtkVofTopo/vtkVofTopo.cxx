@@ -24,6 +24,8 @@
 #include <cmath>
 #include <map>
 #include <set>
+#include <unordered_set>
+#include <array>
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -259,7 +261,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	}
 	
 	// Stage VI ------------------------------------------------------------
-	GenerateBoundaries(Boundaries);
+	GenerateBoundaries(Boundaries, boundarySeeds);
 
 	boundarySeeds->Delete();
 
@@ -840,20 +842,24 @@ void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries)
+void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *boundarySeeds)
 {
   vtkPoints *points = Seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::
     SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
 
-  generateBoundaries(points, labels, this->VofGrid[1], boundaries, this->Refinement);
+  vtkPoints *boundarySeedPoints = boundarySeeds->GetPoints();
+  vtkFloatArray *boundarySeedLabels = vtkFloatArray::
+    SafeDownCast(boundarySeeds->GetPointData()->GetArray("Labels"));
+  
+  generateBoundaries(points, boundarySeedPoints,
+		     labels, boundarySeedLabels,
+		     this->VofGrid[1], boundaries, this->Refinement);
 }
 
 //----------------------------------------------------------------------------
 void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 {
-  int bids[6];
-  
   int extent[6];
   this->VofGrid[1]->GetExtent(extent);
 
@@ -869,12 +875,111 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
   int kmin = extent[4] > GlobalExtent[4] ? NumGhostLevels : 0;
   int kmax = extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels : cellRes[2];
 
-  bids[0] = extent[0] > GlobalExtent[0] ? NumGhostLevels : -1;
-  bids[1] = extent[1] < GlobalExtent[1] ? cellRes[0]-NumGhostLevels : -1;
-  bids[2] = extent[2] > GlobalExtent[2] ? NumGhostLevels : -1;
-  bids[3] = extent[3] < GlobalExtent[3] ? cellRes[1]-NumGhostLevels : -1;
-  bids[4] = extent[4] > GlobalExtent[4] ? NumGhostLevels : -1;
-  bids[5] = extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels : -1;
+  int bids[6] = {extent[0] > GlobalExtent[0] ? NumGhostLevels : -1,
+		 extent[1] < GlobalExtent[1] ? cellRes[0]-NumGhostLevels-1 : -1,
+		 extent[2] > GlobalExtent[2] ? NumGhostLevels : -1,
+		 extent[3] < GlobalExtent[3] ? cellRes[1]-NumGhostLevels-1 : -1,
+		 extent[4] > GlobalExtent[4] ? NumGhostLevels : -1,
+		 extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels-1 : -1};
 
+  std::set<std::array<int,3>> boundaryCells;
+  boundaryCells.clear();
+
+  if (bids[0] > -1) { // left
+    const int i = bids[0];
+    for (int k = kmin; k < kmax; ++k) {
+      for (int j = jmin; j < jmax; ++j) {
+	boundaryCells.emplace(std::array<int,3>{i,j,k});
+      }
+    }
+  }
+  if (bids[1] > -1) { // right
+    const int i = bids[1];
+    for (int k = kmin; k < kmax; ++k) {
+      for (int j = jmin; j < jmax; ++j) {
+	boundaryCells.emplace(std::array<int,3>{i,j,k});
+      }
+    }
+  }
+  if (bids[2] > -1) { // bottom
+    const int j = bids[2];
+    for (int k = kmin; k < kmax; ++k) {
+      for (int i = imin; i < imax; ++i) {
+	boundaryCells.emplace(std::array<int,3>{i,j,k});
+      }
+    }
+  }
+  if (bids[3] > -1) { // top
+    const int j = bids[3];
+    for (int k = kmin; k < kmax; ++k) {
+      for (int i = imin; i < imax; ++i) {
+	boundaryCells.emplace(std::array<int,3>{i,j,k});
+      }
+    }
+  }
+  if (bids[4] > -1) { // back
+    const int k = bids[4];
+    for (int j = jmin; j < jmax; ++j) {
+      for (int i = imin; i < imax; ++i) {
+	boundaryCells.emplace(std::array<int,3>{i,j,k});
+      }
+    }
+  }
+  if (bids[5] > -1) { // front
+    const int k = bids[5];
+    for (int j = jmin; j < jmax; ++j) {
+      for (int i = imin; i < imax; ++i) {
+	boundaryCells.emplace(std::array<int,3>{i,j,k});
+      }
+    }
+  }
+
+  vtkPoints *seedPoints = Seeds->GetPoints();
+  vtkFloatArray *labels = vtkFloatArray::SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+  const int numSeedPoints = seedPoints->GetNumberOfPoints();
+
+  std::vector<float3> pointsToSend;
+  std::vector<float> labelsToSend;
+  pointsToSend.clear();
+  labelsToSend.clear();
   
+  for (int i = 0; i < numSeedPoints; ++i) {
+    int ijk[3];
+    double pcoords[3];
+    double x[3];
+    seedPoints->GetPoint(i, x);
+    VofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+
+    if (boundaryCells.find(std::array<int,3>{ijk[0],ijk[1],ijk[2]}) != boundaryCells.end()) {
+      pointsToSend.push_back(make_float3(x[0],x[1],x[2]));
+      labelsToSend.push_back(labels->GetValue(i));
+    }
+  }
+
+  int numProcesses = Controller->GetNumberOfProcesses();
+  std::vector<float3> pointsToRecv;
+  std::vector<float> labelsToRecv;
+  pointsToRecv.clear();
+  labelsToRecv.clear();
+  sendData(pointsToSend, pointsToRecv, numProcesses, this->Controller);
+  sendData(labelsToSend, labelsToRecv, numProcesses, this->Controller);
+
+  vtkPoints *boundarySeedPoints = vtkPoints::New();
+  vtkFloatArray *boundarySeedLabels = vtkFloatArray::New();
+  boundarySeedLabels->SetName("Labels");
+  boundarySeedLabels->SetNumberOfComponents(1);
+  
+  for (int i = 0; i < pointsToRecv.size(); ++i) {
+    double x[3] = {pointsToRecv[i].x, pointsToRecv[i].y, pointsToRecv[i].z};
+    int ijk[3];
+    double pcoords[3];
+    int inside = VofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+    if (inside) {
+      boundarySeedPoints->InsertNextPoint(x);
+      boundarySeedLabels->InsertNextTuple1(labelsToRecv[i]);
+    }
+  }
+  
+  boundarySeeds->SetPoints(boundarySeedPoints);
+  boundarySeeds->GetPointData()->AddArray(boundarySeedLabels);
 }

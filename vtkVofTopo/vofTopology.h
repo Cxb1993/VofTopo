@@ -99,6 +99,66 @@ void sendData(const std::vector<std::vector<T> > &dataToSend, std::vector<T> &da
   }
 }
 
+template<typename T> 
+void sendData(const std::vector<T> &dataToSend, std::vector<T> &dataToRecv,
+	      const int numProcesses, vtkMPIController *controller)
+{
+  int processId = controller->GetLocalProcessId();
+  std::vector<T> allDataToSend(0);
+
+  // flatten vector<vectr<T>> to vector<T>
+  for (int i = 0; i < numProcesses; ++i) {
+    if (i == processId) {
+      continue;
+    }
+    for (int j = 0; j < dataToSend.size(); ++j) {
+      allDataToSend.push_back(dataToSend[j]);
+    }
+  }
+
+  std::vector<int> numDataToSend(numProcesses,0);
+  for (int i = 0; i < numProcesses; ++i) {
+    if (i == processId) {
+      numDataToSend[i] = 0;
+    }
+    else {
+      numDataToSend[i] = dataToSend.size();
+    }
+  }
+
+  // determine how many elements will be received from each process
+  std::vector<int> numDataToRecv(numProcesses,0);
+  std::vector<int> RecvLengths(numProcesses);
+  std::vector<int> RecvOffsets(numProcesses);
+  int numAllDataToRecv = 0;
+  for (int i = 0; i < numProcesses; ++i) {
+
+    controller->Scatter((int*)&numDataToSend[0], (int*)&numDataToRecv[i], 1, i);
+    RecvOffsets[i] = numAllDataToRecv;
+    RecvLengths[i] = numDataToRecv[i]*sizeof(T);
+    numAllDataToRecv += numDataToRecv[i];
+  }
+
+  // send actual data
+  dataToRecv.resize(numAllDataToRecv);
+
+  std::vector<vtkIdType> SendLengths(numProcesses);
+  std::vector<vtkIdType> SendOffsets(numProcesses);
+  int offset = 0;
+  for (int i = 0; i < numProcesses; ++i) {
+
+    SendLengths[i] = numDataToSend[i]*sizeof(T);
+    SendOffsets[i] = offset;
+    offset += numDataToSend[i]*sizeof(T);
+  }
+
+  for (int i = 0; i < numProcesses; ++i) {
+    controller->ScatterV((char*)&allDataToSend[0],
+  			 (char*)&dataToRecv[RecvOffsets[i]],
+  			 &SendLengths[0], &SendOffsets[0], RecvLengths[i], i);
+  }
+}
+
 // components
 static const double g_emf0 = 0.000001;
 static const double g_emf1 = 0.999999;
@@ -208,7 +268,9 @@ void generateBoundaries(vtkPoints *points,
 			vtkPolyData *boundaries);
 
 void generateBoundaries(vtkPoints *points,
+			vtkPoints *boundaryPoints,
 			vtkFloatArray *labels,
+			vtkFloatArray *boundarylabels,
 			vtkRectilinearGrid *grid,			
 			vtkPolyData *boundaries,
 			const int refinement);

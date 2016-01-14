@@ -1509,7 +1509,7 @@ void generateBoundaries(vtkPoints *points,
     labelNeighborPoints[i].clear();
   }
   calcLabelPoints(labels, labelsRange, labelPoints);
-  if (neighborPoints->GetNumberOfPoints() > 0) {
+  if (neighborPoints != nullptr && neighborPoints->GetNumberOfPoints() > 0) {
     calcLabelPoints(neighborLabels, labelsRange, labelNeighborPoints);
   }
   
@@ -1518,8 +1518,11 @@ void generateBoundaries(vtkPoints *points,
   std::vector<std::array<int,6>> labelNeighborBounds(numLabels);
   
   calcLabelBounds(points, labels, labelsRange, grid, labelBounds);
-  if (neighborPoints->GetNumberOfPoints() > 0) {
+  if (neighborPoints != nullptr && neighborPoints->GetNumberOfPoints() > 0) {
     calcLabelBounds(neighborPoints, neighborLabels, labelsRange, grid, labelNeighborBounds);
+  }
+  else {
+    labelNeighborBounds = labelBounds;
   }
 
   const float isoValue = 0.501f;
@@ -1568,7 +1571,6 @@ void generateBoundaries(vtkPoints *points,
     if (labelBounds[i][3] < labelNeighborBounds[i][3]) extent[3] -= r;
     if (labelBounds[i][4] > labelNeighborBounds[i][4]) extent[4] += r;
     if (labelBounds[i][5] < labelNeighborBounds[i][5]) extent[5] -= r;    
-    // -- 
 
     vtkFloatArray *subcoords[3];
     for (int n = 0; n < 3; n++) {
@@ -1586,7 +1588,7 @@ void generateBoundaries(vtkPoints *points,
     const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
     std::vector<float> field(numElements, 0.0f);
 
-    resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);
+    resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
     resamplePointsOnGrid(labelNeighborPoints[i], neighborPoints, subGrid, subNodeRes, field);
 
     extractSurface(field.data(), subNodeRes, subcoords, extent, 0.501f, indices, vertices, vertexID);    

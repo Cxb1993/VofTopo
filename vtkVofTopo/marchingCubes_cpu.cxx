@@ -717,7 +717,6 @@ void extractSurface(const float* volume,
   std::vector<float4> verticesTmp;
   verticesTmp.resize(0);
 
-  const float borderVal = -4096.0f;
   float field[8];
   float3 v[8];
   
@@ -727,7 +726,7 @@ void extractSurface(const float* volume,
     for (int j = extent[2]+1; j <= extent[3]; j++) {
       int jm = j-1;
       
-      for (int i = extent[0]; i <= extent[1]; i++) {
+      for (int i = extent[0]+1; i <= extent[1]; i++) {
 	int im = i-1;
 	
 	int ids[8] = {im + jm*res[0] + km*res[0]*res[1],

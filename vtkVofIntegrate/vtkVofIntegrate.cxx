@@ -194,8 +194,10 @@ int vtkVofIntegrate::RequestData(vtkInformation *request,
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  vtkMultiBlockDataSet *output =
-    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  // vtkMultiBlockDataSet *output =
+  //   vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkPolyData *output =
+    vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   if (TimestepT0 == TimestepT1 && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds
@@ -249,7 +251,7 @@ int vtkVofIntegrate::RequestData(vtkInformation *request,
 	TransferLabelsToSeeds(particleLabels);
 
 	// Generate output -----------------------------------------------------
-	vtkPolyData *particles = vtkPolyData::New();
+	// vtkPolyData *particles = vtkPolyData::New();
 	vtkPoints *ppoints = vtkPoints::New();
 	vtkFloatArray *labels = vtkFloatArray::New();
 	ppoints->SetNumberOfPoints(Particles.size());
@@ -262,9 +264,11 @@ int vtkVofIntegrate::RequestData(vtkInformation *request,
 	  ppoints->SetPoint(i, p);
 	  labels->SetValue(i, particleLabels[i]);
 	}
-	particles->SetPoints(ppoints);
-	particles->GetPointData()->AddArray(labels);
-	output->SetBlock(1, particles);
+	output->SetPoints(ppoints);
+	output->GetPointData()->AddArray(labels);
+	// particles->SetPoints(ppoints);
+	// particles->GetPointData()->AddArray(labels);	
+	// output->SetBlock(1, particles);
       }
     }
   }
@@ -273,7 +277,7 @@ int vtkVofIntegrate::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-    output->SetBlock(0, Seeds);
+    // output->SetBlock(0, Seeds);
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);

@@ -1,7 +1,8 @@
 #ifndef __vtkVofIntegrate_h
 #define __vtkVofIntegrate_h
 
-#include "vtkMultiBlockDataSetAlgorithm.h"
+//#include "vtkMultiBlockDataSetAlgorithm.h"
+#include "vtkPolyDataAlgorithm.h"
 #include "helper_math.h"
 #include <map>
 #include <vector>
@@ -11,11 +12,11 @@ class vtkRectilinearGrid;
 class vtkPolyData;
 class vtkFloatArray;
 
-class VTK_EXPORT vtkVofIntegrate : public vtkMultiBlockDataSetAlgorithm
+class VTK_EXPORT vtkVofIntegrate : public vtkPolyDataAlgorithm //vtkMultiBlockDataSetAlgorithm
 {
 public:
   static vtkVofIntegrate* New();
-  vtkTypeMacro(vtkVofIntegrate, vtkMultiBlockDataSetAlgorithm);
+  vtkTypeMacro(vtkVofIntegrate, vtkPolyDataAlgorithm); //vtkMultiBlockDataSetAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // GUI -------------------------------

@@ -254,36 +254,36 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
-	// Transfer seed points from neighbors ---------------------------------
-	vtkPolyData *boundarySeeds = vtkPolyData::New();
-	if (Controller->GetCommunicator() != 0) {
-	  ExchangeBoundarySeedPoints(boundarySeeds);
-	}
+	// // Transfer seed points from neighbors ---------------------------------
+	// vtkPolyData *boundarySeeds = vtkPolyData::New();
+	// if (Controller->GetCommunicator() != 0) {
+	//   ExchangeBoundarySeedPoints(boundarySeeds);
+	// }
 	
-	// Stage VI ------------------------------------------------------------
-	GenerateBoundaries(Boundaries, boundarySeeds);
+	// // Stage VI ------------------------------------------------------------
+	// GenerateBoundaries(Boundaries, boundarySeeds);
 
-	boundarySeeds->Delete();
+	// boundarySeeds->Delete();
 
-	// Generate output -----------------------------------------------------
-	vtkPolyData *particles = vtkPolyData::New();
-	vtkPoints *ppoints = vtkPoints::New();
-	vtkFloatArray *labels = vtkFloatArray::New();
-	ppoints->SetNumberOfPoints(Particles.size());
-	labels->SetName("Labels");
-	labels->SetNumberOfComponents(1);
-	labels->SetNumberOfTuples(particleLabels.size());
-	for (int i = 0; i < Particles.size(); ++i) {
+	// // Generate output -----------------------------------------------------
+	// vtkPolyData *particles = vtkPolyData::New();
+	// vtkPoints *ppoints = vtkPoints::New();
+	// vtkFloatArray *labels = vtkFloatArray::New();
+	// ppoints->SetNumberOfPoints(Particles.size());
+	// labels->SetName("Labels");
+	// labels->SetNumberOfComponents(1);
+	// labels->SetNumberOfTuples(particleLabels.size());
+	// for (int i = 0; i < Particles.size(); ++i) {
 
-	  float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
-	  ppoints->SetPoint(i, p);
-	  labels->SetValue(i, particleLabels[i]);
-	}
-	particles->SetPoints(ppoints);
-	particles->GetPointData()->AddArray(labels);
-	output->SetBlock(1, particles);
+	//   float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+	//   ppoints->SetPoint(i, p);
+	//   labels->SetValue(i, particleLabels[i]);
+	// }
+	// particles->SetPoints(ppoints);
+	// particles->GetPointData()->AddArray(labels);
+	// output->SetBlock(1, particles);
 
-	output->SetBlock(2, Boundaries);
+	// output->SetBlock(2, Boundaries);
 	
 	// output->SetBlock(3, components);
       }

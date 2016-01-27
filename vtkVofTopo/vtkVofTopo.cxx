@@ -196,8 +196,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  vtkMultiBlockDataSet *output =
-    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  // vtkMultiBlockDataSet *output =
+  //   vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkPolyData *output =
+    vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   if (TimestepT0 == TimestepT1 && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds
@@ -265,7 +267,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
 	// boundarySeeds->Delete();
 
-	// // Generate output -----------------------------------------------------
+	// Generate output -----------------------------------------------------
 	// vtkPolyData *particles = vtkPolyData::New();
 	// vtkPoints *ppoints = vtkPoints::New();
 	// vtkFloatArray *labels = vtkFloatArray::New();
@@ -284,7 +286,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// output->SetBlock(1, particles);
 
 	// output->SetBlock(2, Boundaries);
-	
 	// output->SetBlock(3, components);
       }
     }
@@ -294,7 +295,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-    output->SetBlock(0, Seeds);
+    // output->SetBlock(0, Seeds);
+    output->ShallowCopy(Seeds);
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -495,9 +497,9 @@ void vtkVofTopo::ExchangeParticles()
 
     int bound = outOfBounds(Particles[i], BoundsNoGhosts, GlobalBounds);
     if (bound > -1) {
-      for (int j = 0; j < numProcesses; ++j) {
+      for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
 
-  	int neighborId = j;
+  	int neighborId = NeighborProcesses[bound][j];
 	if (neighborId != processId) {
 	  particlesToSend[neighborId].push_back(Particles[i]);
 	  velocitiesToSend[neighborId].push_back(Velocities[i]);

@@ -196,10 +196,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
-  // vtkMultiBlockDataSet *output =
-  //   vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-  vtkPolyData *output =
-    vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  vtkMultiBlockDataSet *output =
+    vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+  // vtkPolyData *output =
+  //   vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   if (TimestepT0 == TimestepT1 && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds
@@ -256,37 +256,38 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferLabelsToSeeds(particleLabels);
 
-	// // Transfer seed points from neighbors ---------------------------------
-	// vtkPolyData *boundarySeeds = vtkPolyData::New();
-	// if (Controller->GetCommunicator() != 0) {
-	//   ExchangeBoundarySeedPoints(boundarySeeds);
-	// }
+	// Transfer seed points from neighbors ---------------------------------
+	vtkPolyData *boundarySeeds = vtkPolyData::New();
+	if (Controller->GetCommunicator() != 0) {
+	  ExchangeBoundarySeedPoints(boundarySeeds);
+	}
 	
-	// // Stage VI ------------------------------------------------------------
-	// GenerateBoundaries(Boundaries, boundarySeeds);
+	// Stage VI ------------------------------------------------------------
+	GenerateBoundaries(Boundaries, boundarySeeds);
 
-	// boundarySeeds->Delete();
+	boundarySeeds->Delete();
 
 	// Generate output -----------------------------------------------------
-	// vtkPolyData *particles = vtkPolyData::New();
-	// vtkPoints *ppoints = vtkPoints::New();
-	// vtkFloatArray *labels = vtkFloatArray::New();
-	// ppoints->SetNumberOfPoints(Particles.size());
-	// labels->SetName("Labels");
-	// labels->SetNumberOfComponents(1);
-	// labels->SetNumberOfTuples(particleLabels.size());
-	// for (int i = 0; i < Particles.size(); ++i) {
+	vtkPolyData *particles = vtkPolyData::New();
+	vtkPoints *ppoints = vtkPoints::New();
+	vtkFloatArray *labels = vtkFloatArray::New();
+	ppoints->SetNumberOfPoints(Particles.size());
+	labels->SetName("Labels");
+	labels->SetNumberOfComponents(1);
+	labels->SetNumberOfTuples(particleLabels.size());
+	for (int i = 0; i < Particles.size(); ++i) {
 
-	//   float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
-	//   ppoints->SetPoint(i, p);
-	//   labels->SetValue(i, particleLabels[i]);
-	// }
-	// particles->SetPoints(ppoints);
-	// particles->GetPointData()->AddArray(labels);
-	// output->SetBlock(1, particles);
+	  float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+	  ppoints->SetPoint(i, p);
+	  labels->SetValue(i, particleLabels[i]);
+	}
+	particles->SetPoints(ppoints);
+	particles->GetPointData()->AddArray(labels);
+	output->SetBlock(1, particles);
 
-	// output->SetBlock(2, Boundaries);
-	// output->SetBlock(3, components);
+	output->SetBlock(2, Boundaries);
+
+	// // output->SetBlock(3, components);
       }
     }
   }
@@ -295,8 +296,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-    // output->SetBlock(0, Seeds);
-    output->ShallowCopy(Seeds);
+    output->SetBlock(0, Seeds);
+    // output->ShallowCopy(Seeds);
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);

@@ -1,8 +1,8 @@
 #ifndef __vtkVofTopo_h
 #define __vtkVofTopo_h
 
-//#include "vtkMultiBlockDataSetAlgorithm.h"
-#include "vtkPolyDataAlgorithm.h"
+#include "vtkMultiBlockDataSetAlgorithm.h"
+//#include "vtkPolyDataAlgorithm.h"
 #include "helper_math.h"
 #include <map>
 #include <vector>
@@ -12,11 +12,13 @@ class vtkRectilinearGrid;
 class vtkPolyData;
 class vtkFloatArray;
 
-class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm //vtkMultiBlockDataSetAlgorithm
+// class VTK_EXPORT vtkVofTopo : public vtkPolyDataAlgorithm //vtkMultiBlockDataSetAlgorithm
+class VTK_EXPORT vtkVofTopo : public vtkMultiBlockDataSetAlgorithm
 {
 public:
   static vtkVofTopo* New();
-  vtkTypeMacro(vtkVofTopo, vtkPolyDataAlgorithm);//vtkMultiBlockDataSetAlgorithm);
+  // vtkTypeMacro(vtkVofTopo, vtkPolyDataAlgorithm);//vtkMultiBlockDataSetAlgorithm);
+  vtkTypeMacro(vtkVofTopo, vtkMultiBlockDataSetAlgorithm);
   void PrintSelf(ostream& os, vtkIndent indent);
 
   // GUI -------------------------------

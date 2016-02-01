@@ -26,6 +26,10 @@
 #include <set>
 #include <unordered_set>
 #include <array>
+#include <string>
+#include "vtkXMLMultiBlockDataWriter.h"
+#include "vtkXMLPolyDataWriter.h"
+
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -186,6 +190,20 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   return 1;
 }
 
+// void writeData(vtkPolyData *data, const int blockId,
+// 	       const int processId, const std::string path)
+// {
+//   vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+//   writer->SetInputData(data);
+//   std::string outFile = path;
+//   outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+//   outFile += ".vtp";
+//   writer->SetFileName(outFile.c_str());
+//   writer->SetDataModeToBinary();
+//   writer->Write();
+// }
+
+
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
@@ -285,7 +303,11 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->GetPointData()->AddArray(labels);
 	output->SetBlock(1, particles);
 
+	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
+
 	output->SetBlock(2, Boundaries);
+
+	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
 
 	// // output->SetBlock(3, components);
       }
@@ -296,8 +318,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-    output->SetBlock(0, Seeds);
-    // output->ShallowCopy(Seeds);
+    output->SetBlock(0, Seeds);    
+
+    // writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);

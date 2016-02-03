@@ -216,8 +216,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   vtkMultiBlockDataSet *output =
     vtkMultiBlockDataSet::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-  // vtkPolyData *output =
-  //   vtkPolyData::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
   if (TimestepT0 == TimestepT1 && Controller->GetCommunicator() != 0) {
     // find neighbor processes and global domain bounds

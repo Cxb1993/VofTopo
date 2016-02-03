@@ -183,6 +183,70 @@ namespace
     grad[2] = (data->GetComponent(id_front,0) - 
 	       data->GetComponent(id_back,0))/dz;
   }
+  
+
+  static float interpolateSca(vtkDataArray *vofField,
+			      const int* res, const int idxCell[3],
+			      const double bcoords[3])
+  {
+    int lx = idxCell[0];
+    int ly = idxCell[1];
+    int lz = idxCell[2];
+    float x = bcoords[0] - 0.5;
+    float y = bcoords[1] - 0.5;
+    float z = bcoords[2] - 0.5;
+
+    if (bcoords[0] < 0.5) {
+      lx -= 1;
+      x = bcoords[0] + 0.5;
+    }
+    if (bcoords[1] < 0.5) {
+      ly -= 1;
+      y = bcoords[1] + 0.5;
+    }
+    if (bcoords[2] < 0.5) {
+      lz -= 1;
+      z = bcoords[2] + 0.5;
+    }
+    
+    int ux = lx+1;
+    int uy = ly+1;
+    int uz = lz+1;
+
+    if (lx < 0) lx = 0;
+    if (ly < 0) ly = 0;
+    if (lz < 0) lz = 0;
+    if (ux > res[0]-1) ux = res[0]-1;
+    if (uy > res[1]-1) uy = res[1]-1;
+    if (uz > res[2]-1) uz = res[2]-1;
+
+    unsigned lzslab = lz*res[0]*res[1];
+    unsigned uzslab = uz*res[0]*res[1];
+    int lyr = ly*res[0];
+    int uyr = uy*res[0];
+
+    unsigned id[8] = {lx + lyr + lzslab,
+		      ux + lyr + lzslab,
+		      lx + uyr + lzslab,
+		      ux + uyr + lzslab,
+		      lx + lyr + uzslab,
+		      ux + lyr + uzslab,
+		      lx + uyr + uzslab,
+		      ux + uyr + uzslab};
+    float vv[8];
+    for (int i = 0; i < 8; i++) {
+      vv[i] = vofField->GetComponent(id[i], 0);
+    }
+
+    float a = (1.0f-x)*vv[0] + x*vv[1];
+    float b = (1.0f-x)*vv[2] + x*vv[3];
+    float c = (1.0f-y)*a + y*b;
+    a = (1.0f-x)*vv[4] + x*vv[5];
+    b = (1.0f-x)*vv[6] + x*vv[7];
+    float d = (1.0f-y)*a + y*b;
+
+    return (1.0f-z)*c + z*d;
+  }
 
   static float3 interpolateVec(vtkDataArray *velocityField,
 			       const int* res, const int idxCell[3],
@@ -191,6 +255,7 @@ namespace
     int lx = idxCell[0];
     int ly = idxCell[1];
     int lz = idxCell[2];
+
     float x = bcoords[0] - 0.5;
     float y = bcoords[1] - 0.5;
     float z = bcoords[2] - 0.5;
@@ -740,6 +805,47 @@ void computeL(int cellRes[3],
   }
 }
 
+void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
+			int refinement,
+			vtkPoints *points,
+			int globalExtent[6],
+			int numGhostLevels)
+{
+  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
+			     grid->GetYCoordinates(), 
+			     grid->GetZCoordinates()};
+  int nodeRes[3];
+  velocityGrid->GetDimensions(nodeRes);
+
+  const int r = 1;//std::pow(2,refinement);
+  // grid refinement comes here...
+  const int subone = 0;//(refinement > 0 ? 1 : 0);
+  int refNodeRes[3];
+  refNodeRes[0] = nodeRes[0]*r - subone;
+  refNodeRes[1] = nodeRes[1]*r - subone;
+  refNodeRes[2] = nodeRes[2]*r - subone;
+
+  int extent[6];
+  velocityGrid->GetExtent(extent);
+  int imin = extent[0] > globalExtent[0] ? numGhostLevels : 0;
+  int imax = extent[1] < globalExtent[1] ? cellRes[0]-numGhostLevels : cellRes[0];
+  int jmin = extent[2] > globalExtent[2] ? numGhostLevels : 0;
+  int jmax = extent[3] < globalExtent[3] ? cellRes[1]-numGhostLevels : cellRes[1];
+  int kmin = extent[4] > globalExtent[4] ? numGhostLevels : 0;
+  int kmax = extent[5] < globalExtent[5] ? cellRes[2]-numGhostLevels : cellRes[2];
+
+  for (int k = kmin; k < kmax; ++k) {
+    double z = coords[2]->GetComponent(k,0);
+    for (int j = jmin; j < jmax; ++j) {
+      double y = coords[1]->GetComponent(j,0);
+      for (int i = imin; i < imax; ++i) {
+	double x = coords[0]->GetComponent(i,0);
+	points->InsertNextPoint(x,y,z);	
+      }
+    }
+  }
+}
+
 void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 			    int refinement,
 			    vtkPoints *points,
@@ -857,6 +963,182 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   }
 }
 
+#if 1
+
+//static float interpolateSca(vtkDataArray *vofField,
+//			      const int* res, const int idxCell[3],
+//			      const double bcoords[3])
+
+float4 vofCorrector(const float4 pos1, const float4 displacement,
+		    vtkDataArray *vofField, vtkDataArray *coords[3],
+		    const int res[3], const int ijk[3], const double pcoords[3])
+{
+  // -----------------------------------------------------------
+  // compute gradient
+  float vof[6];
+  int ijk2[3] = {ijk[0], ijk[1], ijk[2]};
+
+  //left
+  if (ijk[0] > 0) {
+    ijk2[0] = ijk[0]-1;
+  }
+  vof[0] = interpolateSca(vofField, res, ijk2, pcoords);
+  ijk2[0] = ijk[0];
+  //right
+  if (ijk[0] < res[0]-1) {
+    ijk2[0] = ijk[0]+1;
+  }
+  vof[1] = interpolateSca(vofField, res, ijk2, pcoords);
+  ijk2[0] = ijk[0];
+  //bottom
+  if (ijk[1] > 0) {
+    ijk2[1] = ijk[1]-1;
+  }
+  vof[2] = interpolateSca(vofField, res, ijk2, pcoords);
+  ijk2[1] = ijk[1];
+  //top
+  if (ijk[1] < res[1]-1) {
+    ijk2[1] = ijk[1]+1;
+  }
+  vof[3] = interpolateSca(vofField, res, ijk2, pcoords);
+  ijk2[1] = ijk[1];
+  //back
+  if (ijk[2] > 0) {
+    ijk2[2] = ijk[2]-1;
+  }
+  vof[4] = interpolateSca(vofField, res, ijk2, pcoords);
+  ijk2[2] = ijk[2];
+  //front
+  if (ijk[2] < res[2]-1) {
+    ijk2[2] = ijk[2]+1;
+  }
+  vof[5] = interpolateSca(vofField, res, ijk2, pcoords);
+  ijk2[2] = ijk[2];
+
+  float dx[6] = {(coords[0]->GetComponent(ijk[0]+1,0)-coords[0]->GetComponent(ijk[0]-1,0))/2.0f,
+		 (coords[0]->GetComponent(ijk[0]+2,0)-coords[0]->GetComponent(ijk[0],  0))/2.0f,
+		 (coords[1]->GetComponent(ijk[1]+1,0)-coords[1]->GetComponent(ijk[1]-1,0))/2.0f,
+		 (coords[1]->GetComponent(ijk[1]+2,0)-coords[1]->GetComponent(ijk[1],  0))/2.0f,
+		 (coords[2]->GetComponent(ijk[2]+1,0)-coords[2]->GetComponent(ijk[2]-1,0))/2.0f,
+		 (coords[2]->GetComponent(ijk[2]+2,0)-coords[2]->GetComponent(ijk[2],  0))/2.0f};
+  
+  float3 grad = make_float3((vof[1]-vof[0])/(dx[0]+dx[1]),
+  			    (vof[3]-vof[2])/(dx[2]+dx[3]),
+  			    (vof[5]-vof[4])/(dx[4]+dx[5]));
+  float3 ngrad = make_float3(0.0f);
+  if (length(grad) > 0.0) {
+   ngrad = normalize(grad);
+  }
+  float3 dd = make_float3((dx[0]+dx[1])/2.0f,
+			  (dx[2]+dx[3])/2.0f,
+			  (dx[4]+dx[5])/2.0f);
+  float4 disp = make_float4(ngrad*dd,0.0f);
+  return pos1 + disp;
+  
+  // float4 grad = make_float4((vof[1]-vof[0])/(dx[0]+dx[1]),
+  // 			    (vof[3]-vof[2])/(dx[2]+dx[3]),
+  // 			    (vof[5]-vof[4])/(dx[4]+dx[5]),0.0f);
+  // float mag = length(make_float3(grad));
+  // if (mag > 0.0f) {
+  //   float4 disp = grad/mag;
+  //   std::cout << "disp " << disp.x << " " << disp.y << " " << disp.z << std::endl;
+  //   return pos1 + disp;
+  // }  
+  // return pos1;
+} 
+
+// iterative, solved with fixed point method - Newton's method can be viewed as such
+// https://en.wikipedia.org/wiki/Fixed-point_iteration
+// https://en.wikipedia.org/wiki/Trapezoidal_rule_%28differential_equations%29
+void advectParticles(vtkRectilinearGrid *vofGrid,
+		     vtkRectilinearGrid *velocityGrid,
+		     std::vector<float4> &particles,
+		     std::vector<float4> &velocities,		     
+		     const float deltaT)
+{
+  int nodeRes[3];
+  vofGrid->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  int index;
+  vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetArray("Data", index);
+    if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  // vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
+  vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+  // vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
+
+  vtkDataArray *coords[3] = {vofGrid->GetXCoordinates(),
+			     vofGrid->GetYCoordinates(),
+			     vofGrid->GetZCoordinates()};
+
+  std::vector<float4>::iterator itp = particles.begin();
+  std::vector<float4>::iterator itv = velocities.begin();
+  for (; itp != particles.end() && itv != velocities.end(); ++itp, ++itv) {
+
+    if (itp->w == 0.0f) {
+      continue;
+    }
+    double x[3];
+    int ijk[3];
+    double pcoords[3];
+    const int maxNumIter = 20;
+
+    float4 pos0 = *itp;
+    float4 velocity0 = *itv;
+    // initial guess - forward Euler
+    float4 pos1 = pos0 + deltaT*velocity0;
+    float4 velocity1;
+    
+    {
+      x[0] = pos1.x;
+      x[1] = pos1.y;
+      x[2] = pos1.z;      
+      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float f = vofArray1->GetComponent(idx, 0);
+      if (f <= g_emf0) {
+    	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
+      }      
+    }
+      
+    for (int i = 0; i < maxNumIter; ++i) {
+
+      x[0] = pos1.x;
+      x[1] = pos1.y;
+      x[2] = pos1.z;
+      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+      
+      float4 velocity = (velocity0 + velocity1)/2.0f;
+      pos1 = pos0 + deltaT*velocity;	
+    }
+    *itp = pos1;
+
+    x[0] = itp->x;
+    x[1] = itp->y;
+    x[2] = itp->z;
+    int particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    *itv = velocity1;
+        
+    if (particleInsideGrid) {
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float f = vofArray1->GetComponent(idx, 0);
+
+      itp->w = f;
+      
+      // if (f <= g_emf0) {
+      // 	itp->w = 0.0f;
+      // }
+    }
+  }
+}
+#else
 // iterative, solved with fixed point method - Newton's method can be viewed as such
 // https://en.wikipedia.org/wiki/Fixed-point_iteration
 // https://en.wikipedia.org/wiki/Trapezoidal_rule_%28differential_equations%29
@@ -929,6 +1211,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     }
   }
 }
+#endif
 
 // multiprocess
 void findGlobalExtent(std::vector<int> &allExtents, 

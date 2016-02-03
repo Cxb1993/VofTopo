@@ -25,6 +25,12 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *input,
 			    int globalExtent[6],
 			    int numGhostLevels);
 
+void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
+			int refinement,
+			vtkPoints *points,
+			int globalExtent[6],
+			int numGhostLevels);
+
 void initVelocities(vtkRectilinearGrid *velocity,
 		    std::vector<float4> &particles,
 		    std::vector<float4> &velocities);

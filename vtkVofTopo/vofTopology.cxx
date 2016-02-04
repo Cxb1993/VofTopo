@@ -811,11 +811,13 @@ void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
 			int globalExtent[6],
 			int numGhostLevels)
 {
-  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
-			     grid->GetYCoordinates(), 
-			     grid->GetZCoordinates()};
-  int nodeRes[3];
-  velocityGrid->GetDimensions(nodeRes);
+  vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
+			     velocityGrid->GetYCoordinates(), 
+			     velocityGrid->GetZCoordinates()};
+  int nodeRes[3] = {coords[0]->GetNumberOfTuples(),
+		    coords[1]->GetNumberOfTuples(),
+		    coords[2]->GetNumberOfTuples()};
+  int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
 
   const int r = 1;//std::pow(2,refinement);
   // grid refinement comes here...
@@ -1212,6 +1214,60 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
   }
 }
 #endif
+
+void advectParticles(vtkRectilinearGrid *velocityGrid[2],
+		     std::vector<float4> &particles,
+		     std::vector<float4> &velocities,
+		     const float deltaT)
+{
+  int index;
+  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index);
+    if (index == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  int nodeRes[3];
+  velocityGrid->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  std::vector<float4>::iterator itp = particles.begin();
+  std::vector<float4>::iterator itv = velocities.begin();
+  for (; itp != particles.end() && itv != velocities.end(); ++itp, ++itv) {
+
+    double x[3];
+    int ijk[3];
+    double pcoords[3];
+    const int maxNumIter = 20;
+
+    float4 pos0 = *itp;
+    float4 velocity0 = *itv;
+    // initial guess - forward Euler
+    float4 pos1 = pos0 + deltaT*velocity0;
+    float4 velocity1;
+      
+    for (int i = 0; i < maxNumIter; ++i) {
+
+      x[0] = pos1.x;
+      x[1] = pos1.y;
+      x[2] = pos1.z;
+      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+      float4 velocity = (velocity0 + velocity1)/2.0f;
+      pos1 = pos0 + deltaT*velocity;	
+    }      
+    *itp = pos1;
+
+    x[0] = itp->x;
+    x[1] = itp->y;
+    x[2] = itp->z;
+    int particleInsideGrid = velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    *itv = velocity1;
+  }
+}
 
 // multiprocess
 void findGlobalExtent(std::vector<int> &allExtents, 

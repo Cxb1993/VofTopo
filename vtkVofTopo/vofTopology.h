@@ -41,6 +41,11 @@ void advectParticles(vtkRectilinearGrid *inputVof,
 		     std::vector<float4> &velocities,
 		     const float deltaT);
 
+void advectParticles(vtkRectilinearGrid *inputVelocity[2],
+		     std::vector<float4> &particles,
+		     std::vector<float4> &velocities,
+		     const float deltaT);
+
 // multiprocess
 void findGlobalExtent(std::vector<int> &allExtents, 
 		      int globalExtent[6]);

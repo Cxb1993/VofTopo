@@ -814,35 +814,36 @@ void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
   vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
 			     velocityGrid->GetYCoordinates(), 
 			     velocityGrid->GetZCoordinates()};
-  int nodeRes[3] = {coords[0]->GetNumberOfTuples(),
-		    coords[1]->GetNumberOfTuples(),
-		    coords[2]->GetNumberOfTuples()};
-  int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
+  // int nodeRes[3] = {coords[0]->GetNumberOfTuples(),
+  // 		    coords[1]->GetNumberOfTuples(),
+  // 		    coords[2]->GetNumberOfTuples()};
+  // int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
 
-  const int r = 1;//std::pow(2,refinement);
-  // grid refinement comes here...
-  const int subone = 0;//(refinement > 0 ? 1 : 0);
-  int refNodeRes[3];
-  refNodeRes[0] = nodeRes[0]*r - subone;
-  refNodeRes[1] = nodeRes[1]*r - subone;
-  refNodeRes[2] = nodeRes[2]*r - subone;
+  // const int r = 1;//std::pow(2,refinement);
+  // // grid refinement comes here...
+  // const int subone = 0;//(refinement > 0 ? 1 : 0);
+  // int refNodeRes[3];
+  // refNodeRes[0] = nodeRes[0]*r - subone;
+  // refNodeRes[1] = nodeRes[1]*r - subone;
+  // refNodeRes[2] = nodeRes[2]*r - subone;
 
   int extent[6];
   velocityGrid->GetExtent(extent);
-  int imin = extent[0] > globalExtent[0] ? numGhostLevels : 0;
-  int imax = extent[1] < globalExtent[1] ? cellRes[0]-numGhostLevels : cellRes[0];
-  int jmin = extent[2] > globalExtent[2] ? numGhostLevels : 0;
-  int jmax = extent[3] < globalExtent[3] ? cellRes[1]-numGhostLevels : cellRes[1];
-  int kmin = extent[4] > globalExtent[4] ? numGhostLevels : 0;
-  int kmax = extent[5] < globalExtent[5] ? cellRes[2]-numGhostLevels : cellRes[2];
 
-  for (int k = kmin; k < kmax; ++k) {
-    double z = coords[2]->GetComponent(k,0);
-    for (int j = jmin; j < jmax; ++j) {
-      double y = coords[1]->GetComponent(j,0);
-      for (int i = imin; i < imax; ++i) {
-	double x = coords[0]->GetComponent(i,0);
-	points->InsertNextPoint(x,y,z);	
+  int imin = extent[0] + (extent[0] > globalExtent[0] ? numGhostLevels : 0);
+  int imax = extent[1] - (extent[1] < globalExtent[1] ? numGhostLevels : 0);
+  int jmin = extent[2] + (extent[2] > globalExtent[2] ? numGhostLevels : 0);
+  int jmax = extent[3] - (extent[3] < globalExtent[3] ? numGhostLevels : 0);
+  int kmin = extent[4] + (extent[4] > globalExtent[4] ? numGhostLevels : 0);
+  int kmax = extent[5] - (extent[5] < globalExtent[5] ? numGhostLevels : 0);
+
+  for (int k = kmin; k <= kmax; ++k) {
+    double z = coords[2]->GetComponent(k-extent[4],0);
+    for (int j = jmin; j <= jmax; ++j) {
+      double y = coords[1]->GetComponent(j-extent[2],0);
+      for (int i = imin; i <= imax; ++i) {
+	double x = coords[0]->GetComponent(i-extent[0],0);
+	points->InsertNextPoint(x,y,z);
       }
     }
   }
@@ -965,7 +966,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   }
 }
 
-#if 1
+#if 0
 
 //static float interpolateSca(vtkDataArray *vofField,
 //			      const int* res, const int idxCell[3],
@@ -1231,16 +1232,20 @@ void advectParticles(vtkRectilinearGrid *velocityGrid[2],
   }
 
   int nodeRes[3];
-  velocityGrid->GetDimensions(nodeRes);
+  velocityGrid[0]->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
   std::vector<float4>::iterator itp = particles.begin();
   std::vector<float4>::iterator itv = velocities.begin();
+
   for (; itp != particles.end() && itv != velocities.end(); ++itp, ++itv) {
 
+    if (itp->w == 0.0f) {
+      continue;
+    }
     double x[3];
     int ijk[3];
     double pcoords[3];
-    const int maxNumIter = 20;
+    const int maxNumIter = 1;//20;
 
     float4 pos0 = *itp;
     float4 velocity0 = *itv;
@@ -1253,7 +1258,7 @@ void advectParticles(vtkRectilinearGrid *velocityGrid[2],
       x[0] = pos1.x;
       x[1] = pos1.y;
       x[2] = pos1.z;
-      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
       velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
       float4 velocity = (velocity0 + velocity1)/2.0f;
       pos1 = pos0 + deltaT*velocity;	
@@ -1263,9 +1268,13 @@ void advectParticles(vtkRectilinearGrid *velocityGrid[2],
     x[0] = itp->x;
     x[1] = itp->y;
     x[2] = itp->z;
-    int particleInsideGrid = velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    int particleInsideGrid = velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);    
     velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
     *itv = velocity1;
+
+    if (!particleInsideGrid) {
+      itp->w = 0.0f;  
+    }
   }
 }
 

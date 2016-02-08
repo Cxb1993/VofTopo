@@ -44,6 +44,22 @@
         </Documentation>
       </InputProperty>
 
+      <InputProperty
+          name="Seed points"
+	  port_index="2"
+          command="SetInputConnection">
+        <ProxyGroupDomain name="groups">
+          <Group name="sources"/>
+          <Group name="filters"/>
+        </ProxyGroupDomain>
+        <DataTypeDomain name="input_type">
+          <DataType value="vtkDataSet"/>
+        </DataTypeDomain>
+        <Documentation>
+          Set the intial particle positions.
+        </Documentation>
+      </InputProperty>
+      
       <IntVectorProperty
 	  name="InitTimeStep"
 	  label="Init time step"

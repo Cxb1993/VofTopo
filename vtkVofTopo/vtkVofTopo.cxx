@@ -35,57 +35,16 @@ vtkStandardNewMacro(vtkVofTopo);
 
 
 //----------------------------------------------------------------------------
-vtkVofTopo::vtkVofTopo() :
-  LastLoadedTimestep(-1),
-  UseCache(false),
-  IterType(ITERATE_OVER_TARGET),
-  ComputeComponentLabels(1),
-  Seeds(0),
-  Incr(1.0),
-  TimestepT0(-1),
-  TimestepT1(-1),
-  NumGhostLevels(4)
-{
-  this->SetNumberOfInputPorts(2);
-  this->Controller = vtkMPIController::New();
-  this->Boundaries = vtkPolyData::New();
-  this->VofGrid[0] = vtkRectilinearGrid::New();
-  this->VofGrid[1] = vtkRectilinearGrid::New();
-  this->VelocityGrid[0] = vtkRectilinearGrid::New();
-  this->VelocityGrid[1] = vtkRectilinearGrid::New();
-}
-
-//----------------------------------------------------------------------------
-vtkVofTopo::~vtkVofTopo()
-{
-  if (Seeds != 0) {
-    Seeds->Delete();
-  }
-  this->Controller->Delete();
-  this->Boundaries->Delete();
-  this->VofGrid[0]->Delete();
-  this->VofGrid[1]->Delete();
-  this->VelocityGrid[0]->Delete();
-  this->VelocityGrid[1]->Delete();
-}
-
-//----------------------------------------------------------------------------
-int vtkVofTopo::FillInputPortInformation(int port, vtkInformation* info)
-{
-  if (port == 0) {
-    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet");
-  }
-  if (port == 1) {
-    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet");
-  }
-  return 1;
-}
-
-//----------------------------------------------------------------------------
 int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
 				   vtkInformationVector **inputVector,
 				   vtkInformationVector *outputVector)
 {
+  // optional input port with seeds 
+  if (this->GetNumberOfInputConnections(2) > 0) {
+    //  if (this->GetNumberOfInputPorts() > 2) {    
+    SeedPointsProvided = true;
+  }
+  
   vtkInformation *inInfo  = inputVector[0]->GetInformationObject(0);
 
   if (inInfo->Has(vtkStreamingDemandDrivenPipeline::TIME_STEPS())) {
@@ -134,11 +93,12 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 {
 
   // set one ghost level -----------------------------------------------------
-  int numInputs = this->GetNumberOfInputPorts();
+  const int numInputs = 2;//this->GetNumberOfInputPorts();
   for (int i = 0; i < numInputs; i++) {
     vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
     inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), NumGhostLevels);
   }
+  
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   outInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_NUMBER_OF_GHOST_LEVELS(), NumGhostLevels);
 
@@ -175,7 +135,7 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   }
   if (TimestepT1 <= TargetTimeStep) {
     
-    int numInputs = this->GetNumberOfInputPorts();
+    int numInputs = 2; //this->GetNumberOfInputPorts();
 
     for (int i = 0; i < numInputs; i++) {
       vtkInformation *inInfo = inputVector[i]->GetInformationObject(0);
@@ -209,9 +169,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
 			    vtkInformationVector *outputVector)
 {
-  std::cout << "TimestepT0 = " << TimestepT0 << std::endl;
+  std::cout << "Timestep T0 T1 = " << TimestepT0 << " " << TimestepT1 << std::endl;
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
+  vtkInformation *inInfoSeeds = nullptr;
+
+  if (SeedPointsProvided) {
+    inInfoSeeds = inputVector[2]->GetInformationObject(0);
+  }
 
   vtkInformation *outInfo = outputVector->GetInformationObject(0);
   vtkMultiBlockDataSet *output =
@@ -242,8 +207,16 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   // Stage I ---------------------------------------------------------------
   if (TimestepT0 == TimestepT1) {
     if (!UseCache) {
-      
-      InitParticles(VofGrid[0]);
+
+      if (SeedPointsProvided) {
+	vtkPolyData *seeds = vtkPolyData::
+	  SafeDownCast(inInfoSeeds->Get(vtkDataObject::DATA_OBJECT()));
+	InitParticles(VofGrid[0], seeds);	
+      }
+      else {
+	InitParticles(VofGrid[0], nullptr);	
+      }
+
       InitVelocities(VelocityGrid[0]);
 
       Boundaries->SetPoints(vtkPoints::New());
@@ -328,18 +301,38 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
+void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
 {
-  this->Superclass::PrintSelf(os,indent);
-}
+  //  vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
+  vtkPoints *seedPoints;
 
-//----------------------------------------------------------------------------
-void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof)
-{
-  vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
+  if (seeds) {
+    if (Controller->GetCommunicator() == 0) {
+      seedPoints = seeds->GetPoints();
+    }
+    else {
 
-  generateSeedPointsPLIC(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels);
-  
+      seedPoints = vtkPoints::New();
+      
+      // send seed points to all other processes
+      Controller->Broadcast(seeds, 0);
+      const int numPoints = seeds->GetNumberOfPoints();
+
+      // if running in parallel, get only points in the subdomain
+
+      for (int i = 0; i < numPoints; ++i) {
+	double p[3];
+	seeds->GetPoint(i, p);
+	if (withinBounds(make_float4(p[0],p[1],p[2],0.0f), BoundsNoGhosts)) {
+	  seedPoints->InsertNextPoint(p);
+	}
+      }
+    }
+  }
+  else {
+    seedPoints = vtkPoints::New();
+    generateSeedPointsPLIC(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels);
+  }
   Particles.clear();
   ParticleIds.clear();
   ParticleProcs.clear();
@@ -381,7 +374,8 @@ void vtkVofTopo::InitVelocities(vtkRectilinearGrid *velocity)
 void computeBoundsWithoutGhost(double globalBounds[6], double localBounds[6], 
 			       vtkDataArray *xCoordinates, 
 			       vtkDataArray *yCoordinates, 
-			       vtkDataArray *zCoordinates, 
+			       vtkDataArray *zCoordinates,
+			       int numGhostLevels,
 			       double boundsNoGhosts[6])
 {
   boundsNoGhosts[0] = localBounds[0];
@@ -392,25 +386,25 @@ void computeBoundsWithoutGhost(double globalBounds[6], double localBounds[6],
   boundsNoGhosts[5] = localBounds[5];
 
   if (localBounds[0] != globalBounds[0]) {
-    boundsNoGhosts[0] = xCoordinates->GetComponent(1,0);
+    boundsNoGhosts[0] = xCoordinates->GetComponent(numGhostLevels,0);
   }
   if (localBounds[1] != globalBounds[1]) {
     int numCoords = xCoordinates->GetNumberOfTuples();
-    boundsNoGhosts[1] = xCoordinates->GetComponent(numCoords-2,0);
+    boundsNoGhosts[1] = xCoordinates->GetComponent(numCoords-1-numGhostLevels,0);
   }
   if (localBounds[2] != globalBounds[2]) {
-    boundsNoGhosts[2] = yCoordinates->GetComponent(1,0);
+    boundsNoGhosts[2] = yCoordinates->GetComponent(numGhostLevels,0);
   }
   if (localBounds[3] != globalBounds[3]) {
     int numCoords = yCoordinates->GetNumberOfTuples();
-    boundsNoGhosts[3] = yCoordinates->GetComponent(numCoords-2,0);
+    boundsNoGhosts[3] = yCoordinates->GetComponent(numCoords-1-numGhostLevels,0);
   }
   if (localBounds[4] != globalBounds[4]) {
-    boundsNoGhosts[4] = zCoordinates->GetComponent(1,0);
+    boundsNoGhosts[4] = zCoordinates->GetComponent(numGhostLevels,0);
   }
   if (localBounds[5] != globalBounds[5]) {
     int numCoords = zCoordinates->GetNumberOfTuples();
-    boundsNoGhosts[5] = zCoordinates->GetComponent(numCoords-2,0);
+    boundsNoGhosts[5] = zCoordinates->GetComponent(numCoords-1-numGhostLevels,0);
   }
 }
 //----------------------------------------------------------------------------
@@ -470,7 +464,8 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
   computeBoundsWithoutGhost(GlobalBounds, LocalBounds, 
 			    inputVof->GetXCoordinates(), 
 			    inputVof->GetYCoordinates(), 
-			    inputVof->GetZCoordinates(), 
+			    inputVof->GetZCoordinates(),
+			    NumGhostLevels,
 			    BoundsNoGhosts);
 }
 
@@ -1033,4 +1028,64 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
   
   boundarySeeds->SetPoints(boundarySeedPoints);
   boundarySeeds->GetPointData()->AddArray(boundarySeedLabels);
+}
+
+
+
+//----------------------------------------------------------------------------
+vtkVofTopo::vtkVofTopo() :
+  LastLoadedTimestep(-1),
+  UseCache(false),
+  IterType(ITERATE_OVER_TARGET),
+  ComputeComponentLabels(1),
+  Seeds(0),
+  Incr(1.0),
+  TimestepT0(-1),
+  TimestepT1(-1),
+  NumGhostLevels(4),
+  SeedPointsProvided(false)
+{
+  this->SetNumberOfInputPorts(3);
+  this->Controller = vtkMPIController::New();
+  this->Boundaries = vtkPolyData::New();
+  this->VofGrid[0] = vtkRectilinearGrid::New();
+  this->VofGrid[1] = vtkRectilinearGrid::New();
+  this->VelocityGrid[0] = vtkRectilinearGrid::New();
+  this->VelocityGrid[1] = vtkRectilinearGrid::New();
+}
+
+//----------------------------------------------------------------------------
+vtkVofTopo::~vtkVofTopo()
+{
+  if (Seeds != 0) {
+    Seeds->Delete();
+  }
+  this->Controller->Delete();
+  this->Boundaries->Delete();
+  this->VofGrid[0]->Delete();
+  this->VofGrid[1]->Delete();
+  this->VelocityGrid[0]->Delete();
+  this->VelocityGrid[1]->Delete();
+}
+
+//----------------------------------------------------------------------------
+int vtkVofTopo::FillInputPortInformation(int port, vtkInformation* info)
+{
+  if (port == 0) {
+    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet");
+  }
+  if (port == 1) {
+    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet");
+  }
+  if (port == 2) {
+    info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
+    info->Set(vtkAlgorithm::INPUT_IS_OPTIONAL(), 1);
+  }  
+  return 1;
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
+{
+  this->Superclass::PrintSelf(os,indent);
 }

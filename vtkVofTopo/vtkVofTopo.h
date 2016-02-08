@@ -59,7 +59,7 @@ private:
   void operator=(const vtkVofTopo&);  // Not implemented.
 
   void GetGlobalContext(vtkInformation *inInfo);
-  void InitParticles(vtkRectilinearGrid *vof);
+  void InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds);
   void InitVelocities(vtkRectilinearGrid *velocity);
   void AdvectParticles(vtkRectilinearGrid *vof[2],
 		       vtkRectilinearGrid *velocity[2]);
@@ -110,6 +110,7 @@ private:
   // Seeds
   int Refinement;
   vtkPolyData *Seeds;
+  bool SeedPointsProvided;
 
   // Particles
   std::vector<float4> Particles;

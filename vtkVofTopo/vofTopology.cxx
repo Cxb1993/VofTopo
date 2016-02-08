@@ -966,7 +966,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   }
 }
 
-#if 0
+#if 1
 
 //static float interpolateSca(vtkDataArray *vofField,
 //			      const int* res, const int idxCell[3],
@@ -1097,34 +1097,60 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     float4 pos1 = pos0 + deltaT*velocity0;
     float4 velocity1;
     
-    {
-      x[0] = pos1.x;
-      x[1] = pos1.y;
-      x[2] = pos1.z;      
-      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      float f = vofArray1->GetComponent(idx, 0);
-      if (f <= g_emf0) {
-    	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
-      }      
-    }
+    // {
+    //   x[0] = pos1.x;
+    //   x[1] = pos1.y;
+    //   x[2] = pos1.z;      
+    //   velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    //   int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+    //   float f = vofArray1->GetComponent(idx, 0);
+    //   if (f <= g_emf0) {
+    // 	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
+    //   }      
+    // }
       
     for (int i = 0; i < maxNumIter; ++i) {
 
       x[0] = pos1.x;
       x[1] = pos1.y;
       x[2] = pos1.z;
+
+      {
+	velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+	float f = vofArray1->GetComponent(idx, 0);
+	if (f <= g_emf0) {
+	  pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
+	  x[0] = pos1.x;
+	  x[1] = pos1.y;
+	  x[2] = pos1.z;      	
+	}      
+      }
+      
       velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
       velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
       
       float4 velocity = (velocity0 + velocity1)/2.0f;
-      pos1 = pos0 + deltaT*velocity;	
+      pos1 = pos0 + deltaT*velocity;      
     }
     *itp = pos1;
 
     x[0] = itp->x;
     x[1] = itp->y;
     x[2] = itp->z;
+
+    {
+      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float f = vofArray1->GetComponent(idx, 0);
+      if (f <= g_emf0) {
+	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
+	x[0] = pos1.x;
+	x[1] = pos1.y;
+	x[2] = pos1.z;      	
+      }      
+    }
+    
     int particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
     velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
     *itv = velocity1;
@@ -1986,3 +2012,75 @@ void generateBoundaries(vtkPoints *points,
   boundaries->GetPointData()->AddArray(boundaryLabels);
 
 }
+
+#if 0
+// /home/bussleml/projects/paraview/filter/vtkRidge/kernels.cu
+__global__ void processPointGradients(uint maxIndex, double* data,
+				      double* gradient, uint dim[3],
+				      unsigned int stencilRange)
+{
+  uint index=blockIdx.x*blockDim.x + threadIdx.x;
+  if (index < maxIndex) {
+    uint z=index/(dim[0]*dim[1]);
+    uint y=index%(dim[0]*dim[1])/dim[0];
+    uint x=(index%(dim[0]*dim[1]))%dim[0];
+
+    mat3 m = { {0}, {0}, {0} };
+    vec3 rhs = { 0 };
+
+    //vec3 xyzi = {x, y, z}; // ###, vi;
+    double fi = data[index];
+
+    // compute all neighbors inside level 'range'
+    int width = 2*stencilRange+1;
+    int neighCnt = width*width*width;//computeNodeNeighborsN(i, range, neighborsN);
+
+    int effNeighCnt = 0;
+    for (int k = 0; k < neighCnt; k++) {
+      int offsetX = (k%width) - stencilRange;
+      int offsetY = ((k/width)%width) - stencilRange;
+      int offsetZ = (k/(width*width)) - stencilRange;
+
+      double neighborX = x + offsetX;
+      double neighborY = y + offsetY;
+      double neighborZ = z + offsetZ;
+
+      if (neighborX >= 0 && neighborX < dim[0] &&
+	  neighborY >= 0 && neighborY < dim[1] &&
+	  neighborZ >= 0 && neighborZ < dim[2])	{
+	int neighborIndex = (neighborX) + (neighborY)*dim[0] + (neighborZ)*dim[0]*dim[1];
+	effNeighCnt++;
+
+	m[0][0] += offsetX*offsetX;  m[0][1] += offsetX*offsetY;  m[0][2] += offsetX*offsetZ;
+	m[1][0] += offsetY*offsetX;  m[1][1] += offsetY*offsetY;  m[1][2] += offsetY*offsetZ;
+	m[2][0] += offsetZ*offsetX;  m[2][1] += offsetZ*offsetY;  m[2][2] += offsetZ*offsetZ;
+
+	// Relative function values of neighbors
+	double f = data[neighborIndex] - fi;
+
+	rhs[0] += f*offsetX;  rhs[1] += f*offsetY;  rhs[2] += f*offsetZ;
+      }
+    }
+
+    double det = mat3det(m);
+    if (det == 0) det = 1;
+    vec3 grad;
+
+    grad[0] = vec3det(rhs, m[1], m[2]) / det;	// dV0/dx
+    grad[1] = vec3det(m[0], rhs, m[2]) / det;	// dV0/dy
+    grad[2] = vec3det(m[0], m[1], rhs) / det;	// dV0/dz
+
+    for (int v=0; v<3; v++) {
+      if (grad[v] > FLT_MAX) {
+	grad[v] = FLT_MAX;
+      }
+      else if (grad[v] < -FLT_MAX) {
+	grad[v] = -FLT_MAX;
+      }
+    }
+    gradient[3*index+0]=grad[0];
+    gradient[3*index+1]=grad[1];
+    gradient[3*index+2]=grad[2];
+  }
+}
+#endif

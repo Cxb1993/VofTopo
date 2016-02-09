@@ -11,6 +11,7 @@
 #include <map>
 #include <vector>
 #include <limits>
+#include <cfloat>
 #include <set>
 #include <cmath>
 #include <array>
@@ -966,89 +967,210 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   }
 }
 
-#if 1
+#if 0
+inline double  mat3det(double a[3][3])
+{
+    return  a[0][0]*(a[1][1]*a[2][2] - a[1][2]*a[2][1]) +
+      a[0][1]*(a[1][2]*a[2][0] - a[1][0]*a[2][2]) +
+      a[0][2]*(a[1][0]*a[2][1] - a[1][1]*a[2][0]);
+}
 
-//static float interpolateSca(vtkDataArray *vofField,
-//			      const int* res, const int idxCell[3],
-//			      const double bcoords[3])
+inline double  vec3det(double a[3], double b[3], double c[3])
+{
+    return  a[0]*(b[1]*c[2] - b[2]*c[1]) +
+        a[1]*(b[2]*c[0] - b[0]*c[2]) +
+        a[2]*(b[0]*c[1] - b[1]*c[0]);
+}
 
 float4 vofCorrector(const float4 pos1, const float4 displacement,
 		    vtkDataArray *vofField, vtkDataArray *coords[3],
-		    const int res[3], const int ijk[3], const double pcoords[3])
+		    const int res[3], const int ijk[3], const double pcoords[3],
+		    vtkRectilinearGrid *vofGrid)
 {
-  // -----------------------------------------------------------
-  // compute gradient
-  float vof[6];
-  int ijk2[3] = {ijk[0], ijk[1], ijk[2]};
+  int stencilRange = 4;  
+  int x = ijk[0];
+  int y = ijk[1];
+  int z = ijk[2];
+  int index = x + y*res[0] + z*res[0]*res[1];
 
-  //left
-  if (ijk[0] > 0) {
-    ijk2[0] = ijk[0]-1;
-  }
-  vof[0] = interpolateSca(vofField, res, ijk2, pcoords);
-  ijk2[0] = ijk[0];
-  //right
-  if (ijk[0] < res[0]-1) {
-    ijk2[0] = ijk[0]+1;
-  }
-  vof[1] = interpolateSca(vofField, res, ijk2, pcoords);
-  ijk2[0] = ijk[0];
-  //bottom
-  if (ijk[1] > 0) {
-    ijk2[1] = ijk[1]-1;
-  }
-  vof[2] = interpolateSca(vofField, res, ijk2, pcoords);
-  ijk2[1] = ijk[1];
-  //top
-  if (ijk[1] < res[1]-1) {
-    ijk2[1] = ijk[1]+1;
-  }
-  vof[3] = interpolateSca(vofField, res, ijk2, pcoords);
-  ijk2[1] = ijk[1];
-  //back
-  if (ijk[2] > 0) {
-    ijk2[2] = ijk[2]-1;
-  }
-  vof[4] = interpolateSca(vofField, res, ijk2, pcoords);
-  ijk2[2] = ijk[2];
-  //front
-  if (ijk[2] < res[2]-1) {
-    ijk2[2] = ijk[2]+1;
-  }
-  vof[5] = interpolateSca(vofField, res, ijk2, pcoords);
-  ijk2[2] = ijk[2];
+  double m[3][3] = {0.0};
+  double rhs[3] = {0.0};  
+  double fi = vofField->GetComponent(index, 0);
 
-  float dx[6] = {(coords[0]->GetComponent(ijk[0]+1,0)-coords[0]->GetComponent(ijk[0]-1,0))/2.0f,
-		 (coords[0]->GetComponent(ijk[0]+2,0)-coords[0]->GetComponent(ijk[0],  0))/2.0f,
-		 (coords[1]->GetComponent(ijk[1]+1,0)-coords[1]->GetComponent(ijk[1]-1,0))/2.0f,
-		 (coords[1]->GetComponent(ijk[1]+2,0)-coords[1]->GetComponent(ijk[1],  0))/2.0f,
-		 (coords[2]->GetComponent(ijk[2]+1,0)-coords[2]->GetComponent(ijk[2]-1,0))/2.0f,
-		 (coords[2]->GetComponent(ijk[2]+2,0)-coords[2]->GetComponent(ijk[2],  0))/2.0f};
+  int width = 2*stencilRange+1;
+  int neighCnt = width*width*width;
+
+  int effNeighCnt = 0;
+  double3 xyzi = {
+    (coords[0]->GetComponent(x+1,0) + coords[0]->GetComponent(x,0))/2.0,
+    (coords[1]->GetComponent(y+1,0) + coords[1]->GetComponent(y,0))/2.0,
+    (coords[2]->GetComponent(z+1,0) + coords[2]->GetComponent(z,0))/2.0};
+    
+  for (int k = 0; k < neighCnt; k++) {
+    
+    int offsetX = (k%width) - stencilRange;
+    int offsetY = ((k/width)%width) - stencilRange;
+    int offsetZ = (k/(width*width)) - stencilRange;
+    int neighborX = x + offsetX;
+    int neighborY = y + offsetY;
+    int neighborZ = z + offsetZ;
+    
+    if (neighborX >= 0 && neighborX < res[0] &&
+	neighborY >= 0 && neighborY < res[1] &&
+	neighborZ >= 0 && neighborZ < res[2])	{
+
+      effNeighCnt++;
+      
+      double3 xyzj = {
+	(coords[0]->GetComponent(neighborX+1,0) + coords[0]->GetComponent(neighborX,0))/2.0,
+	(coords[1]->GetComponent(neighborY+1,0) + coords[1]->GetComponent(neighborY,0))/2.0,
+	(coords[2]->GetComponent(neighborZ+1,0) + coords[2]->GetComponent(neighborZ,0))/2.0};
+
+      double XYZ[3] = {xyzj.x - xyzi.x, xyzj.y - xyzi.y, xyzj.z - xyzi.z};
+      
+      double X = XYZ[0];
+      double Y = XYZ[1];
+      double Z = XYZ[2];
+
+      m[0][0] += X*X;  m[0][1] += X*Y;  m[0][2] += X*Z;
+      m[1][0] += Y*X;  m[1][1] += Y*Y;  m[1][2] += Y*Z;
+      m[2][0] += Z*X;  m[2][1] += Z*Y;  m[2][2] += Z*Z;
+
+      // Relative function values of neighbors
+      int neighborIndex = neighborX + neighborY*res[0] + neighborZ*res[0]*res[1];
+      double f = vofField->GetComponent(neighborIndex, 0) - fi;
+
+      rhs[0] += f*X;
+      rhs[1] += f*Y;
+      rhs[2] += f*Z;
+    }
+  }
+
+  double det = mat3det(m);
+  double grad[3];
+  grad[0] = vec3det(rhs, m[1], m[2]) / det;	// dV0/dx
+  grad[1] = vec3det(m[0], rhs, m[2]) / det;	// dV0/dy
+  grad[2] = vec3det(m[0], m[1], rhs) / det;	// dV0/dz
+
+  for (int v=0; v<3; v++) {
+    if (grad[v] > FLT_MAX) {
+      grad[v] = FLT_MAX;
+    }
+    else if (grad[v] < -FLT_MAX) {
+      grad[v] = -FLT_MAX;
+    }
+  }
+  double lensq = grad[0]*grad[0]+grad[1]*grad[1]+grad[2]*grad[2];
   
-  float3 grad = make_float3((vof[1]-vof[0])/(dx[0]+dx[1]),
-  			    (vof[3]-vof[2])/(dx[2]+dx[3]),
-  			    (vof[5]-vof[4])/(dx[4]+dx[5]));
-  float3 ngrad = make_float3(0.0f);
-  if (length(grad) > 0.0) {
-   ngrad = normalize(grad);
+  double ngrad[3] = {0,0,0};
+  if (lensq > 0.0) {
+    double len = std::sqrt(lensq);
+    ngrad[0] = grad[0]/len; ngrad[1] = grad[1]/len; ngrad[2] = grad[2]/len;
   }
-  float3 dd = make_float3((dx[0]+dx[1])/2.0f,
-			  (dx[2]+dx[3])/2.0f,
-			  (dx[4]+dx[5])/2.0f);
-  float4 disp = make_float4(ngrad*dd,0.0f);
+
+  double dx = ((coords[0]->GetComponent(x+1,0) - coords[0]->GetComponent(x,0))+
+	       (coords[1]->GetComponent(y+1,0) - coords[1]->GetComponent(y,0))+
+	       (coords[2]->GetComponent(z+1,0) - coords[2]->GetComponent(z,0)))/3.0;
+ 
+  float4 disp = make_float4(0);
+
+  int lim = 8;
+  int i = 0;
+  float *vofPtr = (float*)vofField->GetVoidPointer(0);
+  float f2 = 0.0f;
+  while (i++ < lim && f2 <= g_emf0) {
+
+    double dd[3] = {dx*ngrad[0]*i, dx*ngrad[2]*i, dx*ngrad[2]*i};
+    double x2[3] = {pos1.x + dd[0], pos1.y + dd[1], pos1.z + dd[2]};
+    double pcoords[3];
+    int ijk2[3];
+    
+    vofGrid->ComputeStructuredCoordinates(x2, ijk2, pcoords);
+    index = ijk2[0] + ijk2[1]*res[1] + ijk2[2]*res[0]*res[1];
+    f2 = vofField->GetComponent(index, 0);
+    disp = make_float4(dd[0],dd[1],dd[2],0.0f);
+  }
+  if (f2 <= g_emf0) {
+    disp = make_float4(0.0f);
+  }
+  
   return pos1 + disp;
-  
-  // float4 grad = make_float4((vof[1]-vof[0])/(dx[0]+dx[1]),
-  // 			    (vof[3]-vof[2])/(dx[2]+dx[3]),
-  // 			    (vof[5]-vof[4])/(dx[4]+dx[5]),0.0f);
-  // float mag = length(make_float3(grad));
-  // if (mag > 0.0f) {
-  //   float4 disp = grad/mag;
-  //   std::cout << "disp " << disp.x << " " << disp.y << " " << disp.z << std::endl;
-  //   return pos1 + disp;
-  // }  
-  // return pos1;
-} 
+}
+#else
+float4 vofCorrector(const float4 pos1, const float4 displacement,
+		    vtkDataArray *vofField, vtkDataArray *coords[3],
+		    const int res[3], const int ijk[3], const double pcoords[3],
+		    vtkRectilinearGrid *vofGrid)
+{
+  int stencilRange = 4;  
+  int x = ijk[0];
+  int y = ijk[1];
+  int z = ijk[2];
+  int index = x + y*res[0] + z*res[0]*res[1];
+
+  double m[3][3] = {0.0};
+  double rhs[3] = {0.0};  
+
+  int width = 2*stencilRange+1;
+  int neighCnt = width*width*width;
+
+  int effNeighCnt = 0;
+  double3 xyzi = {
+    (coords[0]->GetComponent(x+1,0) + coords[0]->GetComponent(x,0))/2.0,
+    (coords[1]->GetComponent(y+1,0) + coords[1]->GetComponent(y,0))/2.0,
+    (coords[2]->GetComponent(z+1,0) + coords[2]->GetComponent(z,0))/2.0};
+
+  double maxf = 0.0;
+  double mindist2 = std::numeric_limits<float>::max();
+  int bestIdx[3] = {-1};
+    
+  for (int k = 0; k < neighCnt; k++) {
+    
+    int offsetX = (k%width) - stencilRange;
+    int offsetY = ((k/width)%width) - stencilRange;
+    int offsetZ = (k/(width*width)) - stencilRange;
+    int neighborX = x + offsetX;
+    int neighborY = y + offsetY;
+    int neighborZ = z + offsetZ;
+    
+    if (neighborX >= 0 && neighborX < res[0] &&
+	neighborY >= 0 && neighborY < res[1] &&
+	neighborZ >= 0 && neighborZ < res[2])	{
+
+      double3 xyzj = {
+	(coords[0]->GetComponent(neighborX+1,0) + coords[0]->GetComponent(neighborX,0))/2.0,
+	(coords[1]->GetComponent(neighborY+1,0) + coords[1]->GetComponent(neighborY,0))/2.0,
+	(coords[2]->GetComponent(neighborZ+1,0) + coords[2]->GetComponent(neighborZ,0))/2.0};
+
+      double XYZ[3] = {xyzj.x - xyzi.x, xyzj.y - xyzi.y, xyzj.z - xyzi.z};
+      
+      double X = XYZ[0];
+      double Y = XYZ[1];
+      double Z = XYZ[2];
+
+      int neighborIndex = neighborX + neighborY*res[0] + neighborZ*res[0]*res[1];
+      double f = vofField->GetComponent(neighborIndex, 0);
+      double dist2 = X*X + Y*Y + Z*Z;
+      
+      if (f > g_emf0 && dist2 <= mindist2) {
+	bestIdx[0] = neighborX;
+	bestIdx[1] = neighborY;
+	bestIdx[2] = neighborZ;
+      }      
+    }
+  }
+
+  float4 pos2 = pos1;
+  if (bestIdx[0] > -1) {
+    pos2 = make_float4((coords[0]->GetComponent(bestIdx[0]+1,0) + coords[0]->GetComponent(bestIdx[0],0))/2.0,
+		       (coords[1]->GetComponent(bestIdx[1]+1,0) + coords[1]->GetComponent(bestIdx[1],0))/2.0,
+		       (coords[2]->GetComponent(bestIdx[2]+1,0) + coords[2]->GetComponent(bestIdx[2],0))/2.0,
+		       1.0f);
+  }
+
+  return pos2;
+}
+#endif
 
 // iterative, solved with fixed point method - Newton's method can be viewed as such
 // https://en.wikipedia.org/wiki/Fixed-point_iteration
@@ -1057,7 +1179,8 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
 		     vtkRectilinearGrid *velocityGrid,
 		     std::vector<float4> &particles,
 		     std::vector<float4> &velocities,		     
-		     const float deltaT)
+		     const float deltaT,
+		     std::vector<float> &uncertainty)
 {
   int nodeRes[3];
   vofGrid->GetDimensions(nodeRes);
@@ -1068,12 +1191,10 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
 
-  // vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
   vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetArray("Data", index);
   if (index == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
-  // vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
   vtkDataArray *coords[3] = {vofGrid->GetXCoordinates(),
 			     vofGrid->GetYCoordinates(),
@@ -1081,7 +1202,8 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
 
   std::vector<float4>::iterator itp = particles.begin();
   std::vector<float4>::iterator itv = velocities.begin();
-  for (; itp != particles.end() && itv != velocities.end(); ++itp, ++itv) {
+  std::vector<float>::iterator itc = uncertainty.begin();
+  for (; itp != particles.end() && itv != velocities.end() && itc != uncertainty.end(); ++itp, ++itv, ++itc) {
 
     if (itp->w == 0.0f) {
       continue;
@@ -1097,35 +1219,11 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     float4 pos1 = pos0 + deltaT*velocity0;
     float4 velocity1;
     
-    // {
-    //   x[0] = pos1.x;
-    //   x[1] = pos1.y;
-    //   x[2] = pos1.z;      
-    //   velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-    //   int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-    //   float f = vofArray1->GetComponent(idx, 0);
-    //   if (f <= g_emf0) {
-    // 	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
-    //   }      
-    // }
-      
     for (int i = 0; i < maxNumIter; ++i) {
 
       x[0] = pos1.x;
       x[1] = pos1.y;
       x[2] = pos1.z;
-
-      {
-	velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-	float f = vofArray1->GetComponent(idx, 0);
-	if (f <= g_emf0) {
-	  pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
-	  x[0] = pos1.x;
-	  x[1] = pos1.y;
-	  x[2] = pos1.z;      	
-	}      
-      }
       
       velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
       velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
@@ -1140,11 +1238,14 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     x[2] = itp->z;
 
     {
-      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+      vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
       float f = vofArray1->GetComponent(idx, 0);
       if (f <= g_emf0) {
-	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords);
+	float4 prev_pos1 = pos1;
+	pos1 = vofCorrector(pos1, velocity0*deltaT, vofArray1, coords, cellRes, ijk, pcoords, vofGrid);
+	*itc += length(make_float3(pos1-prev_pos1));
+	*itp = pos1;
 	x[0] = pos1.x;
 	x[1] = pos1.y;
 	x[2] = pos1.z;      	
@@ -1157,17 +1258,11 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
         
     if (particleInsideGrid) {
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      float f = vofArray1->GetComponent(idx, 0);
-
-      itp->w = f;
-      
-      // if (f <= g_emf0) {
-      // 	itp->w = 0.0f;
-      // }
+      itp->w = vofArray1->GetComponent(idx, 0);
     }
   }
 }
-#else
+
 // iterative, solved with fixed point method - Newton's method can be viewed as such
 // https://en.wikipedia.org/wiki/Fixed-point_iteration
 // https://en.wikipedia.org/wiki/Trapezoidal_rule_%28differential_equations%29
@@ -1240,7 +1335,6 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     }
   }
 }
-#endif
 
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],
 		     std::vector<float4> &particles,

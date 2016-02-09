@@ -117,6 +117,7 @@ private:
   std::vector<float4> Velocities;
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
+  std::vector<float> Uncertainty;
   
   // Temporal boundaries
   vtkPolyData *Boundaries;

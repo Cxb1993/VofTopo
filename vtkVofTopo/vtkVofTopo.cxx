@@ -41,7 +41,6 @@ int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
 {
   // optional input port with seeds 
   if (this->GetNumberOfInputConnections(2) > 0) {
-    //  if (this->GetNumberOfInputPorts() > 2) {    
     SeedPointsProvided = true;
   }
   
@@ -163,7 +162,6 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 //   writer->Write();
 // }
 
-
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
@@ -219,6 +217,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       InitVelocities(VelocityGrid[0]);
 
+      Uncertainty.clear();
+      Uncertainty.resize(Particles.size(),0.0f);
+
       Boundaries->SetPoints(vtkPoints::New());
       vtkCellArray *cells = vtkCellArray::New();
       Boundaries->SetPolys(cells);
@@ -237,7 +238,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage III -----------------------------------------------------------
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 	ExtractComponents(VofGrid[1], components);
-
+	
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
 	LabelAdvectedParticles(components, particleLabels);
@@ -259,25 +260,36 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Generate output -----------------------------------------------------
 	vtkPolyData *particles = vtkPolyData::New();
 	vtkPoints *ppoints = vtkPoints::New();
-	vtkFloatArray *labels = vtkFloatArray::New();
 	ppoints->SetNumberOfPoints(Particles.size());
+	vtkFloatArray *labels = vtkFloatArray::New();
 	labels->SetName("Labels");
 	labels->SetNumberOfComponents(1);
 	labels->SetNumberOfTuples(particleLabels.size());
+	vtkFloatArray *uncertainty = vtkFloatArray::New();
+	uncertainty->SetName("Uncertainty");
+	uncertainty->SetNumberOfComponents(1);
+	uncertainty->SetNumberOfTuples(Uncertainty.size());
+
 	for (int i = 0; i < Particles.size(); ++i) {
 
 	  float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
 	  ppoints->SetPoint(i, p);
 	  labels->SetValue(i, particleLabels[i]);
+	  uncertainty->SetValue(i, Uncertainty[i]);
 	}
 	particles->SetPoints(ppoints);
 	particles->GetPointData()->AddArray(labels);
+	particles->GetPointData()->AddArray(uncertainty);
 	output->SetBlock(1, particles);
 
 	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
 
 	output->SetBlock(2, Boundaries);
 
+	Seeds->GetPointData()->AddArray(uncertainty);
+	output->SetBlock(0, Seeds);
+	
+	// writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
 
 	// // output->SetBlock(3, components);
@@ -289,9 +301,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
-    output->SetBlock(0, Seeds);    
-
-    // writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -319,7 +328,6 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
       const int numPoints = seeds->GetNumberOfPoints();
 
       // if running in parallel, get only points in the subdomain
-
       for (int i = 0; i < numPoints; ++i) {
 	double p[3];
 	seeds->GetPoint(i, p);
@@ -480,7 +488,7 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   
   dt *= Incr;
   
-  advectParticles(vof[1], velocity[1], Particles, Velocities, dt);
+  advectParticles(vof[1], velocity[1], Particles, Velocities, dt, Uncertainty);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -738,7 +746,7 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
 
   for (int i = 0; i < Particles.size(); ++i) {
 
-    if (Particles[i].w == 0.0f) {
+    if (Particles[i].w <= g_emf0) {
       labels[i] = -1.0f;
       continue;
     }

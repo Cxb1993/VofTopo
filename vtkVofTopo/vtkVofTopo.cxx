@@ -282,17 +282,12 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->GetPointData()->AddArray(uncertainty);
 	output->SetBlock(1, particles);
 
-	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
-
 	output->SetBlock(2, Boundaries);
-
-	Seeds->GetPointData()->AddArray(uncertainty);
 	output->SetBlock(0, Seeds);
-	
-	// writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
-	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
 
-	// // output->SetBlock(3, components);
+	// writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
+	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
+	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
       }
     }
   }
@@ -501,15 +496,18 @@ void vtkVofTopo::ExchangeParticles()
   int processId = Controller->GetLocalProcessId();
 
   // one vector for each side of the process
-  std::vector<std::vector<float4> > particlesToSend(numProcesses);
-  std::vector<std::vector<float4> > velocitiesToSend(numProcesses);
+  std::vector<std::vector<float4>> particlesToSend(numProcesses);
+  std::vector<std::vector<float4>> velocitiesToSend(numProcesses);
   std::vector<std::vector<int> > particleIdsToSend(numProcesses);
   std::vector<std::vector<short> > particleProcsToSend(numProcesses);
+  std::vector<std::vector<float>> uncertaintyToSend(numProcesses);
+  
   for (int i = 0; i < numProcesses; ++i) {
     particlesToSend[i].resize(0);
     velocitiesToSend[i].resize(0);
     particleIdsToSend[i].resize(0);
     particleProcsToSend[i].resize(0);
+    uncertaintyToSend[i].resize(0);
   }
 
   std::vector<float4>::iterator it;
@@ -517,6 +515,7 @@ void vtkVofTopo::ExchangeParticles()
   std::vector<float4> velocitiesToKeep;
   std::vector<int> particleIdsToKeep;
   std::vector<short> particleProcsToKeep;
+  std::vector<float> uncertaintyToKeep;
 
   for (int i = 0; i < Particles.size(); ++i) {
 
@@ -530,15 +529,16 @@ void vtkVofTopo::ExchangeParticles()
 	  velocitiesToSend[neighborId].push_back(Velocities[i]);
 	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
 	  particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
+	  uncertaintyToSend[neighborId].push_back(Uncertainty[i]);
 	}
       }
-
     }
     else {
       particlesToKeep.push_back(Particles[i]);
       velocitiesToKeep.push_back(Velocities[i]);
       particleIdsToKeep.push_back(ParticleIds[i]);
       particleProcsToKeep.push_back(ParticleProcs[i]);
+      uncertaintyToKeep.push_back(Uncertainty[i]);
     }
   }
  
@@ -546,15 +546,18 @@ void vtkVofTopo::ExchangeParticles()
   Velocities = velocitiesToKeep;
   ParticleIds = particleIdsToKeep;
   ParticleProcs = particleProcsToKeep;
+  Uncertainty = uncertaintyToKeep;
 
   std::vector<float4> particlesToRecv;
   std::vector<float4> velocitiesToRecv;
   std::vector<int> particleIdsToRecv;
   std::vector<short> particleProcsToRecv;
+  std::vector<float> uncertaintyToRecv;
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
   sendData(velocitiesToSend, velocitiesToRecv, numProcesses, Controller);
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
+  sendData(uncertaintyToSend, uncertaintyToRecv, numProcesses, Controller);
 
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
@@ -564,6 +567,7 @@ void vtkVofTopo::ExchangeParticles()
       Velocities.push_back(velocitiesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
       ParticleProcs.push_back(particleProcsToRecv[i]);
+      Uncertainty.push_back(uncertaintyToRecv[i]);
     }
   }
 }

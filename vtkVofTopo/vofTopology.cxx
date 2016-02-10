@@ -249,6 +249,56 @@ namespace
     return (1.0f-z)*c + z*d;
   }
 
+  static float interpolateSca(const float *vofField,
+			      const int* res, const int idxCell[3],
+			      const double bcoords[3])
+  {
+    int lx = idxCell[0];
+    int ly = idxCell[1];
+    int lz = idxCell[2];
+    float x = bcoords[0];
+    float y = bcoords[1];
+    float z = bcoords[2];
+    
+    int ux = lx+1;
+    int uy = ly+1;
+    int uz = lz+1;
+
+    if (lx < 0) lx = 0;
+    if (ly < 0) ly = 0;
+    if (lz < 0) lz = 0;
+    if (ux > res[0]-1) ux = res[0]-1;
+    if (uy > res[1]-1) uy = res[1]-1;
+    if (uz > res[2]-1) uz = res[2]-1;
+
+    unsigned lzslab = lz*res[0]*res[1];
+    unsigned uzslab = uz*res[0]*res[1];
+    int lyr = ly*res[0];
+    int uyr = uy*res[0];
+
+    unsigned id[8] = {lx + lyr + lzslab,
+		      ux + lyr + lzslab,
+		      lx + uyr + lzslab,
+		      ux + uyr + lzslab,
+		      lx + lyr + uzslab,
+		      ux + lyr + uzslab,
+		      lx + uyr + uzslab,
+		      ux + uyr + uzslab};
+    float vv[8];
+    for (int i = 0; i < 8; i++) {
+      vv[i] = vofField[id[i]];
+    }
+
+    float a = (1.0f-x)*vv[0] + x*vv[1];
+    float b = (1.0f-x)*vv[2] + x*vv[3];
+    float c = (1.0f-y)*a + y*b;
+    a = (1.0f-x)*vv[4] + x*vv[5];
+    b = (1.0f-x)*vv[6] + x*vv[7];
+    float d = (1.0f-y)*a + y*b;
+
+    return (1.0f-z)*c + z*d;
+  }
+
   static float3 interpolateVec(vtkDataArray *velocityField,
 			       const int* res, const int idxCell[3],
 			       const double bcoords[3])
@@ -1891,6 +1941,66 @@ void calcLabelBounds(vtkPoints *points,
 
 // }
 
+float4 computeNormal(const float *data, const int res[3],
+		     const int idxCell[3], const double pcoords[3])
+{
+  int idxCell2[3] = {idxCell[0], idxCell[1], idxCell[2]};
+  //  double pcoords2[3] = {pcoords[0], pcoords[1], pcoords[2]};
+  idxCell2[0] -= 1;
+  float left = interpolateSca(data, res,  idxCell2, pcoords);
+  idxCell2[0] = idxCell[0];
+
+  idxCell2[0] += 1;
+  float right = interpolateSca(data, res,  idxCell2, pcoords);
+  idxCell2[0] = idxCell[0];
+
+  idxCell2[1] -= 1;
+  float bottom = interpolateSca(data, res,  idxCell2, pcoords);
+  idxCell2[1] = idxCell[1];
+
+  idxCell2[1] += 1;
+  float top = interpolateSca(data, res,  idxCell2, pcoords);
+  idxCell2[1] = idxCell[1];
+
+  idxCell2[2] -= 1;
+  float back = interpolateSca(data, res,  idxCell2, pcoords);
+  idxCell2[2] = idxCell[2];
+
+  idxCell2[2] += 1;
+  float front = interpolateSca(data, res,  idxCell2, pcoords);
+  idxCell2[2] = idxCell[2];
+
+  float3 diff = make_float3(right-left, top-bottom, front-back);
+  if (length(diff) > 0.0f) {
+    diff = normalize(diff);
+  }
+  diff = diff*-1.0f;
+  
+  return make_float4(diff.x, diff.y, diff.z, 0.0f);
+}
+
+void computeNormals(vtkRectilinearGrid *grid,
+		    const float *data,
+		    std::vector<float4>::iterator itv,
+		    std::vector<float4>::iterator itve,
+		    std::vector<float4> &normals)
+{
+  int index;
+  int nodeRes[3];
+  grid->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  
+  for (; itv != itve; ++itv) {
+    double p[3] = {itv->x, itv->y, itv->z};
+    int ijk[3];
+    double pcoords[3];
+
+    grid->ComputeStructuredCoordinates(p, ijk, pcoords);
+    float4 n = computeNormal(data, nodeRes, ijk, pcoords);
+    normals.push_back(n);
+  }
+}
+
 void resamplePointsOnGrid(const std::vector<int> &labelPoints,
 			  vtkPoints *points,
 			  vtkRectilinearGrid *subGrid,
@@ -1997,6 +2107,7 @@ void generateBoundaries(vtkPoints *points,
   int vertexID = 0;
   std::vector<unsigned int> indices(0);
   std::vector<float4> vertices(0);
+  std::vector<float4> normals(0);
   vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
 			     grid->GetYCoordinates(), 
 			     grid->GetZCoordinates()};
@@ -2059,8 +2170,10 @@ void generateBoundaries(vtkPoints *points,
     resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
     resamplePointsOnGrid(labelNeighborPoints[i], neighborPoints, subGrid, subNodeRes, field);
 
-    extractSurface(field.data(), subNodeRes, subcoords, extent, 0.501f, indices, vertices, vertexID);    
-
+    int numVertsPrev = vertices.size();
+    extractSurface(field.data(), subNodeRes, subcoords, extent, 0.501f, indices, vertices, vertexID);
+    computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
+    
     subGrid->Delete();
 
     labelOffsets[i+1] = vertices.size();
@@ -2097,14 +2210,23 @@ void generateBoundaries(vtkPoints *points,
 
   for (int i = 0; i < numLabels; ++i) {
     for (int j = labelOffsets[i]; j < labelOffsets[i+1]; ++j) {
-      boundaryLabels->SetValue(j, i);
+      boundaryLabels->SetValue(j, i+range[0]);
     }
+  }
+
+  vtkFloatArray *pointNormals = vtkFloatArray::New();
+  pointNormals->SetName("Normals");
+  pointNormals->SetNumberOfComponents(3);
+  pointNormals->SetNumberOfTuples(normals.size());
+  for (int i = 0; i < normals.size(); ++i) {
+    float n[3] = {normals[i].x, normals[i].y, normals[i].z};
+    pointNormals->SetTuple3(i,n[0],n[1],n[2]);
   }
 
   boundaries->SetPoints(outputPoints);
   boundaries->SetPolys(outputTriangles);
   boundaries->GetPointData()->AddArray(boundaryLabels);
-
+  boundaries->GetPointData()->SetNormals(pointNormals);
 }
 
 #if 0

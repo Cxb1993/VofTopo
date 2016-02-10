@@ -705,10 +705,8 @@ float4 computeNormal(const float* volume,
   return make_float4(normalize(make_float3(right-left,top-bottom,front-back)), 0.0f);
 }
 
-void extractSurface(const float* volume, 
-		    const int*res,
-		    vtkFloatArray *coords[3],
-		    const int extent[6],
+void extractSurface(const float* volume, const int*res,
+		    vtkFloatArray *coords[3], const int extent[6],
 		    const float isoValue,		    	    
 		    std::vector<unsigned int>& indices,
 		    std::vector<float4>& vertices,

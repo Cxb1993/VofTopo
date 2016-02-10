@@ -798,8 +798,8 @@ void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
     const int processId = Controller->GetLocalProcessId();
     const int numProcesses = Controller->GetNumberOfProcesses();
 
-    std::vector<std::vector<float> > labelsToSend(numProcesses);
-    std::vector<std::vector<int> > idsToSend(numProcesses);
+    std::vector<std::vector<float>> labelsToSend(numProcesses);
+    std::vector<std::vector<int>> idsToSend(numProcesses);
     for (int i = 0; i < numProcesses; ++i) {
       labelsToSend[i].resize(0);
       idsToSend[i].resize(0);

@@ -29,7 +29,7 @@
 #include <string>
 #include "vtkXMLMultiBlockDataWriter.h"
 #include "vtkXMLPolyDataWriter.h"
-
+#include "vtkXMLRectilinearGridWriter.h"
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -161,6 +161,18 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
 //   writer->SetDataModeToBinary();
 //   writer->Write();
 // }
+void writeData(vtkRectilinearGrid *data, const int blockId,
+	       const int processId, const std::string path)
+{
+  vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+  writer->SetInputData(data);
+  std::string outFile = path;
+  outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+  outFile += ".vtr";
+  writer->SetFileName(outFile.c_str());
+  writer->SetDataModeToBinary();
+  writer->Write();
+}
 
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestData(vtkInformation *request,
@@ -214,8 +226,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       else {
 	InitParticles(VofGrid[0], nullptr);	
       }
-
-      InitVelocities(VelocityGrid[0]);
 
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
@@ -280,14 +290,16 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->SetPoints(ppoints);
 	particles->GetPointData()->AddArray(labels);
 	particles->GetPointData()->AddArray(uncertainty);
-	output->SetBlock(1, particles);
 
-	output->SetBlock(2, Boundaries);
 	output->SetBlock(0, Seeds);
-
+	output->SetBlock(1, particles);
+	output->SetBlock(2, Boundaries);
+	output->SetBlock(3, components);
+	
 	// writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
+	// writeData(components, 3, Controller->GetLocalProcessId(), "out2/out2_");
       }
     }
   }
@@ -366,14 +378,6 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::InitVelocities(vtkRectilinearGrid *velocity)
-{
-  Velocities.clear();
-  vtkPoints *seedPoints = Seeds->GetPoints();
-  Velocities.resize(seedPoints->GetNumberOfPoints());
-
-  initVelocities(velocity, Particles, Velocities);
-}
 void computeBoundsWithoutGhost(double globalBounds[6], double localBounds[6], 
 			       vtkDataArray *xCoordinates, 
 			       vtkDataArray *yCoordinates, 
@@ -483,7 +487,7 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   
   dt *= Incr;
   
-  advectParticles(vof[1], velocity[1], Particles, Velocities, dt, Uncertainty);
+  advectParticles(vof, velocity, Particles, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -497,14 +501,12 @@ void vtkVofTopo::ExchangeParticles()
 
   // one vector for each side of the process
   std::vector<std::vector<float4>> particlesToSend(numProcesses);
-  std::vector<std::vector<float4>> velocitiesToSend(numProcesses);
   std::vector<std::vector<int> > particleIdsToSend(numProcesses);
   std::vector<std::vector<short> > particleProcsToSend(numProcesses);
   std::vector<std::vector<float>> uncertaintyToSend(numProcesses);
   
   for (int i = 0; i < numProcesses; ++i) {
     particlesToSend[i].resize(0);
-    velocitiesToSend[i].resize(0);
     particleIdsToSend[i].resize(0);
     particleProcsToSend[i].resize(0);
     uncertaintyToSend[i].resize(0);
@@ -512,7 +514,6 @@ void vtkVofTopo::ExchangeParticles()
 
   std::vector<float4>::iterator it;
   std::vector<float4> particlesToKeep;
-  std::vector<float4> velocitiesToKeep;
   std::vector<int> particleIdsToKeep;
   std::vector<short> particleProcsToKeep;
   std::vector<float> uncertaintyToKeep;
@@ -526,7 +527,6 @@ void vtkVofTopo::ExchangeParticles()
   	int neighborId = NeighborProcesses[bound][j];
 	if (neighborId != processId) {
 	  particlesToSend[neighborId].push_back(Particles[i]);
-	  velocitiesToSend[neighborId].push_back(Velocities[i]);
 	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
 	  particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
 	  uncertaintyToSend[neighborId].push_back(Uncertainty[i]);
@@ -535,7 +535,6 @@ void vtkVofTopo::ExchangeParticles()
     }
     else {
       particlesToKeep.push_back(Particles[i]);
-      velocitiesToKeep.push_back(Velocities[i]);
       particleIdsToKeep.push_back(ParticleIds[i]);
       particleProcsToKeep.push_back(ParticleProcs[i]);
       uncertaintyToKeep.push_back(Uncertainty[i]);
@@ -543,18 +542,15 @@ void vtkVofTopo::ExchangeParticles()
   }
  
   Particles = particlesToKeep;
-  Velocities = velocitiesToKeep;
   ParticleIds = particleIdsToKeep;
   ParticleProcs = particleProcsToKeep;
   Uncertainty = uncertaintyToKeep;
 
   std::vector<float4> particlesToRecv;
-  std::vector<float4> velocitiesToRecv;
   std::vector<int> particleIdsToRecv;
   std::vector<short> particleProcsToRecv;
   std::vector<float> uncertaintyToRecv;
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
-  sendData(velocitiesToSend, velocitiesToRecv, numProcesses, Controller);
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
   sendData(uncertaintyToSend, uncertaintyToRecv, numProcesses, Controller);
@@ -564,7 +560,6 @@ void vtkVofTopo::ExchangeParticles()
     int within = withinBounds(particlesToRecv[i], BoundsNoGhosts);
     if (within) {
       Particles.push_back(particlesToRecv[i]);
-      Velocities.push_back(velocitiesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
       ParticleProcs.push_back(particleProcsToRecv[i]);
       Uncertainty.push_back(uncertaintyToRecv[i]);
@@ -728,12 +723,19 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
 			labelOffsets, processId);
   }
 
-  components->SetExtent(vof->GetExtent());
-  components->SetXCoordinates(vof->GetXCoordinates());
-  components->SetYCoordinates(vof->GetYCoordinates());
-  components->SetZCoordinates(vof->GetZCoordinates());
+  components->CopyStructure(vof);
   components->GetCellData()->AddArray(labels);
   components->GetCellData()->SetActiveScalars("Labels");
+
+  int myExtent[NUM_SIDES];
+  vof->GetExtent(myExtent);
+  int updatedExtent[6] = {myExtent[0]+NumGhostLevels,
+			  myExtent[1]-NumGhostLevels,
+			  myExtent[2]+NumGhostLevels,
+			  myExtent[3]-NumGhostLevels,
+			  myExtent[4]+NumGhostLevels,
+			  myExtent[5]-NumGhostLevels};
+  components->Crop(updatedExtent);
 }
 
 //----------------------------------------------------------------------------

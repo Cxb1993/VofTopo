@@ -60,7 +60,6 @@ private:
 
   void GetGlobalContext(vtkInformation *inInfo);
   void InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds);
-  void InitVelocities(vtkRectilinearGrid *velocity);
   void AdvectParticles(vtkRectilinearGrid *vof[2],
 		       vtkRectilinearGrid *velocity[2]);
   void ExchangeParticles();
@@ -114,7 +113,6 @@ private:
 
   // Particles
   std::vector<float4> Particles;
-  std::vector<float4> Velocities;
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
   std::vector<float> Uncertainty;

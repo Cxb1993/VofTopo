@@ -39,10 +39,9 @@ void initVelocities(vtkRectilinearGrid *velocity,
 		    std::vector<float4> &particles,
 		    std::vector<float4> &velocities);
 
-void advectParticles(vtkRectilinearGrid *inputVof,
-		     vtkRectilinearGrid *inputVelocity,
+void advectParticles(vtkRectilinearGrid *inputVof[2],
+		     vtkRectilinearGrid *inputVelocity[2],
 		     std::vector<float4> &particles,
-		     std::vector<float4> &velocities,
 		     const float deltaT);
 
 void advectParticles(vtkRectilinearGrid *inputVof,

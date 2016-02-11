@@ -13,6 +13,10 @@
 #include <map>
 #include "helper_math.h"
 
+float interpolateSca(vtkDataArray *vofField,
+		     const int* res, const int idxCell[3],
+		     const double bcoords[3]);
+  
 int findClosestTimeStep(double requestedTimeValue,
 			const std::vector<double>& timeSteps);
 

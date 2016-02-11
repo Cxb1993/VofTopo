@@ -185,70 +185,6 @@ namespace
 	       data->GetComponent(id_back,0))/dz;
   }
   
-
-  static float interpolateSca(vtkDataArray *vofField,
-			      const int* res, const int idxCell[3],
-			      const double bcoords[3])
-  {
-    int lx = idxCell[0];
-    int ly = idxCell[1];
-    int lz = idxCell[2];
-    float x = bcoords[0] - 0.5;
-    float y = bcoords[1] - 0.5;
-    float z = bcoords[2] - 0.5;
-
-    if (bcoords[0] < 0.5) {
-      lx -= 1;
-      x = bcoords[0] + 0.5;
-    }
-    if (bcoords[1] < 0.5) {
-      ly -= 1;
-      y = bcoords[1] + 0.5;
-    }
-    if (bcoords[2] < 0.5) {
-      lz -= 1;
-      z = bcoords[2] + 0.5;
-    }
-    
-    int ux = lx+1;
-    int uy = ly+1;
-    int uz = lz+1;
-
-    if (lx < 0) lx = 0;
-    if (ly < 0) ly = 0;
-    if (lz < 0) lz = 0;
-    if (ux > res[0]-1) ux = res[0]-1;
-    if (uy > res[1]-1) uy = res[1]-1;
-    if (uz > res[2]-1) uz = res[2]-1;
-
-    unsigned lzslab = lz*res[0]*res[1];
-    unsigned uzslab = uz*res[0]*res[1];
-    int lyr = ly*res[0];
-    int uyr = uy*res[0];
-
-    unsigned id[8] = {lx + lyr + lzslab,
-		      ux + lyr + lzslab,
-		      lx + uyr + lzslab,
-		      ux + uyr + lzslab,
-		      lx + lyr + uzslab,
-		      ux + lyr + uzslab,
-		      lx + uyr + uzslab,
-		      ux + uyr + uzslab};
-    float vv[8];
-    for (int i = 0; i < 8; i++) {
-      vv[i] = vofField->GetComponent(id[i], 0);
-    }
-
-    float a = (1.0f-x)*vv[0] + x*vv[1];
-    float b = (1.0f-x)*vv[2] + x*vv[3];
-    float c = (1.0f-y)*a + y*b;
-    a = (1.0f-x)*vv[4] + x*vv[5];
-    b = (1.0f-x)*vv[6] + x*vv[7];
-    float d = (1.0f-y)*a + y*b;
-
-    return (1.0f-z)*c + z*d;
-  }
-
   static float interpolateSca(const float *vofField,
 			      const int* res, const int idxCell[3],
 			      const double bcoords[3])
@@ -414,6 +350,69 @@ int findClosestTimeStep(double requestedTimeValue,
     }
   }
   return ts;
+}
+
+float interpolateSca(vtkDataArray *vofField,
+		     const int* res, const int idxCell[3],
+		     const double bcoords[3])
+{
+  int lx = idxCell[0];
+  int ly = idxCell[1];
+  int lz = idxCell[2];
+  float x = bcoords[0] - 0.5;
+  float y = bcoords[1] - 0.5;
+  float z = bcoords[2] - 0.5;
+
+  if (bcoords[0] < 0.5) {
+    lx -= 1;
+    x = bcoords[0] + 0.5;
+  }
+  if (bcoords[1] < 0.5) {
+    ly -= 1;
+    y = bcoords[1] + 0.5;
+  }
+  if (bcoords[2] < 0.5) {
+    lz -= 1;
+    z = bcoords[2] + 0.5;
+  }
+    
+  int ux = lx+1;
+  int uy = ly+1;
+  int uz = lz+1;
+
+  if (lx < 0) lx = 0;
+  if (ly < 0) ly = 0;
+  if (lz < 0) lz = 0;
+  if (ux > res[0]-1) ux = res[0]-1;
+  if (uy > res[1]-1) uy = res[1]-1;
+  if (uz > res[2]-1) uz = res[2]-1;
+
+  unsigned lzslab = lz*res[0]*res[1];
+  unsigned uzslab = uz*res[0]*res[1];
+  int lyr = ly*res[0];
+  int uyr = uy*res[0];
+
+  unsigned id[8] = {lx + lyr + lzslab,
+		    ux + lyr + lzslab,
+		    lx + uyr + lzslab,
+		    ux + uyr + lzslab,
+		    lx + lyr + uzslab,
+		    ux + lyr + uzslab,
+		    lx + uyr + uzslab,
+		    ux + uyr + uzslab};
+  float vv[8];
+  for (int i = 0; i < 8; i++) {
+    vv[i] = vofField->GetComponent(id[i], 0);
+  }
+
+  float a = (1.0f-x)*vv[0] + x*vv[1];
+  float b = (1.0f-x)*vv[2] + x*vv[3];
+  float c = (1.0f-y)*a + y*b;
+  a = (1.0f-x)*vv[4] + x*vv[5];
+  b = (1.0f-x)*vv[6] + x*vv[7];
+  float d = (1.0f-y)*a + y*b;
+
+  return (1.0f-z)*c + z*d;
 }
 
 void smoothSurface(std::vector<float3>& vertices,
@@ -865,18 +864,6 @@ void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
   vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
 			     velocityGrid->GetYCoordinates(), 
 			     velocityGrid->GetZCoordinates()};
-  // int nodeRes[3] = {coords[0]->GetNumberOfTuples(),
-  // 		    coords[1]->GetNumberOfTuples(),
-  // 		    coords[2]->GetNumberOfTuples()};
-  // int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
-
-  // const int r = 1;//std::pow(2,refinement);
-  // // grid refinement comes here...
-  // const int subone = 0;//(refinement > 0 ? 1 : 0);
-  // int refNodeRes[3];
-  // refNodeRes[0] = nodeRes[0]*r - subone;
-  // refNodeRes[1] = nodeRes[1]*r - subone;
-  // refNodeRes[2] = nodeRes[2]*r - subone;
 
   int extent[6];
   velocityGrid->GetExtent(extent);
@@ -1287,6 +1274,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
     x[1] = itp->y;
     x[2] = itp->z;
 
+    if (itp->w > -1.0f)
     {
       vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
@@ -1308,7 +1296,9 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
         
     if (particleInsideGrid) {
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      itp->w = vofArray1->GetComponent(idx, 0);
+      if (itp->w > -1.0f) {
+	itp->w = vofArray1->GetComponent(idx, 0);
+      }
     }
   }
 }

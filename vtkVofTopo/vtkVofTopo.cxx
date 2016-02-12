@@ -149,18 +149,18 @@ int vtkVofTopo::RequestUpdateExtent(vtkInformation *vtkNotUsed(request),
   return 1;
 }
 
-// void writeData(vtkPolyData *data, const int blockId,
-// 	       const int processId, const std::string path)
-// {
-//   vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-//   writer->SetInputData(data);
-//   std::string outFile = path;
-//   outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
-//   outFile += ".vtp";
-//   writer->SetFileName(outFile.c_str());
-//   writer->SetDataModeToBinary();
-//   writer->Write();
-// }
+void writeData(vtkPolyData *data, const int blockId,
+	       const int processId, const std::string path)
+{
+  vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+  writer->SetInputData(data);
+  std::string outFile = path;
+  outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+  outFile += ".vtp";
+  writer->SetFileName(outFile.c_str());
+  writer->SetDataModeToBinary();
+  writer->Write();
+}
 void writeData(vtkRectilinearGrid *data, const int blockId,
 	       const int processId, const std::string path)
 {
@@ -1028,17 +1028,6 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
       boundarySeedLabels->InsertNextTuple1(labelsToRecv[i]);
     }
   }
-
-  // if (pointsToRecv.size() > 0) {
-  //   std::cout << "be: "
-  // 	      << be[0] << "-" << be[1] << " x "
-  // 	      << be[2] << "-" << be[3] << " x "
-  // 	      << be[4] << "-" << be[5] << std::endl
-  // 	      << "extent: "
-  // 	      << extent[0] << "-" << extent[1] << " x "
-  // 	      << extent[2] << "-" << extent[3] << " x "
-  // 	      << extent[4] << "-" << extent[5] << std::endl;
-  // }
   
   boundarySeeds->SetPoints(boundarySeedPoints);
   boundarySeeds->GetPointData()->AddArray(boundarySeedLabels);

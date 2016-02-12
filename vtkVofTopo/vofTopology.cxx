@@ -1008,7 +1008,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
 		    vtkDataArray *coords[3], const int res[3],
 		    const int ijk[3], const double pcoords[3],
-		    vtkRectilinearGrid *vofGrid)
+		    vtkRectilinearGrid *vofGrid, float &fCorrected)
 {
   int stencilRange = 4;  
   int x = ijk[0];
@@ -1061,6 +1061,7 @@ float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
 	bestIdx[0] = neighborX;
 	bestIdx[1] = neighborY;
 	bestIdx[2] = neighborZ;
+	fCorrected = f;
       }      
     }
   }
@@ -1088,7 +1089,13 @@ float4 plicCorrector(const float4 pos1, const float3 normal,
   float d = std::abs(dot(posVec,normal));
 
   if (d > lstar) {
-    float4 disp = make_float4((d - lstar)*normal,0.0f);
+    float3 posVecN = make_float3(0.0f);
+    if (length(posVec) > 0.0f) {
+      posVecN = normalize(posVec);
+    }
+    float ca = std::abs(dot(posVecN, normal));
+    float e = (d-lstar)/ca;    
+    float4 disp = make_float4(e*posVecN,0.0f);
     pos2 -= disp;
   }
   return pos2;
@@ -1165,7 +1172,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid,
       float f = vofArray1->GetComponent(idx, 0);
       if (f <= g_emf0) {
 	float4 prev_pos1 = pos1;
-	pos1 = vofCorrector(pos1, vofArray1, coords, cellRes, ijk, pcoords, vofGrid);
+	pos1 = vofCorrector(pos1, vofArray1, coords, cellRes, ijk, pcoords, vofGrid, f);
 	*itc += length(make_float3(pos1-prev_pos1));
 	*itp = pos1;
 	x[0] = pos1.x;
@@ -1211,12 +1218,12 @@ void correctParticles(std::vector<float4>::iterator pbegin,
   }
 
   int nodeRes[3] = {cellRes[0]+1,cellRes[1]+1,cellRes[2]+1};
-  std::vector<float> normals(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);  
-  computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normals);
+  std::vector<float> normalsNodes(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);  
+  computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
 
   std::vector<float> lstar(cellRes[0]*cellRes[1]*cellRes[2]);
-  std::vector<float> normalsInt(cellRes[0]*cellRes[1]*cellRes[2]*3);
-  computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normals, lstar, normalsInt);
+  std::vector<float> normals(cellRes[0]*cellRes[1]*cellRes[2]*3);
+  computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
   
   for (auto itp = pbegin; itp != pend; ++itp) {
     int ijk[3];
@@ -1224,22 +1231,25 @@ void correctParticles(std::vector<float4>::iterator pbegin,
     float f = getCellVof(*itp, vofGrid, vofArray1, cellRes, ijk, pcoords);
     if (f <= g_emf0) {
       float4 prev_pos1 = *itp;
-      *itp = vofCorrector(*itp, vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1]);
+      *itp = vofCorrector(*itp, vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
     }
-    // else if (f > g_emf0 && f < g_emf1) {
-    //   float4 prev_pos1 = *itp;
-    //   int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-    //   float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
-    // 			     coords[0]->GetComponent(ijk[0]+1,0),
-    // 			     coords[1]->GetComponent(ijk[1],0),
-    // 			     coords[1]->GetComponent(ijk[1]+1,0),
-    // 			     coords[2]->GetComponent(ijk[2],0),
-    // 			     coords[2]->GetComponent(ijk[2]+1,0)};
-    //   float3 norm = make_float3(normalsInt[idx*3+0],
-    // 				normalsInt[idx*3+1],
-    // 				normalsInt[idx*3+2]);
-    //   *itp = plicCorrector(*itp, norm, lstar[idx], cubeCoords);
-    // }
+    if (f > g_emf0 && f < g_emf1) {
+
+      double x[3] = {itp->x, itp->y, itp->z};
+      double pcoords[3];
+      vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
+    			     coords[0]->GetComponent(ijk[0]+1,0),
+    			     coords[1]->GetComponent(ijk[1],0),
+    			     coords[1]->GetComponent(ijk[1]+1,0),
+    			     coords[2]->GetComponent(ijk[2],0),
+    			     coords[2]->GetComponent(ijk[2]+1,0)};
+      float3 norm = make_float3(normals[idx*3+0],
+    				normals[idx*3+1],
+    				normals[idx*3+2]);
+      *itp = plicCorrector(*itp, norm, lstar[idx], cubeCoords);
+    }
   }
 }
 

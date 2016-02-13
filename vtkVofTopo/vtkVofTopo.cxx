@@ -907,6 +907,7 @@ int isInside(const int ijk[3], const int cellRes[3],
 //----------------------------------------------------------------------------
 void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 {
+  const int boundarySize = 2;
   int extent[6];
   this->VofGrid[1]->GetExtent(extent);
 
@@ -915,71 +916,62 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 		    this->VofGrid[1]->GetZCoordinates()->GetNumberOfTuples()};
   int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
   
-  int imin = extent[0] > GlobalExtent[0] ? NumGhostLevels : 0;
-  int imax = extent[1] < GlobalExtent[1] ? cellRes[0]-NumGhostLevels : cellRes[0];
-  int jmin = extent[2] > GlobalExtent[2] ? NumGhostLevels : 0;
-  int jmax = extent[3] < GlobalExtent[3] ? cellRes[1]-NumGhostLevels : cellRes[1];
-  int kmin = extent[4] > GlobalExtent[4] ? NumGhostLevels : 0;
-  int kmax = extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels : cellRes[2];
+  // indices of inner cells (without domain offset)
+  int innerExtent[6] = {extent[0] > GlobalExtent[0] ? NumGhostLevels : 0,
+			extent[1] < GlobalExtent[1] ? cellRes[0]-1-NumGhostLevels : cellRes[0]-1,
+			extent[2] > GlobalExtent[2] ? NumGhostLevels : 0,
+			extent[3] < GlobalExtent[3] ? cellRes[1]-1-NumGhostLevels : cellRes[1]-1,
+			extent[4] > GlobalExtent[4] ? NumGhostLevels : 0,
+			extent[5] < GlobalExtent[5] ? cellRes[2]-1-NumGhostLevels : cellRes[2]-1};
 
-  int bids[6] = {extent[0] > GlobalExtent[0] ? NumGhostLevels : -1,
-		 extent[1] < GlobalExtent[1] ? cellRes[0]-NumGhostLevels-1 : -1,
-		 extent[2] > GlobalExtent[2] ? NumGhostLevels : -1,
-		 extent[3] < GlobalExtent[3] ? cellRes[1]-NumGhostLevels-1 : -1,
-		 extent[4] > GlobalExtent[4] ? NumGhostLevels : -1,
-		 extent[5] < GlobalExtent[5] ? cellRes[2]-NumGhostLevels-1 : -1};
+  int bids[6] = {extent[0] > GlobalExtent[0] ? innerExtent[0] : -1,
+		 extent[1] < GlobalExtent[1] ? innerExtent[1] : -1,
+		 extent[2] > GlobalExtent[2] ? innerExtent[2] : -1,
+		 extent[3] < GlobalExtent[3] ? innerExtent[3] : -1,
+		 extent[4] > GlobalExtent[4] ? innerExtent[4] : -1,
+		 extent[5] < GlobalExtent[5] ? innerExtent[5] : -1};
 
   std::set<std::array<int,3>> boundaryCells;
   boundaryCells.clear();
 
   if (bids[0] > -1) { // left
-    const int i = bids[0];
-    for (int k = kmin; k < kmax; ++k) {
-      for (int j = jmin; j < jmax; ++j) {
-	boundaryCells.emplace(std::array<int,3>{i,j,k});
-      }
-    }
+    for (int i = bids[0]; i < bids[0]+boundarySize; ++i)
+      for (int k = innerExtent[4]; k <= innerExtent[5]; ++k)
+	for (int j = innerExtent[2]; j <= innerExtent[3]; ++j)
+	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
   if (bids[1] > -1) { // right
-    const int i = bids[1];
-    for (int k = kmin; k < kmax; ++k) {
-      for (int j = jmin; j < jmax; ++j) {
-	boundaryCells.emplace(std::array<int,3>{i,j,k});
-      }
-    }
+    for (int i = bids[1]; i > bids[1]-boundarySize; --i) 
+      for (int k = innerExtent[4]; k <= innerExtent[5]; ++k)
+	for (int j = innerExtent[2]; j <= innerExtent[3]; ++j)
+	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
   if (bids[2] > -1) { // bottom
-    const int j = bids[2];
-    for (int k = kmin; k < kmax; ++k) {
-      for (int i = imin; i < imax; ++i) {
-	boundaryCells.emplace(std::array<int,3>{i,j,k});
-      }
-    }
+    for (int j = bids[2]; j < bids[2]+boundarySize; ++j)
+      for (int k = innerExtent[4]; k <= innerExtent[5]; ++k)
+	for (int i = innerExtent[0]; i <= innerExtent[1]; ++i)
+	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
   if (bids[3] > -1) { // top
-    const int j = bids[3];
-    for (int k = kmin; k < kmax; ++k) {
-      for (int i = imin; i < imax; ++i) {
-	boundaryCells.emplace(std::array<int,3>{i,j,k});
-      }
-    }
+    for (int j = bids[3]; j > bids[3]-boundarySize; --j)
+      for (int k = innerExtent[4]; k <= innerExtent[5]; ++k)
+	for (int i = innerExtent[0]; i <= innerExtent[1]; ++i)
+	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
   if (bids[4] > -1) { // back
-    const int k = bids[4];
-    for (int j = jmin; j < jmax; ++j) {
-      for (int i = imin; i < imax; ++i) {
-	boundaryCells.emplace(std::array<int,3>{i,j,k});
-      }
-    }
+    for (int k = bids[4]; k < bids[4]+boundarySize; ++k)
+      for (int j = innerExtent[2]; j <= innerExtent[3]; ++j)
+	for (int i = innerExtent[0]; i <= innerExtent[1]; ++i)
+	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
   if (bids[5] > -1) { // front
-    const int k = bids[5];
-    for (int j = jmin; j < jmax; ++j) {
-      for (int i = imin; i < imax; ++i) {
-	boundaryCells.emplace(std::array<int,3>{i,j,k});
-      }
-    }
+    for (int k = bids[5]; k > bids[5]-boundarySize; --k)
+      for (int j = innerExtent[2]; j <= innerExtent[3]; ++j)
+	for (int i = innerExtent[0]; i <= innerExtent[1]; ++i)
+	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
+
+  // std::cout << "boundaryCells.size() = " << boundaryCells.size() << std::endl;
 
   vtkPoints *seedPoints = Seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
@@ -1021,14 +1013,14 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
     int ijk[3];
     double pcoords[3];
     int inside = VofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    int insideGrid = isInside(ijk,cellRes,NumGhostLevels,1);
+    int insideGrid = isInside(ijk,cellRes,NumGhostLevels,boundarySize);
     if (inside && insideGrid) {
     
       boundarySeedPoints->InsertNextPoint(x);
       boundarySeedLabels->InsertNextTuple1(labelsToRecv[i]);
     }
   }
-  
+
   boundarySeeds->SetPoints(boundarySeedPoints);
   boundarySeeds->GetPointData()->AddArray(boundarySeedLabels);
 }

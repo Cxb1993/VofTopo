@@ -65,7 +65,8 @@ void findGlobalBounds(std::vector<double> &allBounds,
 void findNeighbors(const int myExtents[6], 
 		   const int globalExtents[6], 
 		   const std::vector<int> &allExtents,
-		   std::vector<std::vector<int> > &neighbors);
+		   std::vector<std::vector<int> > &neighbors,
+		   const int procId);
 
 int outOfBounds(const float4 particle, const double bounds[6], const double globalBounds[6]);
 int withinBounds(const float4 particle, const double bounds[6]);

@@ -1482,7 +1482,8 @@ void findGlobalBounds(std::vector<double> &allBounds,
 void findNeighbors(const int localExtents[6], 
 		   const int globalExtents[6], 
 		   const std::vector<int> &allExtents,
-		   std::vector<std::vector<int> > &neighbors)
+		   std::vector<std::vector<int>> &neighbors,
+		   const int procId)
 {
   const int numDims = 3;
   const int numSides = 6;
@@ -1491,13 +1492,14 @@ void findNeighbors(const int localExtents[6],
 
     if (localExtents[i*2+0] > globalExtents[i*2+0]) {
       for (int j = 0; j < allExtents.size()/numSides; ++j) {
-	
+
+	if (j == procId) continue;
 	if (localExtents[i*2+0] <= allExtents[j*numSides+i*2+1] &&
 	    localExtents[i*2+1] > allExtents[j*numSides+i*2+1] &&
-	    localExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
-	    localExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
-	    localExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
-	    localExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+	    localExtents[((i+1)%3)*2+0] <= allExtents[j*numSides+((i+1)%3)*2+1] &&
+	    localExtents[((i+1)%3)*2+1] >= allExtents[j*numSides+((i+1)%3)*2+0] &&
+	    localExtents[((i+2)%3)*2+0] <= allExtents[j*numSides+((i+2)%3)*2+1] &&
+	    localExtents[((i+2)%3)*2+1] >= allExtents[j*numSides+((i+2)%3)*2+0]) {
 
 	  neighbors[i*2+0].push_back(j);
 	}
@@ -1506,12 +1508,13 @@ void findNeighbors(const int localExtents[6],
     if (localExtents[i*2+1] < globalExtents[i*2+1]) { 
       for (int j = 0; j < allExtents.size()/numSides; ++j) {
 
+	if (j == procId) continue;
 	if (localExtents[i*2+1] >= allExtents[j*numSides+i*2+0] &&
 	    localExtents[i*2+0] < allExtents[j*numSides+i*2+0] &&
-	    localExtents[((i+1)%3)*2+0] < allExtents[j*numSides+((i+1)%3)*2+1] &&
-	    localExtents[((i+1)%3)*2+1] > allExtents[j*numSides+((i+1)%3)*2+0] &&
-	    localExtents[((i+2)%3)*2+0] < allExtents[j*numSides+((i+2)%3)*2+1] &&
-	    localExtents[((i+2)%3)*2+1] > allExtents[j*numSides+((i+2)%3)*2+0]) {
+	    localExtents[((i+1)%3)*2+0] <= allExtents[j*numSides+((i+1)%3)*2+1] &&
+	    localExtents[((i+1)%3)*2+1] >= allExtents[j*numSides+((i+1)%3)*2+0] &&
+	    localExtents[((i+2)%3)*2+0] <= allExtents[j*numSides+((i+2)%3)*2+1] &&
+	    localExtents[((i+2)%3)*2+1] >= allExtents[j*numSides+((i+2)%3)*2+0]) {
 
 	  neighbors[i*2+1].push_back(j);
 	}
@@ -1769,16 +1772,10 @@ void calcLabelBounds(vtkPoints *points,
     int ijk1[3];
     double pcoords[3];
 
-    // std::cout << "x0: " << x0[0] << " " << x0[1] << " " << x0[2] << std::endl;
-    // std::cout << "x1: " << x1[0] << " " << x1[1] << " " << x1[2] << std::endl;
-    
     grid->ComputeStructuredCoordinates(x0, ijk0, pcoords);
     grid->ComputeStructuredCoordinates(x1, ijk1, pcoords);
 
     labelBounds[i] = {ijk0[0],ijk1[0], ijk0[1],ijk1[1], ijk0[2],ijk1[2]};
-
-    // std::cout << "ijk0: " << ijk0[0] << " " << ijk0[1] << " " << ijk0[2] << std::endl;
-    // std::cout << "ijk1: " << ijk1[0] << " " << ijk1[1] << " " << ijk1[2] << std::endl;
   }
 }
 

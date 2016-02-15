@@ -418,6 +418,7 @@ void computeBoundsWithoutGhost(double globalBounds[6], double localBounds[6],
 //----------------------------------------------------------------------------
 void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 {
+  int processId = Controller->GetLocalProcessId();
   int numProcesses = Controller->GetNumberOfProcesses();
   std::vector<vtkIdType> RecvLengths(numProcesses);
   std::vector<vtkIdType> RecvOffsets(numProcesses);
@@ -456,7 +457,7 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 
   NeighborProcesses.clear();
   NeighborProcesses.resize(NUM_SIDES);
-  findNeighbors(LocalExtents, GlobalExtent, AllExtents, NeighborProcesses);
+  findNeighbors(LocalExtents, GlobalExtent, AllExtents, NeighborProcesses, processId);  
 
   NumNeighbors = 0;
   for (int i = 0; i < NeighborProcesses.size(); ++i) {
@@ -524,8 +525,10 @@ void vtkVofTopo::ExchangeParticles()
     int bound = outOfBounds(Particles[i], BoundsNoGhosts, GlobalBounds);
     if (bound > -1) {
       for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
+      // for (int j = 0; j < numProcesses; ++j) {	
 
   	int neighborId = NeighborProcesses[bound][j];
+  	// int neighborId = j;//NeighborProcesses[bound][j];	
 	if (neighborId != processId) {
 	  particlesToSend[neighborId].push_back(Particles[i]);
 	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
@@ -809,6 +812,8 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
       idsToSend[i].resize(0);
     }
 
+    // int testNumLocal = 0;
+
     for (int i = 0; i < particleData.size(); ++i) {
 
       // particle started from a seed in other process - its label and id
@@ -820,6 +825,7 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
       // particle started from a seed in this process
       else {
 	dataArray->SetValue(ParticleIds[i], particleData[i]);
+	// ++testNumLocal;
       }
     }
 
@@ -872,6 +878,7 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
     for (int i = 0; i < dataToRecv.size(); ++i) {
       dataArray->SetValue(idsToRecv[i], dataToRecv[i]);
     }
+
   }
   Seeds->GetPointData()->AddArray(dataArray);
 }
@@ -972,8 +979,6 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 	for (int i = innerExtent[0]; i <= innerExtent[1]; ++i)
 	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
-
-  // std::cout << "boundaryCells.size() = " << boundaryCells.size() << std::endl;
 
   vtkPoints *seedPoints = Seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));

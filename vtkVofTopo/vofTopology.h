@@ -42,6 +42,7 @@ void initVelocities(vtkRectilinearGrid *velocity,
 void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     vtkRectilinearGrid *inputVelocity[2],
 		     std::vector<float4> &particles,
+		     std::vector<float> &uncertainty,
 		     const float deltaT);
 
 void advectParticles(vtkRectilinearGrid *inputVof,

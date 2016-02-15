@@ -5,6 +5,7 @@
 #include "helper_math.h"
 #include <map>
 #include <vector>
+#include <string>
 
 class vtkMPIController;
 class vtkRectilinearGrid;
@@ -68,8 +69,9 @@ private:
 
   void LabelAdvectedParticles(vtkRectilinearGrid *components,
 			      std::vector<float> &labels);
-  void TransferLabelsToSeeds(std::vector<float> &particleLabels);
-
+  // void TransferLabelsToSeeds(std::vector<float> &particleLabels);
+  void TransferParticleDataToSeeds(std::vector<float> &particleData, const std::string arrayName);
+  
   void GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *boundarySeeds);
 
   void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds);

@@ -254,7 +254,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	LabelAdvectedParticles(components, particleLabels);
 
 	// Stage V -------------------------------------------------------------
-	TransferLabelsToSeeds(particleLabels);
+	TransferParticleDataToSeeds(particleLabels, "Labels");
+	TransferParticleDataToSeeds(Uncertainty, "Uncertainty");
 
 	// Transfer seed points from neighbors ---------------------------------
 	vtkPolyData *boundarySeeds = vtkPolyData::New();
@@ -487,7 +488,7 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   
   dt *= Incr;
   
-  advectParticles(vof, velocity, Particles, dt);
+  advectParticles(vof, velocity, Particles, Uncertainty, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -775,14 +776,15 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
+void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
+					     const std::string arrayName)
 {
-  vtkFloatArray *labelsArray = vtkFloatArray::New();
-  labelsArray->SetName("Labels");
-  labelsArray->SetNumberOfComponents(1);
-  labelsArray->SetNumberOfTuples(Seeds->GetNumberOfPoints());
+  vtkFloatArray *dataArray = vtkFloatArray::New();
+  dataArray->SetName(arrayName.c_str());
+  dataArray->SetNumberOfComponents(1);
+  dataArray->SetNumberOfTuples(Seeds->GetNumberOfPoints());
   for (int i = 0; i < Seeds->GetNumberOfPoints(); ++i) {
-    labelsArray->SetValue(i, -10.0f);
+    dataArray->SetValue(i, -10.0f);
   }
 
   if (sizeof(float) != sizeof(int)) {
@@ -791,8 +793,8 @@ void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
   }
 
   if (Controller->GetCommunicator() == 0) {
-    for (int i = 0; i < particleLabels.size(); ++i) {
-      labelsArray->SetValue(i, particleLabels[i]);
+    for (int i = 0; i < particleData.size(); ++i) {
+      dataArray->SetValue(i, particleData[i]);
     }
   }
   else {
@@ -800,78 +802,78 @@ void vtkVofTopo::TransferLabelsToSeeds(std::vector<float> &particleLabels)
     const int processId = Controller->GetLocalProcessId();
     const int numProcesses = Controller->GetNumberOfProcesses();
 
-    std::vector<std::vector<float>> labelsToSend(numProcesses);
+    std::vector<std::vector<float>> dataToSend(numProcesses);
     std::vector<std::vector<int>> idsToSend(numProcesses);
     for (int i = 0; i < numProcesses; ++i) {
-      labelsToSend[i].resize(0);
+      dataToSend[i].resize(0);
       idsToSend[i].resize(0);
     }
 
-    for (int i = 0; i < particleLabels.size(); ++i) {
+    for (int i = 0; i < particleData.size(); ++i) {
 
       // particle started from a seed in other process - its label and id
       // will be sent to that process
       if (processId != ParticleProcs[i]) {
-	labelsToSend[ParticleProcs[i]].push_back(particleLabels[i]);
+	dataToSend[ParticleProcs[i]].push_back(particleData[i]);
 	idsToSend[ParticleProcs[i]].push_back(ParticleIds[i]);
       }
       // particle started from a seed in this process
       else {
-	labelsArray->SetValue(ParticleIds[i], particleLabels[i]);
+	dataArray->SetValue(ParticleIds[i], particleData[i]);
       }
     }
 
-    // send labels to particle seeds
-    std::vector<int> numLabelsToSend(numProcesses);
-    std::vector<int> numLabelsToRecv(numProcesses);
-    std::vector<float> allLabelsToSend;
+    // send data to particle seeds
+    std::vector<int> numDataToSend(numProcesses);
+    std::vector<int> numDataToRecv(numProcesses);
+    std::vector<float> allDataToSend;
     std::vector<int> allIdsToSend;
-    allLabelsToSend.resize(0);
+    allDataToSend.resize(0);
     allIdsToSend.resize(0);
     for (int i = 0; i < numProcesses; ++i) {
-      numLabelsToSend[i] = labelsToSend[i].size();
-      numLabelsToRecv[i] = 0;      
-      for (int j = 0; j < labelsToSend[i].size(); ++j) {
-	allLabelsToSend.push_back(labelsToSend[i][j]);
+      numDataToSend[i] = dataToSend[i].size();
+      numDataToRecv[i] = 0;      
+      for (int j = 0; j < dataToSend[i].size(); ++j) {
+	allDataToSend.push_back(dataToSend[i][j]);
 	allIdsToSend.push_back(idsToSend[i][j]);
       }
     }
 
     std::vector<int> RecvLengths(numProcesses);
     std::vector<int> RecvOffsets(numProcesses);
-    int numAllLabelsToRecv = 0;
+    int numAllDataToRecv = 0;
     for (int i = 0; i < numProcesses; ++i) {
-      Controller->Scatter((int*)&numLabelsToSend[0], (int*)&numLabelsToRecv[i], 1, i);
+      Controller->Scatter((int*)&numDataToSend[0], (int*)&numDataToRecv[i], 1, i);
 
-      RecvOffsets[i] = numAllLabelsToRecv;
-      RecvLengths[i] = numLabelsToRecv[i]*sizeof(float);
-      numAllLabelsToRecv += numLabelsToRecv[i];
+      RecvOffsets[i] = numAllDataToRecv;
+      RecvLengths[i] = numDataToRecv[i]*sizeof(float);
+      numAllDataToRecv += numDataToRecv[i];
     }
 
-    std::vector<float> labelsToRecv(numAllLabelsToRecv);
-    std::vector<int> idsToRecv(numAllLabelsToRecv, -10000);
+    std::vector<float> dataToRecv(numAllDataToRecv);
+    std::vector<int> idsToRecv(numAllDataToRecv, -10000);
     std::vector<vtkIdType> SendLengths(numProcesses);
     std::vector<vtkIdType> SendOffsets(numProcesses);
     int offset = 0;
     for (int i = 0; i < numProcesses; ++i) {
-      SendLengths[i] = numLabelsToSend[i]*sizeof(float);
+      SendLengths[i] = numDataToSend[i]*sizeof(float);
       SendOffsets[i] = offset;
-      offset += numLabelsToSend[i]*sizeof(float);
+      offset += numDataToSend[i]*sizeof(float);
     }
 
     for (int i = 0; i < numProcesses; ++i) {
-      Controller->ScatterV((char*)&allLabelsToSend[0], (char*)&labelsToRecv[RecvOffsets[i]], 
+      Controller->ScatterV((char*)&allDataToSend[0], (char*)&dataToRecv[RecvOffsets[i]], 
 			   &SendLengths[0], &SendOffsets[0], RecvLengths[i], i);
     }
     for (int i = 0; i < numProcesses; ++i) {
       Controller->ScatterV((char*)&allIdsToSend[0], (char*)&idsToRecv[RecvOffsets[i]], 
 			   &SendLengths[0], &SendOffsets[0], RecvLengths[i], i);
     }
-    for (int i = 0; i < labelsToRecv.size(); ++i) {
-      labelsArray->SetValue(idsToRecv[i], labelsToRecv[i]);
+    for (int i = 0; i < dataToRecv.size(); ++i) {
+      dataArray->SetValue(idsToRecv[i], dataToRecv[i]);
     }
   }
-  Seeds->GetPointData()->AddArray(labelsArray);
+  Seeds->GetPointData()->AddArray(dataArray);
 }
 
 //----------------------------------------------------------------------------

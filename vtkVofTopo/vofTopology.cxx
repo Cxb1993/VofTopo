@@ -1207,6 +1207,8 @@ float getCellVof(const float4 &pos, vtkRectilinearGrid *vofGrid[2],
 
 void correctParticles(std::vector<float4>::iterator pbegin,
 		      std::vector<float4>::iterator pend,
+		      std::vector<float>::iterator cbegin,
+		      std::vector<float>::iterator cend,
 		      vtkRectilinearGrid *vofGrid[2], vtkDataArray *vofArray1,
 		      vtkDataArray *coords[3], const int cellRes[3])
 {
@@ -1227,14 +1229,17 @@ void correctParticles(std::vector<float4>::iterator pbegin,
   std::vector<float> lstar(cellRes[0]*cellRes[1]*cellRes[2]);
   std::vector<float> normals(cellRes[0]*cellRes[1]*cellRes[2]*3);
   computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
-  
-  for (auto itp = pbegin; itp != pend; ++itp) {
+
+  std::vector<float4>::iterator itp = pbegin;
+  std::vector<float>::iterator itc = cbegin;
+  for (; itp != pend, itc != cend; ++itp, ++itc) {
     int ijk[3];
     double pcoords[3];
     float f = getCellVof(*itp, vofGrid, vofArray1, cellRes, ijk, pcoords);
     if (f <= g_emf0) {
       float4 prev_pos1 = *itp;
       *itp = vofCorrector(*itp, vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
+      *itc += length(make_float3(*itp - prev_pos1));
     }
     if (f > g_emf0 && f < g_emf1) {
 
@@ -1251,7 +1256,9 @@ void correctParticles(std::vector<float4>::iterator pbegin,
       float3 norm = make_float3(normals[idx*3+0],
     				normals[idx*3+1],
     				normals[idx*3+2]);
+      float4 prev_pos1 = *itp;
       *itp = plicCorrector(*itp, norm, lstar[idx], cubeCoords);
+      *itc += length(make_float3(*itp - prev_pos1));
     }
   }
 }
@@ -1346,6 +1353,7 @@ float4 iterativeHeun(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
 void advectParticles(vtkRectilinearGrid *vofGrid[2],
 		     vtkRectilinearGrid *velocityGrid[2],
 		     std::vector<float4> &particles,
+		     std::vector<float> &uncertainty,
 		     const float deltaT)
 {
   int index0,index1,index2;
@@ -1371,7 +1379,9 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
     // *itp = rungeKutta4(*itp, velocityGrid, velocityArray0, velocityArray1, cellRes, deltaT);
   }
 
-  correctParticles(particles.begin(), particles.end(), vofGrid, vofArray1, coords, cellRes);
+  correctParticles(particles.begin(), particles.end(),
+		   uncertainty.begin(), uncertainty.end(),
+		   vofGrid, vofArray1, coords, cellRes);
 }
 
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],

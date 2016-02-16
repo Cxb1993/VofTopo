@@ -415,39 +415,6 @@ float interpolateSca(vtkDataArray *vofField,
   return (1.0f-z)*c + z*d;
 }
 
-void smoothSurface(std::vector<float3>& vertices,
-		   std::vector<int>& indices)
-{
-  std::vector<std::set<int> > neighbors(vertices.size());
-  for (int i = 0; i < indices.size()/3; ++i) {
-      
-    int *tri = &indices[i*3];
-    for (int j = 0; j < 3; j++) {
-      neighbors[tri[j]].insert(tri[(j+0)%3]);
-      neighbors[tri[j]].insert(tri[(j+1)%3]);
-      neighbors[tri[j]].insert(tri[(j+2)%3]);
-    }
-  }
-
-  std::vector<float3> verticesTmp(vertices.size());
-  float3 vert = {0.0f,0.0f,0.0f};
-  for (int i = 0; i < verticesTmp.size(); ++i) {
-    verticesTmp[i] = vert;
-  }
-
-  for (int i = 0; i < neighbors.size(); ++i) {
-    std::set<int>::iterator it;
-    for (it = neighbors[i].begin(); it != neighbors[i].end(); ++it) {
-      verticesTmp[i] += vertices[*it];
-    }
-  }
-
-  for (int i = 0; i < verticesTmp.size(); ++i) {
-    if (neighbors.size() > 5) {
-      vertices[i] = verticesTmp[i]/(neighbors[i].size());
-    }
-  }
-}
 
 bool cellOnInterface(vtkDataArray *data, int res[3], int i, int j, int k)
 {
@@ -474,37 +441,6 @@ bool cellOnInterface(vtkDataArray *data, int res[3], int i, int j, int k)
   }
 
   return false;
-}
-
-
-void initVelocities(vtkRectilinearGrid *velocity,
-		    std::vector<float4> &particles,
-		    std::vector<float4> &velocities)
-{
-  int nodeRes[3];
-  velocity->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  double x[3];
-  int ijk[3];
-  double pcoords[3];
-  int index;
-  vtkDataArray *velocityArray = 
-    velocity->GetCellData()->GetArray("Data", index);
-      // velocity->GetCellData()->GetAttribute(vtkDataSetAttributes::VECTORS);
-  if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
-
-  std::vector<float4>::iterator itp = particles.begin();
-  std::vector<float4>::iterator itv = velocities.begin();
-  for (; itp != particles.end() && itv != velocities.end(); ++itp, ++itv) {
-
-    x[0] = itp->x;
-    x[1] = itp->y;
-    x[2] = itp->z;        
-    velocity->ComputeStructuredCoordinates(x, ijk, pcoords);
-    *itv = make_float4(interpolateVec(velocityArray, cellRes, ijk, pcoords),0.0f);
-  }
 }
 
 float dot(float* a, float* b)
@@ -1079,15 +1015,79 @@ float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
   return pos2;
 }
 
+// float4 plicCorrector(const float4 pos1, const float3 normal,
+// 		     const float lstar, float coords[6])
+// {
+//   float4 pos2 = pos1;
+//   float3 nodes[8] = {make_float3(coords[0],coords[2],coords[4]),
+// 		     make_float3(coords[1],coords[2],coords[4]),
+// 		     make_float3(coords[0],coords[3],coords[4]),
+// 		     make_float3(coords[1],coords[3],coords[4]),
+// 		     make_float3(coords[0],coords[2],coords[5]),
+// 		     make_float3(coords[1],coords[2],coords[5]),
+// 		     make_float3(coords[0],coords[3],coords[5]),
+// 		     make_float3(coords[1],coords[3],coords[5])};   
+//   float3 attachPoint =
+//     make_float3(normal.x > 0 ? coords[0] : coords[1],
+// 		normal.y > 0 ? coords[2] : coords[3],
+// 		normal.z > 0 ? coords[4] : coords[5]);
+//   float projNodes[8];
+//   for (int i = 0; i < 8; ++i) {
+//     float3 posVec = nodes[i] - attachPoint;
+//     projNodes[i] = std::abs(dot(posVec,normal));
+//   }
+//   char edges[12][2] = {{0,1},{0,2},{1,3},{2,3},
+// 		       {4,5},{4,6},{5,7},{6,7},
+// 		       {0,4},{1,5},{2,6},{3,7}};
+  
+//   std::vector<float3> edgeisects;
+//   for (int i = 0; i < 12; ++i) {
+//     int e0 = edges[i][0];
+//     int e1 = edges[i][1];
+//     float f0 = projNodes[e0];
+//     float f1 = projNodes[e1];
+//     if (f0 == f1) continue;
+//     float a = (lstar-f0)/(f1-f0);
+//     if (a > 0 && a < 1) {
+//       edgeisects.push_back(nodes[e0]*(1.0f-a) + nodes[e1]*a);
+//     }
+//   }
+
+//   float3 posVec = make_float3(pos1) - attachPoint;
+//   float d = std::abs(dot(posVec,normal));
+
+//   if (d > lstar) {
+//     float d2 = d - lstar;
+//     float4 disp = make_float4(d2*normal);
+//     pos2 -= disp;
+//     if (pos2.x < coords[0] || pos2.x > coords[1] ||
+// 	pos2.y < coords[2] || pos2.y > coords[3] ||
+// 	pos2.z < coords[4] || pos2.z > coords[5]) {
+//       float mindist = 10000.0f;
+//       int isel = -1;
+//       for (int i = 0; i < edgeisects.size(); ++i) {
+// 	float dist = length(make_float3(pos1)-edgeisects[i]);
+// 	if (dist < mindist) {
+// 	  mindist = dist;
+// 	  isel = i;
+// 	}
+//       }
+//       pos2 = make_float4(edgeisects[isel]);
+//       pos2.w = 1.0f;
+//     }
+//   }
+//   return pos2;
+// }
+
 float4 plicCorrector(const float4 pos1, const float3 normal,
 		     const float lstar, float coords[6])
 {
   float4 pos2 = pos1;
-   
   float3 attachPoint =
     make_float3(normal.x > 0 ? coords[0] : coords[1],
 		normal.y > 0 ? coords[2] : coords[3],
 		normal.z > 0 ? coords[4] : coords[5]);
+
   float3 posVec = make_float3(pos1) - attachPoint;
   float d = std::abs(dot(posVec,normal));
 
@@ -1102,97 +1102,6 @@ float4 plicCorrector(const float4 pos1, const float3 normal,
     pos2 -= disp;
   }
   return pos2;
-}
-
-// iterative, solved with fixed point method - Newton's method can be viewed as such
-// https://en.wikipedia.org/wiki/Fixed-point_iteration
-// https://en.wikipedia.org/wiki/Trapezoidal_rule_%28differential_equations%29
-void advectParticles(vtkRectilinearGrid *vofGrid,
-		     vtkRectilinearGrid *velocityGrid,
-		     std::vector<float4> &particles,
-		     std::vector<float4> &velocities,		     
-		     const float deltaT,
-		     std::vector<float> &uncertainty)
-{
-  int nodeRes[3];
-  vofGrid->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  int index;
-  vtkDataArray *velocityArray1 = velocityGrid->GetCellData()->GetArray("Data", index);
-    if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
-  vtkDataArray *vofArray1 = vofGrid->GetCellData()->GetArray("Data", index);
-  if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
-
-  vtkDataArray *coords[3] = {vofGrid->GetXCoordinates(),
-			     vofGrid->GetYCoordinates(),
-			     vofGrid->GetZCoordinates()};
-
-  std::vector<float4>::iterator itp = particles.begin();
-  std::vector<float4>::iterator itv = velocities.begin();
-  std::vector<float>::iterator itc = uncertainty.begin();
-  
-  for (; itp != particles.end() && itv != velocities.end() && itc != uncertainty.end(); ++itp, ++itv, ++itc) {
-
-    if (itp->w <= g_emf0) {
-      continue;
-    }
-    double x[3];
-    int ijk[3];
-    double pcoords[3];
-    const int maxNumIter = 20;
-
-    float4 pos0 = *itp;
-    float4 velocity0 = *itv;
-    // initial guess - forward Euler
-    float4 pos1 = pos0 + deltaT*velocity0;
-    float4 velocity1;
-    
-    for (int i = 0; i < maxNumIter; ++i) {
-
-      x[0] = pos1.x;
-      x[1] = pos1.y;
-      x[2] = pos1.z;
-      
-      velocityGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-      velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
-      
-      float4 velocity = (velocity0 + velocity1)/2.0f;
-      pos1 = pos0 + deltaT*velocity;      
-    }
-    *itp = pos1;
-
-    x[0] = itp->x;
-    x[1] = itp->y;
-    x[2] = itp->z;
-
-    {
-      vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      float f = vofArray1->GetComponent(idx, 0);
-      if (f <= g_emf0) {
-	float4 prev_pos1 = pos1;
-	pos1 = vofCorrector(pos1, vofArray1, coords, cellRes, ijk, pcoords, vofGrid, f);
-	*itc += length(make_float3(pos1-prev_pos1));
-	*itp = pos1;
-	x[0] = pos1.x;
-	x[1] = pos1.y;
-	x[2] = pos1.z;      	
-      }      
-    }
-    
-    int particleInsideGrid = vofGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-    velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
-    *itv = velocity1;
-        
-    if (particleInsideGrid) {
-      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      itp->w = vofArray1->GetComponent(idx, 0);
-    }
-  }
 }
 
 float getCellVof(const float4 &pos, vtkRectilinearGrid *vofGrid[2],
@@ -1269,7 +1178,7 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
 		   vtkDataArray *velocityArray0, vtkDataArray *velocityArray1,
 		   const int cellRes[3], const float deltaT)
 {
-  const int numSteps = 10;
+  const int numSteps = 1;
   float4 pos = pos0;
   float t = 0.0f;
   
@@ -1380,8 +1289,8 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
   }
 
   correctParticles(particles.begin(), particles.end(),
-		   uncertainty.begin(), uncertainty.end(),
-		   vofGrid, vofArray1, coords, cellRes);
+  		   uncertainty.begin(), uncertainty.end(),
+  		   vofGrid, vofArray1, coords, cellRes);
 }
 
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],
@@ -2066,75 +1975,3 @@ void generateBoundaries(vtkPoints *points,
   boundaries->GetPointData()->AddArray(boundaryLabels);
   boundaries->GetPointData()->SetNormals(pointNormals);
 }
-
-#if 0
-// /home/bussleml/projects/paraview/filter/vtkRidge/kernels.cu
-__global__ void processPointGradients(uint maxIndex, double* data,
-				      double* gradient, uint dim[3],
-				      unsigned int stencilRange)
-{
-  uint index=blockIdx.x*blockDim.x + threadIdx.x;
-  if (index < maxIndex) {
-    uint z=index/(dim[0]*dim[1]);
-    uint y=index%(dim[0]*dim[1])/dim[0];
-    uint x=(index%(dim[0]*dim[1]))%dim[0];
-
-    mat3 m = { {0}, {0}, {0} };
-    vec3 rhs = { 0 };
-
-    //vec3 xyzi = {x, y, z}; // ###, vi;
-    double fi = data[index];
-
-    // compute all neighbors inside level 'range'
-    int width = 2*stencilRange+1;
-    int neighCnt = width*width*width;//computeNodeNeighborsN(i, range, neighborsN);
-
-    int effNeighCnt = 0;
-    for (int k = 0; k < neighCnt; k++) {
-      int offsetX = (k%width) - stencilRange;
-      int offsetY = ((k/width)%width) - stencilRange;
-      int offsetZ = (k/(width*width)) - stencilRange;
-
-      double neighborX = x + offsetX;
-      double neighborY = y + offsetY;
-      double neighborZ = z + offsetZ;
-
-      if (neighborX >= 0 && neighborX < dim[0] &&
-	  neighborY >= 0 && neighborY < dim[1] &&
-	  neighborZ >= 0 && neighborZ < dim[2])	{
-	int neighborIndex = (neighborX) + (neighborY)*dim[0] + (neighborZ)*dim[0]*dim[1];
-	effNeighCnt++;
-
-	m[0][0] += offsetX*offsetX;  m[0][1] += offsetX*offsetY;  m[0][2] += offsetX*offsetZ;
-	m[1][0] += offsetY*offsetX;  m[1][1] += offsetY*offsetY;  m[1][2] += offsetY*offsetZ;
-	m[2][0] += offsetZ*offsetX;  m[2][1] += offsetZ*offsetY;  m[2][2] += offsetZ*offsetZ;
-
-	// Relative function values of neighbors
-	double f = data[neighborIndex] - fi;
-
-	rhs[0] += f*offsetX;  rhs[1] += f*offsetY;  rhs[2] += f*offsetZ;
-      }
-    }
-
-    double det = mat3det(m);
-    if (det == 0) det = 1;
-    vec3 grad;
-
-    grad[0] = vec3det(rhs, m[1], m[2]) / det;	// dV0/dx
-    grad[1] = vec3det(m[0], rhs, m[2]) / det;	// dV0/dy
-    grad[2] = vec3det(m[0], m[1], rhs) / det;	// dV0/dz
-
-    for (int v=0; v<3; v++) {
-      if (grad[v] > FLT_MAX) {
-	grad[v] = FLT_MAX;
-      }
-      else if (grad[v] < -FLT_MAX) {
-	grad[v] = -FLT_MAX;
-      }
-    }
-    gradient[3*index+0]=grad[0];
-    gradient[3*index+1]=grad[1];
-    gradient[3*index+2]=grad[2];
-  }
-}
-#endif

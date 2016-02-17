@@ -122,6 +122,10 @@ private:
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
   std::vector<float> Uncertainty;
+
+  // Intermediate particles
+  std::vector<std::vector<float4>> IntParticles;
+  std::vector<float> IntParticlesTimeStamps;
   
   // Temporal boundaries
   vtkPolyData *Boundaries;

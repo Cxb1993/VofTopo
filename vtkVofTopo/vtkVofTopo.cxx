@@ -228,6 +228,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	InitParticles(VofGrid[0], nullptr);	
       }
 
+      IntParticles.push_back(Particles);
+      IntParticlesTimeStamps.push_back(TimestepT0);
+      
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
 
@@ -242,6 +245,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     if(TimestepT0 < TargetTimeStep) {      
       AdvectParticles(VofGrid, VelocityGrid);
 
+      IntParticles.push_back(Particles);
+      IntParticlesTimeStamps.push_back(TimestepT1);
       // vtkRectilinearGrid *intVof = InterpolateField(VofGrid, VelocityGrid, 0.5f);
       // vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
 
@@ -309,6 +314,43 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(components, 3, Controller->GetLocalProcessId(), "out2/out2_");
+
+	// {
+	//   vtkPolyData *intParticles = vtkPolyData::New();
+	//   vtkPoints *intPoints = vtkPoints::New();
+	//   vtkFloatArray *intTimeStamps = vtkFloatArray::New();
+	//   intTimeStamps->SetName("IntermediateTimeStamps");
+	//   intTimeStamps->SetNumberOfComponents(1);
+
+	//   vtkFloatArray *intLabels = vtkFloatArray::New();
+	//   intLabels->SetName("IntermediateLabels");
+	//   intLabels->SetNumberOfComponents(1);
+	//   int numPoints = 0;
+	//   for (const auto &ps : IntParticles) {
+	//     numPoints += ps.size();
+	//   }
+	//   intPoints->SetNumberOfPoints(numPoints);
+	//   intTimeStamps->SetNumberOfTuples(numPoints);
+	//   intLabels->SetNumberOfTuples(numPoints);
+	//   int idx = 0;
+	//   int ts = 0;
+	//   for (const auto &ps : IntParticles) {
+	//     int pId = 0;
+	//     for (const auto &p : ps) {
+	//       float pf[3] = {p.x, p.y, p.z};
+	//       intPoints->SetPoint(idx, pf);
+	//       intTimeStamps->SetValue(idx, IntParticlesTimeStamps[ts]);
+	//       intLabels->SetValue(idx, particleLabels[pId]);
+	//       ++idx;
+	//       ++pId;
+	//     }
+	//     ++ts;
+	//   }
+	//   intParticles->SetPoints(intPoints);
+	//   intParticles->GetPointData()->AddArray(intTimeStamps);
+	//   intParticles->GetPointData()->AddArray(intLabels);
+	//   output->SetBlock(4, intParticles);	  
+	// }
       }
     }
   }
@@ -1062,6 +1104,7 @@ vtkVofTopo::vtkVofTopo() :
   this->VofGrid[1] = vtkRectilinearGrid::New();
   this->VelocityGrid[0] = vtkRectilinearGrid::New();
   this->VelocityGrid[1] = vtkRectilinearGrid::New();
+  IntParticles.clear();
 }
 
 //----------------------------------------------------------------------------

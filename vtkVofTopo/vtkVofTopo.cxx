@@ -228,8 +228,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	InitParticles(VofGrid[0], nullptr);	
       }
 
-      IntParticles.push_back(Particles);
-      IntParticlesTimeStamps.push_back(TimestepT0);
+      IntermParticles.push_back(Particles);
+      IntermParticlesTimeStamps.push_back(TimestepT0);
       
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
@@ -245,8 +245,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     if(TimestepT0 < TargetTimeStep) {      
       AdvectParticles(VofGrid, VelocityGrid);
 
-      IntParticles.push_back(Particles);
-      IntParticlesTimeStamps.push_back(TimestepT1);
+      IntermParticles.push_back(Particles);
+      IntermParticlesTimeStamps.push_back(TimestepT1);
       // vtkRectilinearGrid *intVof = InterpolateField(VofGrid, VelocityGrid, 0.5f);
       // vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
 
@@ -326,7 +326,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	//   intLabels->SetName("IntermediateLabels");
 	//   intLabels->SetNumberOfComponents(1);
 	//   int numPoints = 0;
-	//   for (const auto &ps : IntParticles) {
+	//   for (const auto &ps : IntermParticles) {
 	//     numPoints += ps.size();
 	//   }
 	//   intPoints->SetNumberOfPoints(numPoints);
@@ -334,12 +334,12 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	//   intLabels->SetNumberOfTuples(numPoints);
 	//   int idx = 0;
 	//   int ts = 0;
-	//   for (const auto &ps : IntParticles) {
+	//   for (const auto &ps : IntermParticles) {
 	//     int pId = 0;
 	//     for (const auto &p : ps) {
 	//       float pf[3] = {p.x, p.y, p.z};
 	//       intPoints->SetPoint(idx, pf);
-	//       intTimeStamps->SetValue(idx, IntParticlesTimeStamps[ts]);
+	//       intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[ts]);
 	//       intLabels->SetValue(idx, particleLabels[pId]);
 	//       ++idx;
 	//       ++pId;
@@ -350,6 +350,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	//   intParticles->GetPointData()->AddArray(intTimeStamps);
 	//   intParticles->GetPointData()->AddArray(intLabels);
 	//   output->SetBlock(4, intParticles);	  
+	// }
+
+	// for (int i = 0; i < IntermParticles.size(); ++i) {
+	//   vtkPolyData *boundary = ComputeBoundary(IntermParticles[i],);
 	// }
       }
     }
@@ -429,47 +433,12 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
 }
 
 //----------------------------------------------------------------------------
-void computeBoundsWithoutGhost(double globalBounds[6], double localBounds[6], 
-			       vtkDataArray *xCoordinates, 
-			       vtkDataArray *yCoordinates, 
-			       vtkDataArray *zCoordinates,
-			       int numGhostLevels,
-			       double boundsNoGhosts[6])
-{
-  boundsNoGhosts[0] = localBounds[0];
-  boundsNoGhosts[1] = localBounds[1];
-  boundsNoGhosts[2] = localBounds[2];
-  boundsNoGhosts[3] = localBounds[3];
-  boundsNoGhosts[4] = localBounds[4];
-  boundsNoGhosts[5] = localBounds[5];
-
-  if (localBounds[0] != globalBounds[0]) {
-    boundsNoGhosts[0] = xCoordinates->GetComponent(numGhostLevels,0);
-  }
-  if (localBounds[1] != globalBounds[1]) {
-    int numCoords = xCoordinates->GetNumberOfTuples();
-    boundsNoGhosts[1] = xCoordinates->GetComponent(numCoords-1-numGhostLevels,0);
-  }
-  if (localBounds[2] != globalBounds[2]) {
-    boundsNoGhosts[2] = yCoordinates->GetComponent(numGhostLevels,0);
-  }
-  if (localBounds[3] != globalBounds[3]) {
-    int numCoords = yCoordinates->GetNumberOfTuples();
-    boundsNoGhosts[3] = yCoordinates->GetComponent(numCoords-1-numGhostLevels,0);
-  }
-  if (localBounds[4] != globalBounds[4]) {
-    boundsNoGhosts[4] = zCoordinates->GetComponent(numGhostLevels,0);
-  }
-  if (localBounds[5] != globalBounds[5]) {
-    int numCoords = zCoordinates->GetNumberOfTuples();
-    boundsNoGhosts[5] = zCoordinates->GetComponent(numCoords-1-numGhostLevels,0);
-  }
-}
-//----------------------------------------------------------------------------
 void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 {
   int processId = Controller->GetLocalProcessId();
   int numProcesses = Controller->GetNumberOfProcesses();
+
+  // prepare buffers for communication ---------------------------------------
   std::vector<vtkIdType> RecvLengths(numProcesses);
   std::vector<vtkIdType> RecvOffsets(numProcesses);
   for (int i = 0; i < numProcesses; ++i) {
@@ -480,52 +449,61 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
   vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
     SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-  int LocalExtents[NUM_SIDES];
-  inputVof->GetExtent(LocalExtents);
-
+  // store local extent ------------------------------------------------------
+  inputVof->GetExtent(LocalExtent);
+  
+  // find global extent ------------------------------------------------------
   std::vector<int> AllExtents(NUM_SIDES*numProcesses);
-  Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
-
+  Controller->AllGatherV(&LocalExtent[0], &AllExtents[0], NUM_SIDES, 
+			 &RecvLengths[0], &RecvOffsets[0]);
   findGlobalExtent(AllExtents, GlobalExtent);
 
-  // reduce extent to one without ghost cells
-  if (LocalExtents[0] > GlobalExtent[0])
-    LocalExtents[0] += NumGhostLevels;
-  if (LocalExtents[1] < GlobalExtent[1])
-    LocalExtents[1] -= NumGhostLevels;
-  if (LocalExtents[2] > GlobalExtent[2])
-    LocalExtents[2] += NumGhostLevels;
-  if (LocalExtents[3] < GlobalExtent[3])
-    LocalExtents[3] -= NumGhostLevels;
-  if (LocalExtents[4] > GlobalExtent[4])
-    LocalExtents[4] += NumGhostLevels;
-  if (LocalExtents[5] < GlobalExtent[5])
-    LocalExtents[5] -= NumGhostLevels;
+  // reduce extent to one without ghost cells --------------------------------
+  inputVof->GetExtent(LocalExtentNoGhosts);
+  if (LocalExtent[0] > GlobalExtent[0]) LocalExtentNoGhosts[0] += NumGhostLevels;
+  if (LocalExtent[1] < GlobalExtent[1]) LocalExtentNoGhosts[1] -= NumGhostLevels;
+  if (LocalExtent[2] > GlobalExtent[2]) LocalExtentNoGhosts[2] += NumGhostLevels;
+  if (LocalExtent[3] < GlobalExtent[3]) LocalExtentNoGhosts[3] -= NumGhostLevels;
+  if (LocalExtent[4] > GlobalExtent[4]) LocalExtentNoGhosts[4] += NumGhostLevels;
+  if (LocalExtent[5] < GlobalExtent[5]) LocalExtentNoGhosts[5] -= NumGhostLevels;
 
-  // send extents again
-  Controller->AllGatherV(&LocalExtents[0], &AllExtents[0], NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
-
+  // find neighboring subdomains ---------------------------------------------
+  std::vector<int> AllExtentsNoGhosts(NUM_SIDES*numProcesses);
+  Controller->AllGatherV(&LocalExtentNoGhosts[0], &AllExtentsNoGhosts[0], 
+			 NUM_SIDES, &RecvLengths[0], &RecvOffsets[0]);
   NeighborProcesses.clear();
   NeighborProcesses.resize(NUM_SIDES);
-  findNeighbors(LocalExtents, GlobalExtent, AllExtents, NeighborProcesses, processId);  
+  findNeighbors(LocalExtentNoGhosts, GlobalExtent, AllExtentsNoGhosts, 
+		NeighborProcesses, processId);  
 
   NumNeighbors = 0;
   for (int i = 0; i < NeighborProcesses.size(); ++i) {
     NumNeighbors += NeighborProcesses[i].size();
   }
 
-  // find domain bounds
+  // find domain bounds ------------------------------------------------------
+  // local bounds ------------------------------------------------------------
   inputVof->GetBounds(&LocalBounds[0]);
+
+  // global bounds -----------------------------------------------------------
   std::vector<double> AllBounds(NUM_SIDES*numProcesses);
   Controller->AllGatherV(&LocalBounds[0], &AllBounds[0], 6, &RecvLengths[0], &RecvOffsets[0]);
   findGlobalBounds(AllBounds, GlobalBounds);
 
-  computeBoundsWithoutGhost(GlobalBounds, LocalBounds, 
-			    inputVof->GetXCoordinates(), 
-			    inputVof->GetYCoordinates(), 
-			    inputVof->GetZCoordinates(),
-			    NumGhostLevels,
-			    BoundsNoGhosts);
+  // local bounds without ghosts ---------------------------------------------
+  vtkDataArray *coords[3] = {inputVof->GetXCoordinates(), 
+			     inputVof->GetYCoordinates(), 
+			     inputVof->GetZCoordinates()};
+  int ncrds[3] = {coords[0]->GetNumberOfTuples(),
+		      coords[1]->GetNumberOfTuples(),
+		      coords[2]->GetNumberOfTuples()};
+
+  BoundsNoGhosts[0] = coords[0]->GetComponent(LocalExtentNoGhosts[0]-LocalExtent[0], 0);
+  BoundsNoGhosts[1]=coords[0]->GetComponent(ncrds[0]-1-(LocalExtent[1]-LocalExtentNoGhosts[1]), 0);
+  BoundsNoGhosts[2] = coords[1]->GetComponent(LocalExtentNoGhosts[2]-LocalExtent[2], 0);
+  BoundsNoGhosts[3]=coords[1]->GetComponent(ncrds[1]-1-(LocalExtent[3]-LocalExtentNoGhosts[3]), 0);
+  BoundsNoGhosts[4] = coords[2]->GetComponent(LocalExtentNoGhosts[4]-LocalExtent[4], 0);
+  BoundsNoGhosts[5]=coords[2]->GetComponent(ncrds[2]-1-(LocalExtent[5]-LocalExtentNoGhosts[5]), 0);
 }
 
 //----------------------------------------------------------------------------
@@ -946,7 +924,9 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *bounda
   
   generateBoundaries(points, boundarySeedPoints,
 		     labels, boundarySeedLabels,
-		     this->VofGrid[1], boundaries, this->Refinement);
+		     this->VofGrid[1], boundaries, 
+		     this->LocalExtentNoGhosts,
+		     this->Refinement);
 }
 
 int isInside(const int ijk[3], const int cellRes[3],
@@ -1104,7 +1084,7 @@ vtkVofTopo::vtkVofTopo() :
   this->VofGrid[1] = vtkRectilinearGrid::New();
   this->VelocityGrid[0] = vtkRectilinearGrid::New();
   this->VelocityGrid[1] = vtkRectilinearGrid::New();
-  IntParticles.clear();
+  IntermParticles.clear();
 }
 
 //----------------------------------------------------------------------------

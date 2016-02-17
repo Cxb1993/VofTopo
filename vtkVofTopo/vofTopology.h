@@ -301,6 +301,7 @@ void generateBoundaries(vtkPoints *points,
 			vtkFloatArray *boundarylabels,
 			vtkRectilinearGrid *grid,			
 			vtkPolyData *boundaries,
+			const int localExtentNoGhosts[6],
 			const int refinement);
 
 void smoothSurface(std::vector<float3>& vertices,

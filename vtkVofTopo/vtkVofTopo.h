@@ -111,6 +111,8 @@ private:
   int NumNeighbors;
   int NumGhostLevels;
   int GlobalExtent[NUM_SIDES];
+  int LocalExtent[NUM_SIDES];
+  int LocalExtentNoGhosts[NUM_SIDES];
 
   // Seeds
   int Refinement;
@@ -124,8 +126,8 @@ private:
   std::vector<float> Uncertainty;
 
   // Intermediate particles
-  std::vector<std::vector<float4>> IntParticles;
-  std::vector<float> IntParticlesTimeStamps;
+  std::vector<std::vector<float4>> IntermParticles;
+  std::vector<float> IntermParticlesTimeStamps;
   
   // Temporal boundaries
   vtkPolyData *Boundaries;

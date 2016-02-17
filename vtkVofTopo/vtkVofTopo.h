@@ -76,6 +76,10 @@ private:
 
   void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds);
 
+  vtkRectilinearGrid* InterpolateField(vtkRectilinearGrid *vof[2],
+				       vtkRectilinearGrid *velocity[2],
+				       const float a);
+
   std::vector<double> InputTimeValues;
   
   int InitTimeStep; // time t0

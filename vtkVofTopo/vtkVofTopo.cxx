@@ -30,6 +30,7 @@
 #include "vtkXMLMultiBlockDataWriter.h"
 #include "vtkXMLPolyDataWriter.h"
 #include "vtkXMLRectilinearGridWriter.h"
+#include <ctime>
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -240,6 +241,13 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   if (TimestepT0 != TimestepT1) {    
     if(TimestepT0 < TargetTimeStep) {      
       AdvectParticles(VofGrid, VelocityGrid);
+
+      // vtkRectilinearGrid *intVof = InterpolateField(VofGrid, VelocityGrid, 0.5f);
+      // vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+
+      // writer->SetInputData(intVof);
+      // writer->SetFileName("/tmp/test_interpolate2.vtr");
+      // writer->Write();
     }
     
     if (ComputeComponentLabels) {
@@ -296,7 +304,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	output->SetBlock(1, particles);
 	output->SetBlock(2, Boundaries);
 	output->SetBlock(3, components);
-	
+
 	// writeData(Seeds, 0, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(particles, 1, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
@@ -1090,4 +1098,77 @@ int vtkVofTopo::FillInputPortInformation(int port, vtkInformation* info)
 void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os,indent);
+}
+
+vtkRectilinearGrid* vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
+						 vtkRectilinearGrid *velocity[2],
+						 const float a)
+{
+  int nodeRes[3];
+  vof[0]->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+
+  vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
+  generateSeedPoints(VelocityGrid[0], Refinement, seedPoints, GlobalExtent, NumGhostLevels);
+
+  std::vector<float4> particles;
+  particles.clear();
+  particles.resize(seedPoints->GetNumberOfPoints());
+  for (int i = 0; i < seedPoints->GetNumberOfPoints(); ++i) {
+    double p[3];
+    seedPoints->GetPoint(i, p);
+    particles[i] = make_float4(p[0], p[1], p[2], 1.0f);
+  }
+  float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
+  if (TimeStepDelta != 0.0) {
+    dt = TimeStepDelta;
+  }
+  
+  dt *= Incr;
+
+  std::vector<float4> particlesForward = particles;
+  float t = (InputTimeValues[TimestepT1] + InputTimeValues[TimestepT0])/2.0;
+
+  advectParticles(velocity, particlesForward, t, 1.0f,
+		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1]);
+  std::vector<float4> particlesBackward = particles;
+  advectParticles(velocity, particlesBackward, t, -1.0f,
+		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1]);
+
+  vtkRectilinearGrid *vofInterpolated = vtkRectilinearGrid::New();
+  vofInterpolated->CopyStructure(vof[0]);
+
+  int index0,index1;
+  vtkDataArray *vofArray0 = vof[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *vofArray1 = vof[1]->GetCellData()->GetArray("Data", index1);
+  vtkFloatArray *vofArray = vtkFloatArray::New();
+  vofArray->SetName("Data");
+  vofArray->SetNumberOfComponents(1);
+  vofArray->SetNumberOfTuples(vofArray0->GetNumberOfTuples());
+  for (int i = 0; i < particles.size(); ++i) {
+
+    int ijk[3];
+    double pcoords[3];
+    
+    double x0[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};    
+    vof[0]->ComputeStructuredCoordinates(x0, ijk, pcoords);
+    float f0 = interpolateScaCellBasedData(vofArray0, cellRes, ijk, pcoords);
+    // int idx0 = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+    // float f0 = vofArray0->GetComponent(idx0,0);
+    
+    double x1[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
+    vof[1]->ComputeStructuredCoordinates(x1, ijk, pcoords);
+    float f1 = interpolateScaCellBasedData(vofArray1, cellRes, ijk, pcoords);
+    // int idx1 = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+    // float f1 = vofArray1->GetComponent(idx1,0);    
+
+    double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+    vof[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+    float f = (f0+f1)/2.0f;
+    vofArray->SetValue(idx,f);
+  }
+  vofInterpolated->GetCellData()->AddArray(vofArray);
+
+  return vofInterpolated;
 }

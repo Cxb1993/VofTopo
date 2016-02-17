@@ -13,15 +13,20 @@
 #include <map>
 #include "helper_math.h"
 
+#define _dpl_   std::cout << __FILE__ << ":" << __func__ << ":" << __LINE__ << std::endl;
+
 float interpolateSca(vtkDataArray *vofField,
 		     const int* res, const int idxCell[3],
 		     const double bcoords[3]);
+
+float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* res,
+				  const int idxCell[3], const double bcoords[3]);
   
 int findClosestTimeStep(double requestedTimeValue,
 			const std::vector<double>& timeSteps);
 
 
-void generateSeedPointsPLIC(vtkRectilinearGrid *input,
+void generateSeedPointsPLIC(vtkRectilinearGrid *input, /*  */
 			    int refinement,
 			    vtkPoints *points,
 			    /* vtkIntArray *connectivity, */
@@ -54,8 +59,8 @@ void advectParticles(vtkRectilinearGrid *inputVof,
 
 void advectParticles(vtkRectilinearGrid *inputVelocity[2],
 		     std::vector<float4> &particles,
-		     std::vector<float4> &velocities,
-		     const float deltaT);
+		     const float t, const float incr,
+		     const float t0, const float t1);
 
 // multiprocess
 void findGlobalExtent(std::vector<int> &allExtents, 

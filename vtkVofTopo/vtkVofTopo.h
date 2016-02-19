@@ -76,9 +76,11 @@ private:
 
   void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds);
 
-  vtkRectilinearGrid* InterpolateField(vtkRectilinearGrid *vof[2],
-				       vtkRectilinearGrid *velocity[2],
-				       const float a);
+  void InterpolateField(vtkRectilinearGrid *vof[2],
+			vtkRectilinearGrid *velocity[2],
+			vtkRectilinearGrid *intVof,
+			vtkRectilinearGrid *intVelocity,
+			const float a);
 
   std::vector<double> InputTimeValues;
   
@@ -125,9 +127,9 @@ private:
   std::vector<short> ParticleProcs;
   std::vector<float> Uncertainty;
 
-  // Intermediate particles
-  std::vector<std::vector<float4>> IntermParticles;
-  std::vector<float> IntermParticlesTimeStamps;
+  /* // Intermediate particles */
+  /* std::vector<std::vector<float4>> IntermParticles; */
+  /* std::vector<float> IntermParticlesTimeStamps; */
   
   // Temporal boundaries
   vtkPolyData *Boundaries;

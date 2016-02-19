@@ -21,6 +21,10 @@ float interpolateSca(vtkDataArray *vofField,
 
 float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* res,
 				  const int idxCell[3], const double bcoords[3]);
+
+float3 interpolateVecCellBasedData(vtkDataArray *velocityField,
+				   const int* res, const int idxCell[3],
+				   const double bcoords[3]);
   
 int findClosestTimeStep(double requestedTimeValue,
 			const std::vector<double>& timeSteps);
@@ -34,11 +38,11 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *input, /*  */
 			    int globalExtent[6],
 			    int numGhostLevels);
 
-void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
-			int refinement,
-			vtkPoints *points,
-			int globalExtent[6],
-			int numGhostLevels);
+void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
+				     int refinement,
+				     vtkPoints *points,
+				     int globalExtent[6],
+				     int numGhostLevels);
 
 void initVelocities(vtkRectilinearGrid *velocity,
 		    std::vector<float4> &particles,

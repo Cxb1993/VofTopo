@@ -237,72 +237,6 @@ namespace
     return (1.0f-z)*c + z*d;
   }
 
-  static float3 interpolateVec(vtkDataArray *velocityField,
-			       const int* res, const int idxCell[3],
-			       const double bcoords[3])
-  {
-    int lx = idxCell[0];
-    int ly = idxCell[1];
-    int lz = idxCell[2];
-
-    float x = bcoords[0] - 0.5;
-    float y = bcoords[1] - 0.5;
-    float z = bcoords[2] - 0.5;
-
-    if (bcoords[0] < 0.5) {
-      lx -= 1;
-      x = bcoords[0] + 0.5;
-    }
-    if (bcoords[1] < 0.5) {
-      ly -= 1;
-      y = bcoords[1] + 0.5;
-    }
-    if (bcoords[2] < 0.5) {
-      lz -= 1;
-      z = bcoords[2] + 0.5;
-    }
-    
-    int ux = lx+1;
-    int uy = ly+1;
-    int uz = lz+1;
-
-    if (lx < 0) lx = 0;
-    if (ly < 0) ly = 0;
-    if (lz < 0) lz = 0;
-    if (ux > res[0]-1) ux = res[0]-1;
-    if (uy > res[1]-1) uy = res[1]-1;
-    if (uz > res[2]-1) uz = res[2]-1;
-
-    unsigned lzslab = lz*res[0]*res[1];
-    unsigned uzslab = uz*res[0]*res[1];
-    int lyr = ly*res[0];
-    int uyr = uy*res[0];
-
-    unsigned id[8] = {lx + lyr + lzslab,
-		      ux + lyr + lzslab,
-		      lx + uyr + lzslab,
-		      ux + uyr + lzslab,
-		      lx + lyr + uzslab,
-		      ux + lyr + uzslab,
-		      lx + uyr + uzslab,
-		      ux + uyr + uzslab};
-    float3 vv[8];
-    for (int i = 0; i < 8; i++) {
-      vv[i].x = velocityField->GetComponent(id[i], 0);
-      vv[i].y = velocityField->GetComponent(id[i], 1);
-      vv[i].z = velocityField->GetComponent(id[i], 2);
-    }
-
-    float3 a = (1.0f-x)*vv[0] + x*vv[1];
-    float3 b = (1.0f-x)*vv[2] + x*vv[3];
-    float3 c = (1.0f-y)*a + y*b;
-    a = (1.0f-x)*vv[4] + x*vv[5];
-    b = (1.0f-x)*vv[6] + x*vv[7];
-    float3 d = (1.0f-y)*a + y*b;
-
-    return (1.0f-z)*c + z*d;
-  }
-
   // connected-components
   int uf_root(std::vector<int> &id, int i)
   {
@@ -396,32 +330,14 @@ float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* res,
   return (1.0f-z)*c + z*d;
 }
 
-// taken from vtkParticleTracerBase.cxx
-int findClosestTimeStep(double requestedTimeValue,
-			const std::vector<double>& timeSteps)
-{
-  int ts = 0;
-  double mindist = std::abs(timeSteps[0] - requestedTimeValue);
-
-  for (int i = 0; i < timeSteps.size(); i++) {
-
-    double tsv = timeSteps[i];
-    double dist = std::abs(tsv - requestedTimeValue);
-    if (dist < mindist) {
-      mindist = dist;
-      ts = i;
-    }
-  }
-  return ts;
-}
-
-float interpolateSca(vtkDataArray *vofField,
-		     const int* res, const int idxCell[3],
-		     const double bcoords[3])
+float3 interpolateVecCellBasedData(vtkDataArray *velocityField,
+				   const int* res, const int idxCell[3],
+				   const double bcoords[3])
 {
   int lx = idxCell[0];
   int ly = idxCell[1];
   int lz = idxCell[2];
+
   float x = bcoords[0] - 0.5;
   float y = bcoords[1] - 0.5;
   float z = bcoords[2] - 0.5;
@@ -463,19 +379,40 @@ float interpolateSca(vtkDataArray *vofField,
 		    ux + lyr + uzslab,
 		    lx + uyr + uzslab,
 		    ux + uyr + uzslab};
-  float vv[8];
+  float3 vv[8];
   for (int i = 0; i < 8; i++) {
-    vv[i] = vofField->GetComponent(id[i], 0);
+    vv[i].x = velocityField->GetComponent(id[i], 0);
+    vv[i].y = velocityField->GetComponent(id[i], 1);
+    vv[i].z = velocityField->GetComponent(id[i], 2);
   }
 
-  float a = (1.0f-x)*vv[0] + x*vv[1];
-  float b = (1.0f-x)*vv[2] + x*vv[3];
-  float c = (1.0f-y)*a + y*b;
+  float3 a = (1.0f-x)*vv[0] + x*vv[1];
+  float3 b = (1.0f-x)*vv[2] + x*vv[3];
+  float3 c = (1.0f-y)*a + y*b;
   a = (1.0f-x)*vv[4] + x*vv[5];
   b = (1.0f-x)*vv[6] + x*vv[7];
-  float d = (1.0f-y)*a + y*b;
+  float3 d = (1.0f-y)*a + y*b;
 
   return (1.0f-z)*c + z*d;
+}
+
+// taken from vtkParticleTracerBase.cxx
+int findClosestTimeStep(double requestedTimeValue,
+			const std::vector<double>& timeSteps)
+{
+  int ts = 0;
+  double mindist = std::abs(timeSteps[0] - requestedTimeValue);
+
+  for (int i = 0; i < timeSteps.size(); i++) {
+
+    double tsv = timeSteps[i];
+    double dist = std::abs(tsv - requestedTimeValue);
+    if (dist < mindist) {
+      mindist = dist;
+      ts = i;
+    }
+  }
+  return ts;
 }
 
 
@@ -857,11 +794,11 @@ void computeL(const int cellRes[3],
   }
 }
 
-void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
-			int refinement,
-			vtkPoints *points,
-			int globalExtent[6],
-			int numGhostLevels)
+void generateSeedPointsOnNodes(vtkRectilinearGrid *velocityGrid,
+				   int refinement,
+				   vtkPoints *points,
+				   int globalExtent[6],
+				   int numGhostLevels)
 {
   vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
 			     velocityGrid->GetYCoordinates(), 
@@ -883,6 +820,44 @@ void generateSeedPoints(vtkRectilinearGrid *velocityGrid,
       double y = coords[1]->GetComponent(j-extent[2],0);
       for (int i = imin; i <= imax; ++i) {
 	double x = coords[0]->GetComponent(i-extent[0],0);
+	points->InsertNextPoint(x,y,z);
+      }
+    }
+  }
+}
+
+void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
+				     int refinement,
+				     vtkPoints *points,
+				     int globalExtent[6],
+				     int numGhostLevels)
+{
+  vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
+			     velocityGrid->GetYCoordinates(), 
+			     velocityGrid->GetZCoordinates()};
+
+  int extent[6];
+  velocityGrid->GetExtent(extent);
+
+  int imin = extent[0] + (extent[0] > globalExtent[0] ? numGhostLevels : 0);
+  int imax = extent[1] - (extent[1] < globalExtent[1] ? numGhostLevels : 0);
+  int jmin = extent[2] + (extent[2] > globalExtent[2] ? numGhostLevels : 0);
+  int jmax = extent[3] - (extent[3] < globalExtent[3] ? numGhostLevels : 0);
+  int kmin = extent[4] + (extent[4] > globalExtent[4] ? numGhostLevels : 0);
+  int kmax = extent[5] - (extent[5] < globalExtent[5] ? numGhostLevels : 0);
+
+  for (int k = kmin; k < kmax; ++k) {
+    double z0 = coords[2]->GetComponent(k-extent[4],0);
+    double z1 = coords[2]->GetComponent(k-extent[4]+1,0);
+    double z = (z0+z1)/2.0;
+    for (int j = jmin; j < jmax; ++j) {
+      double y0 = coords[1]->GetComponent(j-extent[2],0);
+      double y1 = coords[1]->GetComponent(j-extent[2]+1,0);
+      double y = (y0+y1)/2.0;
+      for (int i = imin; i < imax; ++i) {
+	double x0 = coords[0]->GetComponent(i-extent[0],0);
+	double x1 = coords[0]->GetComponent(i-extent[0]+1,0);
+	double x = (x0+x1)/2.0;
 	points->InsertNextPoint(x,y,z);
       }
     }
@@ -1250,27 +1225,27 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
     double pcoords[3];
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    float4 k10 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k11 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k10 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k11 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k1 = k10*(1.0f-t/deltaT) + k11*(t/deltaT);    
     float4 k1p = pos + k1*dt*0.5f;
     x[0] = k1p.x; x[1] = k1p.y; x[2] = k1p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    float4 k20 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k21 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k20 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k21 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k2 = k20*(1.0f-(t+dt*0.5f)/deltaT) + k21*((t+dt*0.5f)/deltaT);    
     float4 k2p = pos + k2*dt*0.5f;
     x[0] = k2p.x; x[1] = k2p.y; x[2] = k2p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    float4 k30 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k31 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k30 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k31 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k3 = k30*(1.0f-(t+dt*0.5f)/deltaT) + k31*((t+dt*0.5f)/deltaT);
     float4 k3p = pos + k3*dt;
     x[0] = k3p.x; x[1] = k3p.y; x[2] = k3p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
     
-    float4 k40 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k41 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k40 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k41 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k4 = k40*(1.0f-(t+dt)/deltaT) + k41*((t+dt)/deltaT);
 
     pos += dt*inv6*(k1 + 2.0f*k2 + 2.0f*k3 + k4);
@@ -1300,29 +1275,29 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
     double pcoords[3];
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
     
-    float4 k10 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k11 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k10 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k11 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k1 = k10*(1.0f-ct/DeltaT) + k11*(ct/DeltaT);
     float4 k1p = pos + k1*dt*0.5f;
     x[0] = k1p.x; x[1] = k1p.y; x[2] = k1p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
     
-    float4 k20 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k21 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k20 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k21 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k2 = k20*(1.0f-(ct+dt*0.5f)/DeltaT) + k21*((ct+dt*0.5f)/DeltaT);    
     float4 k2p = pos + k2*dt*0.5f;
     x[0] = k2p.x; x[1] = k2p.y; x[2] = k2p.z;    
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
     
-    float4 k30 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k31 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k30 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k31 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k3 = k30*(1.0f-(ct+dt*0.5f)/DeltaT) + k31*((ct+dt*0.5f)/DeltaT);
     float4 k3p = pos + k3*dt;
     x[0] = k3p.x; x[1] = k3p.y; x[2] = k3p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
     
-    float4 k40 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
-    float4 k41 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    float4 k40 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+    float4 k41 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k4 = k40*(1.0f-(ct+dt)/DeltaT) + k41*((ct+dt)/DeltaT);
 
     pos += dt*inv6*(k1 + 2.0f*k2 + 2.0f*k3 + k4);
@@ -1339,7 +1314,7 @@ float4 iterativeHeun(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
   int ijk[3];
   double pcoords[3];
   velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-  float4 velocity0 = make_float4(interpolateVec(velocityArray0, cellRes, ijk, pcoords),0.0f);
+  float4 velocity0 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
   float4 pos1 = pos0 + deltaT*velocity0;     // initial guess - forward Euler
   float4 velocity1;
 
@@ -1351,7 +1326,7 @@ float4 iterativeHeun(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
     x[2] = pos1.z;
       
     velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    velocity1 = make_float4(interpolateVec(velocityArray1, cellRes, ijk, pcoords),0.0f);
+    velocity1 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
 
     float4 velocity = (velocity0 + velocity1)/2.0f;
     pos1 = pos0 + deltaT*velocity;	
@@ -1398,13 +1373,13 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
     if (particles[i].w <= g_emf0) {
       continue;
     }
-    particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
-				 vofArray1, cellRes, deltaT);
-    // *itp = rungeKutta4(*itp, velocityGrid, velocityArray0, velocityArray1, cellRes, deltaT);    
+    // particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
+    // 				 vofArray1, cellRes, deltaT);
+    particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1, cellRes, deltaT);    
   }
 
-  correctParticles(particles, uncertainty,
-  		   vofGrid, vofArray1, coords, cellRes);
+  // correctParticles(particles, uncertainty,
+  // 		   vofGrid, vofArray1, coords, cellRes);
 }
 
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],
@@ -1904,7 +1879,10 @@ void generateBoundaries(vtkPoints *points,
   points_tmp.clear();
   {
     int nps = points->GetNumberOfPoints();
-    int nnps = neighborPoints->GetNumberOfPoints();
+    int nnps = 0;
+    if (neighborPoints != nullptr) {
+      nnps = neighborPoints->GetNumberOfPoints();
+    }
     points_tmp.resize(nps+nnps);
     for (int i = 0; i < nps; ++i) {
       double p[3];
@@ -1921,7 +1899,10 @@ void generateBoundaries(vtkPoints *points,
   std::vector<float> labels_tmp;
   {
     int nls = labels->GetNumberOfTuples();
-    int nnls = neighborLabels->GetNumberOfTuples();
+    int nnls = 0;
+    if (neighborLabels != nullptr) {
+      nnls = neighborLabels->GetNumberOfTuples();
+    }
     labels_tmp.resize(nls+nnls);
     for (int i = 0; i < nls; ++i) {
       labels_tmp[i] = labels->GetComponent(i,0);
@@ -2009,13 +1990,14 @@ void generateBoundaries(vtkPoints *points,
 		     0, subNodeRes[1]-1,
 		     0, subNodeRes[2]-1};
 
-    if (localExtentNoGhosts[0] > labelExtents[i][0]) extent[0] += r*boundarySize;
-    if (localExtentNoGhosts[1] < labelExtents[i][1]) extent[1] -= r*boundarySize;
-    if (localExtentNoGhosts[2] > labelExtents[i][2]) extent[2] += r*boundarySize;
-    if (localExtentNoGhosts[3] < labelExtents[i][3]) extent[3] -= r*boundarySize;
-    if (localExtentNoGhosts[4] > labelExtents[i][4]) extent[4] += r*boundarySize;
-    if (localExtentNoGhosts[5] < labelExtents[i][5]) extent[5] -= r*boundarySize;    
-
+    if (neighborPoints != nullptr) {
+      if (localExtentNoGhosts[0] > labelExtents[i][0]) extent[0] += r*boundarySize;
+      if (localExtentNoGhosts[1] < labelExtents[i][1]) extent[1] -= r*boundarySize;
+      if (localExtentNoGhosts[2] > labelExtents[i][2]) extent[2] += r*boundarySize;
+      if (localExtentNoGhosts[3] < labelExtents[i][3]) extent[3] -= r*boundarySize;
+      if (localExtentNoGhosts[4] > labelExtents[i][4]) extent[4] += r*boundarySize;
+      if (localExtentNoGhosts[5] < labelExtents[i][5]) extent[5] -= r*boundarySize;    
+    }
 
     int numVertsPrev = vertices.size();
     extractSurface(field.data(), subNodeRes, subcoords, extent, 0.501f, indices, vertices, vertexID);

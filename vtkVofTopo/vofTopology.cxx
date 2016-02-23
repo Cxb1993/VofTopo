@@ -864,6 +864,84 @@ void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
   }
 }
 
+void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
+				     int refinement,
+				     std::vector<float4> &points,
+				     int globalExtent[6],
+				     int numGhostLevels)
+{
+  vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
+			     velocityGrid->GetYCoordinates(), 
+			     velocityGrid->GetZCoordinates()};
+
+  int extent[6];
+  velocityGrid->GetExtent(extent);
+
+  int imin = extent[0] + (extent[0] > globalExtent[0] ? numGhostLevels : 0);
+  int imax = extent[1] - (extent[1] < globalExtent[1] ? numGhostLevels : 0);
+  int jmin = extent[2] + (extent[2] > globalExtent[2] ? numGhostLevels : 0);
+  int jmax = extent[3] - (extent[3] < globalExtent[3] ? numGhostLevels : 0);
+  int kmin = extent[4] + (extent[4] > globalExtent[4] ? numGhostLevels : 0);
+  int kmax = extent[5] - (extent[5] < globalExtent[5] ? numGhostLevels : 0);
+
+  for (int k = kmin; k <= kmax; ++k) {
+    double z0 = coords[2]->GetComponent(k-extent[4],0);
+    double z1 = coords[2]->GetComponent(k-extent[4]+1,0);
+    double z = (z0+z1)/2.0;
+    for (int j = jmin; j <= jmax; ++j) {
+      double y0 = coords[1]->GetComponent(j-extent[2],0);
+      double y1 = coords[1]->GetComponent(j-extent[2]+1,0);
+      double y = (y0+y1)/2.0;
+      for (int i = imin; i <= imax; ++i) {
+	double x0 = coords[0]->GetComponent(i-extent[0],0);
+	double x1 = coords[0]->GetComponent(i-extent[0]+1,0);
+	double x = (x0+x1)/2.0;
+	points.push_back(make_float4(x,y,z,1.0f));
+      }
+    }
+  }
+}
+
+
+void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
+				     int refinement,
+				     std::vector<float4> &points,
+				     int particleExtent[6],
+				     int globalExtent[6],
+				     int numGhostLevels)
+{
+  vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
+			     velocityGrid->GetYCoordinates(), 
+			     velocityGrid->GetZCoordinates()};
+
+  int extent[6];
+  velocityGrid->GetExtent(extent);
+
+  int imin = particleExtent[0];
+  int imax = particleExtent[1];
+  int jmin = particleExtent[2];
+  int jmax = particleExtent[3];
+  int kmin = particleExtent[4];
+  int kmax = particleExtent[5];
+
+  for (int k = kmin; k <= kmax; ++k) {
+    double z0 = coords[2]->GetComponent(k-extent[4],0);
+    double z1 = coords[2]->GetComponent(k-extent[4]+1,0);
+    double z = (z0+z1)/2.0;
+    for (int j = jmin; j <= jmax; ++j) {
+      double y0 = coords[1]->GetComponent(j-extent[2],0);
+      double y1 = coords[1]->GetComponent(j-extent[2]+1,0);
+      double y = (y0+y1)/2.0;
+      for (int i = imin; i <= imax; ++i) {
+	double x0 = coords[0]->GetComponent(i-extent[0],0);
+	double x1 = coords[0]->GetComponent(i-extent[0]+1,0);
+	double x = (x0+x1)/2.0;
+	points.push_back(make_float4(x,y,z,1.0f));
+      }
+    }
+  }
+}
+
 void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 			    int refinement,
 			    vtkPoints *points,
@@ -1180,11 +1258,11 @@ void correctParticles(std::vector<float4> &particles,
     int ijk[3];
     double pcoords[3];
     float f = getCellVof(particles[i], vofGrid, vofArray1, cellRes, ijk, pcoords);
-    if (f <= g_emf0) {
-      float4 prev_pos1 = particles[i];
-      particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
-      uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
-    }
+    // if (f <= g_emf0) {
+    //   float4 prev_pos1 = particles[i];
+    //   particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
+    //   uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+    // }
     if (f > g_emf0 && f < g_emf1) {
 
       double x[3] = {particles[i].x, particles[i].y, particles[i].z};
@@ -1254,12 +1332,45 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
   return pos;
 }
 
+float4 rungeKutta4Int(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
+		      vtkDataArray *velocityArray0, vtkDataArray *velocityArray1,
+		      vtkDataArray *velocityArray2, const int cellRes[3], const float deltaT)
+{
+  float4 pos = pos0;
+  float dt = deltaT;
+  double x[3] = {pos.x, pos.y, pos.z};
+  int ijk[3];
+  double pcoords[3];
+  velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+
+  float4 k1 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
+  float4 k1p = pos + k1*dt*0.5f;
+  
+  x[0] = k1p.x; x[1] = k1p.y; x[2] = k1p.z;
+  velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+  float4 k2 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
+  float4 k2p = pos + k2*dt*0.5f;
+  
+  x[0] = k2p.x; x[1] = k2p.y; x[2] = k2p.z;
+  velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+  float4 k3 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
+  float4 k3p = pos + k3*dt;
+
+  x[0] = k3p.x; x[1] = k3p.y; x[2] = k3p.z;
+  velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);    
+  float4 k4 = make_float4(interpolateVecCellBasedData(velocityArray2, cellRes, ijk, pcoords),0.0f);
+
+  pos += dt*inv6*(k1 + 2.0f*k2 + 2.0f*k3 + k4);
+
+  return pos;
+}
+
 float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
 		   vtkDataArray *velocityArray0, vtkDataArray *velocityArray1,
 		   const int cellRes[3],
 		   const float t, const float incr, const float t0, const float t1)
 {
-  const int numSteps = 1;
+  const int numSteps = 8;
   float4 pos = pos0;
   float ct = t;
   float DeltaT = t1 - t0;
@@ -1373,9 +1484,45 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
     if (particles[i].w <= g_emf0) {
       continue;
     }
-    // particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
-    // 				 vofArray1, cellRes, deltaT);
-    particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1, cellRes, deltaT);    
+    particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
+    				 vofArray1, cellRes, deltaT);
+    // particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1, cellRes, deltaT);    
+  }
+
+  correctParticles(particles, uncertainty,
+  		   vofGrid, vofArray1, coords, cellRes);
+}
+
+void advectParticlesInt(vtkRectilinearGrid *vofGrid[3],
+			vtkRectilinearGrid *velocityGrid[3],
+			std::vector<float4> &particles,
+			std::vector<float> &uncertainty,
+			const float deltaT)
+{
+  int index0,index1,index2;
+  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *velocityArray2 = velocityGrid[2]->GetCellData()->GetArray("Data", index2);
+  if (index0 == -1 || index1 == -1 || index2 == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  int nodeRes[3];
+  vofGrid[1]->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  vtkDataArray *coords[3] = {vofGrid[1]->GetXCoordinates(),
+			     vofGrid[1]->GetYCoordinates(),
+			     vofGrid[1]->GetZCoordinates()};
+  
+#pragma omp parallel for  
+  for (int i = 0; i < particles.size(); ++i) {
+
+    if (particles[i].w <= g_emf0) {
+      continue;
+    }
+    particles[i] = rungeKutta4Int(particles[i], velocityGrid,
+				  velocityArray0, velocityArray1,
+				  velocityArray2, cellRes, deltaT);    
   }
 
   // correctParticles(particles, uncertainty,
@@ -1400,7 +1547,6 @@ void advectParticles(vtkRectilinearGrid *velocityGrid[2],
   int nodeRes[3];
   velocityGrid[0]->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-  std::vector<float4>::iterator itp = particles.begin();
 
 #pragma omp parallel for
   for (int i = 0; i < particles.size(); ++i) {

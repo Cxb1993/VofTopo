@@ -44,6 +44,19 @@ void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
 				     int globalExtent[6],
 				     int numGhostLevels);
 
+void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
+				     int refinement,
+				     std::vector<float4> &points,
+				     int particleExtent[6],
+				     int globalExtent[6],
+				     int numGhostLevels);
+
+void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
+				     int refinement,
+				     std::vector<float4> &points,
+				     int globalExtent[6],
+				     int numGhostLevels);
+
 void initVelocities(vtkRectilinearGrid *velocity,
 		    std::vector<float4> &particles,
 		    std::vector<float4> &velocities);
@@ -53,6 +66,12 @@ void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     std::vector<float4> &particles,
 		     std::vector<float> &uncertainty,
 		     const float deltaT);
+
+void advectParticlesInt(vtkRectilinearGrid *inputVof[3],
+			vtkRectilinearGrid *inputVelocity[3],
+			std::vector<float4> &particles,
+			std::vector<float> &uncertainty,
+			const float deltaT);
 
 void advectParticles(vtkRectilinearGrid *inputVof,
 		     vtkRectilinearGrid *inputVelocity,

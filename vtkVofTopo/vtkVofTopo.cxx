@@ -19,6 +19,11 @@
 #include "vtkMultiBlockDataSet.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkDataSetSurfaceFilter.h"
+
+#include "vtkXMLMultiBlockDataWriter.h"
+#include "vtkXMLPolyDataWriter.h"
+#include "vtkXMLRectilinearGridWriter.h"
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -27,13 +32,102 @@
 #include <unordered_set>
 #include <array>
 #include <string>
-#include "vtkXMLMultiBlockDataWriter.h"
-#include "vtkXMLPolyDataWriter.h"
-#include "vtkXMLRectilinearGridWriter.h"
 #include <ctime>
+#include <omp.h>
 
 vtkStandardNewMacro(vtkVofTopo);
 
+#include <sys/types.h>
+#include <sys/sysinfo.h>
+
+// namespace
+// {
+//   //==============================================================================
+//   // the code below has been taken from stackoverflow
+//   // http://stackoverflow.com/questions/63166/
+//   // how-to-determine-cpu-and-memory-consumption-from-inside-a-process
+//   //==============================================================================
+//   inline int parseLine(char* line){
+//     int i = strlen(line);
+//     while (*line < '0' || *line > '9') line++;
+//     line[i-3] = '\0';
+//     i = atoi(line);
+//     return i;
+//   }
+//   //==============================================================================
+//   inline int getValueVirtual()
+//   { //Note: this value is in KB!
+//     FILE* file = fopen("/proc/self/status", "r");
+//     int result = -1;
+//     char line[128];
+    
+
+//     while (fgets(line, 128, file) != NULL){
+//       if (strncmp(line, "VmSize:", 7) == 0){
+// 	result = parseLine(line);
+// 	break;
+//       }
+//     }
+//     fclose(file);
+//     return result;
+//   }
+//   //==============================================================================
+//   inline int getValuePhysical()
+//   { //Note: this value is in KB!
+//     FILE* file = fopen("/proc/self/status", "r");
+//     int result = -1;
+//     char line[128];
+    
+
+//     while (fgets(line, 128, file) != NULL){
+//       if (strncmp(line, "VmRSS:", 6) == 0){
+// 	result = parseLine(line);
+// 	break;
+//       }
+//     }
+//     fclose(file);
+//     return result;
+//   }
+//   //==============================================================================
+//   inline void cpuMemPrint()
+//   {
+//     struct sysinfo memInfo;
+
+//     sysinfo (&memInfo);
+
+//     long long totalVirtualMem = memInfo.totalram;
+//     //Add other values in next statement to avoid int overflow on right hand side...
+//     totalVirtualMem += memInfo.totalswap;
+//     totalVirtualMem *= memInfo.mem_unit;
+
+//     long long virtualMemUsed = memInfo.totalram - memInfo.freeram;
+//     //Add other values in next statement to avoid int overflow on right hand side...
+//     virtualMemUsed += memInfo.totalswap - memInfo.freeswap;
+//     virtualMemUsed *= memInfo.mem_unit;
+
+//     long long totalPhysMem = memInfo.totalram;
+//     //Multiply in next statement to avoid int overflow on right hand side...
+//     totalPhysMem *= memInfo.mem_unit;
+
+//     long long physMemUsed = memInfo.totalram - memInfo.freeram;
+//     //Multiply in next statement to avoid int overflow on right hand side...
+//     physMemUsed *= memInfo.mem_unit;
+
+//     printf("[CPU physMem] total: %.3f MB, free: %.3f MB, used : %.3f MB, "
+// 	   "used by process: %.3f MB\n",
+// 	   ((double)totalPhysMem)/1024.0/1024.0, 
+// 	   ((double)(totalPhysMem-physMemUsed))/1024.0/1024.0, 
+// 	   ((double)physMemUsed)/1024.0/1024.0, 
+// 	   ((double)getValuePhysical())/1024.0);
+//     printf("[CPU virtMem] total: %.3f MB, free: %.3f MB, used : %.3f MB, " 
+// 	   "used by process: %.3f MB\n",
+// 	   ((double)totalVirtualMem)/1024.0/1024.0, 
+// 	   ((double)(totalVirtualMem-virtualMemUsed))/1024.0/1024.0, 
+// 	   ((double)virtualMemUsed)/1024.0/1024.0, 
+// 	   ((double)getValueVirtual())/1024.0);
+//   }
+
+// }
 
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
@@ -251,8 +345,11 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
   // Stage II --------------------------------------------------------------  
   if (TimestepT0 != TimestepT1) {    
-    if(TimestepT0 < TargetTimeStep) {      
+    if(TimestepT0 < TargetTimeStep) {
+
+      // AdvectParticlesInt(VofGrid, VelocityGrid);
       AdvectParticles(VofGrid, VelocityGrid);
+
 
       // IntermParticles.push_back(Particles);
       // IntermParticlesTimeStamps.push_back(TimestepT1);
@@ -513,37 +610,58 @@ void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
 				 vtkRectilinearGrid *velocity[2])
 {
-  // vtkRectilinearGrid *intVof = vtkRectilinearGrid::New();
-  // vtkRectilinearGrid *intVelocity = vtkRectilinearGrid::New();
-      
-  // InterpolateField(VofGrid, VelocityGrid, intVof, intVelocity, 0.5f);
-
-  // {
-  // vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
-  // writer->SetInputData(intVof);
-  // writer->SetFileName("/tmp/intVof.vtr");
-  // writer->Write();
-  // }
-  // {
-  // vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
-  // writer->SetInputData(intVelocity);
-  // writer->SetFileName("/tmp/intVelocity.vtr");
-  // writer->Write();
-  // }
-  // intVof->Delete();
-  // intVelocity->Delete();
-
   float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
   if (TimeStepDelta != 0.0) {
     dt = TimeStepDelta;
   }
   
   dt *= Incr;
-  
+
   advectParticles(vof, velocity, Particles, Uncertainty, dt);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::AdvectParticlesInt(vtkRectilinearGrid *vof[2],
+				    vtkRectilinearGrid *velocity[2])
+{
+  float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
+  if (TimeStepDelta != 0.0) {
+    dt = TimeStepDelta;
+  }
+  
+  dt *= Incr;
+
+  vtkSmartPointer<vtkRectilinearGrid> intVof = vtkSmartPointer<vtkRectilinearGrid>::New();
+  vtkSmartPointer<vtkRectilinearGrid> intVelocity = vtkSmartPointer<vtkRectilinearGrid>::New();
+      
+  InterpolateField(VofGrid, VelocityGrid, intVof, intVelocity, 0.5f);
+
+  // {
+  //   vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+  //   writer->SetInputData(intVof);
+  //   writer->SetFileName("/tmp/intVof.vtr");
+  //   writer->Write();
+  // }
+  // {
+  //   vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+  //   writer->SetInputData(intVelocity);
+  //   writer->SetFileName("/tmp/intVelocity.vtr");
+  //   writer->Write();
+  // }
+
+  vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
+  vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
+  
+  advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt);
+  if (Controller->GetCommunicator() != 0) {
+    ExchangeParticles();
+  }
+
+  // intVof->Delete();
+  // intVelocity->Delete();
 }
 
 //----------------------------------------------------------------------------
@@ -1146,6 +1264,57 @@ void vtkVofTopo::PrintSelf(ostream& os, vtkIndent indent)
   this->Superclass::PrintSelf(os,indent);
 }
 
+void getFluidExtent(vtkRectilinearGrid *vof, const int globalExtent[6],
+		    const int numGhostLevels, int extent[6])
+{
+  vof->GetExtent(extent);
+  extent[0] = extent[0] + (extent[0] > globalExtent[0] ? numGhostLevels : 0);
+  extent[1] = extent[1] - (extent[1] < globalExtent[1] ? numGhostLevels : 0);
+  extent[2] = extent[2] + (extent[2] > globalExtent[2] ? numGhostLevels : 0);
+  extent[3] = extent[3] - (extent[3] < globalExtent[3] ? numGhostLevels : 0);
+  extent[4] = extent[4] + (extent[4] > globalExtent[4] ? numGhostLevels : 0);
+  extent[5] = extent[5] - (extent[5] < globalExtent[5] ? numGhostLevels : 0);
+
+  int index;
+  vtkDataArray *vofArray = vof->GetCellData()->GetArray("Data", index);
+  if (index == -1) {
+    std::cout << "KURWA" << std::endl;
+  }
+  int nodeRes[3];
+  vof->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+
+  int imin = extent[0];
+  int imax = extent[1];
+  int jmin = extent[2];
+  int jmax = extent[3];
+  int kmin = extent[4];
+  int kmax = extent[5];
+
+  extent[0] = extent[2] = extent[4] = 100000;
+  extent[1] = extent[3] = extent[5] = -100000;
+  
+  for (int k = kmin; k < kmax; ++k) {
+    for (int j = jmin; j < jmax; ++j) {
+      for (int i = imin; i < imax; ++i) {
+
+	int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+	float f = vofArray->GetComponent(idx, 0);
+
+	if (f > g_emf0) {
+	  if (extent[0] > i) extent[0] = i;
+	  if (extent[1] < i) extent[1] = i;
+	  if (extent[2] > j) extent[2] = j;
+	  if (extent[3] < j) extent[3] = j;
+	  if (extent[4] > k) extent[4] = k;
+	  if (extent[5] < k) extent[5] = k;
+	}
+      }
+    }
+  }
+    
+}
+
 void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
 				  vtkRectilinearGrid *velocity[2],
 				  vtkRectilinearGrid *intVof,
@@ -1156,17 +1325,41 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   vof[0]->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
 
-  vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
-  generateSeedPointsInCellCenters(VelocityGrid[0], Refinement, seedPoints, GlobalExtent, NumGhostLevels);
+  int optExtent[6];
 
+  {
+    int fluidExtent0[6];
+    getFluidExtent(vof[0], GlobalExtent, NumGhostLevels, fluidExtent0);
+
+    int fluidExtent1[6];
+    getFluidExtent(vof[1], GlobalExtent, NumGhostLevels, fluidExtent1);
+
+    optExtent[0] = std::min(fluidExtent0[0],fluidExtent1[0]);
+    optExtent[1] = std::max(fluidExtent0[1],fluidExtent1[1]);
+    optExtent[2] = std::min(fluidExtent0[2],fluidExtent1[2]);
+    optExtent[3] = std::max(fluidExtent0[3],fluidExtent1[3]);
+    optExtent[4] = std::min(fluidExtent0[4],fluidExtent1[4]);
+    optExtent[5] = std::max(fluidExtent0[5],fluidExtent1[5]);
+      
+    optExtent[0] -= 4;
+    optExtent[2] -= 4;
+    optExtent[4] -= 4;
+
+    optExtent[1] += 4;
+    optExtent[3] += 4;
+    optExtent[5] += 4;
+
+    
+    std::cout << "optExtent "
+	      << optExtent[0] << " - " << optExtent[1] << " x "
+	      << optExtent[2] << " - " << optExtent[3] << " x "
+	      << optExtent[4] << " - " << optExtent[5] << std::endl;
+  }
+  
   std::vector<float4> particles;
   particles.clear();
-  particles.resize(seedPoints->GetNumberOfPoints());
-  for (int i = 0; i < seedPoints->GetNumberOfPoints(); ++i) {
-    double p[3];
-    seedPoints->GetPoint(i, p);
-    particles[i] = make_float4(p[0], p[1], p[2], 1.0f);
-  }
+  generateSeedPointsInCellCenters(VelocityGrid[0], Refinement, particles, GlobalExtent, NumGhostLevels);
+  
   float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
   if (TimeStepDelta != 0.0) {
     dt = TimeStepDelta;
@@ -1175,7 +1368,7 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   dt *= Incr;
 
   std::vector<float4> particlesForward = particles;
-  float t = (1.0f-a)*InputTimeValues[TimestepT1] + a*InputTimeValues[TimestepT0];
+  float t = (1.0f-a)*InputTimeValues[TimestepT1] + a*InputTimeValues[TimestepT0] - InputTimeValues[TimestepT0];
 
   advectParticles(velocity, particlesForward, t, 1.0f,
 		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1]);
@@ -1189,16 +1382,18 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   int index0,index1;
   vtkDataArray *vofArray0 = vof[0]->GetCellData()->GetArray("Data", index0);
   vtkDataArray *vofArray1 = vof[1]->GetCellData()->GetArray("Data", index1);
-  vtkFloatArray *vofArray = vtkFloatArray::New();
+  vtkSmartPointer<vtkFloatArray> vofArray = vtkSmartPointer<vtkFloatArray>::New();
   vofArray->SetName("Data");
   vofArray->SetNumberOfComponents(1);
   vofArray->SetNumberOfTuples(vofArray0->GetNumberOfTuples());
   vtkDataArray *velocityArray0 = velocity[0]->GetCellData()->GetArray("Data", index0);
   vtkDataArray *velocityArray1 = velocity[1]->GetCellData()->GetArray("Data", index1);
-  vtkFloatArray *velocityArray = vtkFloatArray::New();
+  vtkSmartPointer<vtkFloatArray> velocityArray = vtkSmartPointer<vtkFloatArray>::New();
   velocityArray->SetName("Data");
   velocityArray->SetNumberOfComponents(3);
   velocityArray->SetNumberOfTuples(velocityArray0->GetNumberOfTuples());
+
+#pragma omp parallel for
   for (int i = 0; i < particles.size(); ++i) {
 
     int ijk[3];

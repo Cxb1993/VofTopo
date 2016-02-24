@@ -65,25 +65,29 @@ void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     vtkRectilinearGrid *inputVelocity[2],
 		     std::vector<float4> &particles,
 		     std::vector<float> &uncertainty,
-		     const float deltaT);
+		     const float deltaT,
+		     int integrationMethod,
+		     int plicCorrection, int vofCorrection,
+		     int RK4NumSteps);
 
 void advectParticlesInt(vtkRectilinearGrid *inputVof[3],
 			vtkRectilinearGrid *inputVelocity[3],
 			std::vector<float4> &particles,
 			std::vector<float> &uncertainty,
-			const float deltaT);
+			const float deltaT,
+			int plicCorrection, int vofCorrection);
 
-void advectParticles(vtkRectilinearGrid *inputVof,
-		     vtkRectilinearGrid *inputVelocity,
-		     std::vector<float4> &particles,
-		     std::vector<float4> &velocities,
-		     const float deltaT,
-		     std::vector<float> &uncertainty);
+/* void advectParticles(vtkRectilinearGrid *inputVof, */
+/* 		     vtkRectilinearGrid *inputVelocity, */
+/* 		     std::vector<float4> &particles, */
+/* 		     std::vector<float4> &velocities, */
+/* 		     const float deltaT, */
+/* 		     std::vector<float> &uncertainty); */
 
 void advectParticles(vtkRectilinearGrid *inputVelocity[2],
 		     std::vector<float4> &particles,
 		     const float t, const float incr,
-		     const float t0, const float t1);
+		     const float t0, const float t1, int numSubSteps);
 
 // multiprocess
 void findGlobalExtent(std::vector<int> &allExtents, 

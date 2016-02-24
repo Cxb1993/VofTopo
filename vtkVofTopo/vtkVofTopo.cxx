@@ -617,7 +617,8 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   
   dt *= Incr;
 
-  advectParticles(vof, velocity, Particles, Uncertainty, dt);
+  advectParticles(vof, velocity, Particles, Uncertainty, dt,
+		  IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -655,7 +656,7 @@ void vtkVofTopo::AdvectParticlesInt(vtkRectilinearGrid *vof[2],
   vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
   vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
   
-  advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt);
+  advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt, PLICCorrection, VOFCorrection);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -1216,7 +1217,11 @@ vtkVofTopo::vtkVofTopo() :
   TimestepT0(-1),
   TimestepT1(-1),
   NumGhostLevels(4),
-  SeedPointsProvided(false)
+  SeedPointsProvided(false),
+  IntegrationMethod(0), // Heun
+  PLICCorrection(0),
+  VOFCorrection(0),
+  RK4NumSteps(8)
 {
   this->SetNumberOfInputPorts(3);
   this->Controller = vtkMPIController::New();
@@ -1371,10 +1376,10 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   float t = (1.0f-a)*InputTimeValues[TimestepT1] + a*InputTimeValues[TimestepT0] - InputTimeValues[TimestepT0];
 
   advectParticles(velocity, particlesForward, t, 1.0f,
-		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1]);
+		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
   std::vector<float4> particlesBackward = particles;
   advectParticles(velocity, particlesBackward, t, -1.0f,
-		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1]);
+		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
 
   intVof->CopyStructure(vof[0]);
   intVelocity->CopyStructure(velocity[0]);

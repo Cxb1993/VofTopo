@@ -37,6 +37,18 @@ public:
 
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
+
+  vtkGetMacro(IntegrationMethod, int);
+  vtkSetMacro(IntegrationMethod, int);
+
+  vtkGetMacro(PLICCorrection, int);
+  vtkSetMacro(PLICCorrection, int);
+
+  vtkGetMacro(VOFCorrection, int);
+  vtkSetMacro(VOFCorrection, int);
+
+  vtkGetMacro(RK4NumSteps, int);
+  vtkSetMacro(RK4NumSteps, int);  
   //~GUI -------------------------------
 
 protected:
@@ -143,6 +155,12 @@ private:
   // Vof and velocity
   vtkRectilinearGrid *VofGrid[2];
   vtkRectilinearGrid *VelocityGrid[2];
+
+  // Misc
+  int IntegrationMethod; // 0 - Heun, 1 - RK4
+  int PLICCorrection;
+  int VOFCorrection;
+  int RK4NumSteps;
 };
 
 #endif

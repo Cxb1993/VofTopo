@@ -331,8 +331,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	InitParticles(VofGrid[0], nullptr);	
       }
 
-      // IntermParticles.push_back(Particles);
-      // IntermParticlesTimeStamps.push_back(TimestepT0);
+      IntermParticles.push_back(Particles);
+      IntermParticlesTimeStamps.push_back(TimestepT0);
       
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
@@ -351,8 +351,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       AdvectParticles(VofGrid, VelocityGrid);
 
 
-      // IntermParticles.push_back(Particles);
-      // IntermParticlesTimeStamps.push_back(TimestepT1);
+      IntermParticles.push_back(Particles);
+      IntermParticlesTimeStamps.push_back(TimestepT1);
     }
     
     if (ComputeComponentLabels) {
@@ -377,7 +377,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	}
 	
 	// Stage VI ------------------------------------------------------------
-	GenerateBoundaries(Boundaries, boundarySeeds);
+	GenerateBoundaries(Boundaries, boundarySeeds, this->Seeds);
 
 	boundarySeeds->Delete();
 
@@ -415,42 +415,43 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(components, 3, Controller->GetLocalProcessId(), "out2/out2_");
 
-	// {
-	//   vtkPolyData *intParticles = vtkPolyData::New();
-	//   vtkPoints *intPoints = vtkPoints::New();
-	//   vtkFloatArray *intTimeStamps = vtkFloatArray::New();
-	//   intTimeStamps->SetName("IntermediateTimeStamps");
-	//   intTimeStamps->SetNumberOfComponents(1);
+	{
+	  vtkPolyData *intParticles = vtkPolyData::New();
+	  vtkPoints *intPoints = vtkPoints::New();
+	  vtkFloatArray *intTimeStamps = vtkFloatArray::New();
+	  intTimeStamps->SetName("IntermediateTimeStamps");
+	  intTimeStamps->SetNumberOfComponents(1);
 
-	//   vtkFloatArray *intLabels = vtkFloatArray::New();
-	//   intLabels->SetName("IntermediateLabels");
-	//   intLabels->SetNumberOfComponents(1);
-	//   int numPoints = 0;
-	//   for (const auto &ps : IntermParticles) {
-	//     numPoints += ps.size();
-	//   }
-	//   intPoints->SetNumberOfPoints(numPoints);
-	//   intTimeStamps->SetNumberOfTuples(numPoints);
-	//   intLabels->SetNumberOfTuples(numPoints);
-	//   int idx = 0;
-	//   int ts = 0;
-	//   for (const auto &ps : IntermParticles) {
-	//     int pId = 0;
-	//     for (const auto &p : ps) {
-	//       float pf[3] = {p.x, p.y, p.z};
-	//       intPoints->SetPoint(idx, pf);
-	//       intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[ts]);
-	//       intLabels->SetValue(idx, particleLabels[pId]);
-	//       ++idx;
-	//       ++pId;
-	//     }
-	//     ++ts;
-	//   }
-	//   intParticles->SetPoints(intPoints);
-	//   intParticles->GetPointData()->AddArray(intTimeStamps);
-	//   intParticles->GetPointData()->AddArray(intLabels);
-	//   output->SetBlock(4, intParticles);	  
-	// }
+	  vtkFloatArray *intLabels = vtkFloatArray::New();
+	  intLabels->SetName("IntermediateLabels");
+	  intLabels->SetNumberOfComponents(1);
+	  int numPoints = 0;
+	  for (const auto &ps : IntermParticles) {
+	    numPoints += ps.size();
+	  }
+	  intPoints->SetNumberOfPoints(numPoints);
+	  intTimeStamps->SetNumberOfTuples(numPoints);
+	  intLabels->SetNumberOfTuples(numPoints);
+	  int idx = 0;
+	  int ts = 0;
+	  for (const auto &ps : IntermParticles) {
+	    int pId = 0;
+	    for (const auto &p : ps) {
+	      float pf[3] = {p.x, p.y, p.z};
+	      intPoints->SetPoint(idx, pf);
+	      intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[ts]);
+	      intLabels->SetValue(idx, particleLabels[pId]);
+	      ++idx;
+	      ++pId;
+	    }
+	    ++ts;
+	  }
+	  intParticles->SetPoints(intPoints);
+	  intParticles->GetPointData()->AddArray(intTimeStamps);
+	  intParticles->GetPointData()->AddArray(intLabels);
+
+	  output->SetBlock(4, intParticles);	  
+	}
 
 	// for (int i = 0; i < IntermParticles.size(); ++i) {
 	//   vtkPolyData *boundary = ComputeBoundary(IntermParticles[i],);
@@ -474,7 +475,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 //----------------------------------------------------------------------------
 void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
 {
-  //  vtkSmartPointer<vtkPoints> seedPoints = vtkSmartPointer<vtkPoints>::New();
   vtkPoints *seedPoints;
 
   if (seeds) {
@@ -1054,11 +1054,12 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *boundarySeeds)
+void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *boundarySeeds,
+				    vtkPolyData *seeds)
 {
-  vtkPoints *points = Seeds->GetPoints();
+  vtkPoints *points = seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::
-    SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+    SafeDownCast(seeds->GetPointData()->GetArray("Labels"));
 
   vtkPoints *boundarySeedPoints = boundarySeeds->GetPoints();
   vtkFloatArray *boundarySeedLabels = vtkFloatArray::
@@ -1230,7 +1231,7 @@ vtkVofTopo::vtkVofTopo() :
   this->VofGrid[1] = vtkRectilinearGrid::New();
   this->VelocityGrid[0] = vtkRectilinearGrid::New();
   this->VelocityGrid[1] = vtkRectilinearGrid::New();
-  // IntermParticles.clear();
+  IntermParticles.clear();
 }
 
 //----------------------------------------------------------------------------

@@ -2032,12 +2032,11 @@ void generateBoundaries(vtkPoints *points,
   const int boundarySize = 2;
   double range[2];
   labels->GetRange(range, 0);
-  const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f); // buggy if range[0] > 0!!!
+  const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
   const int labelsRange[2] = {range[0], range[1]};
 
   // stores indices of all points with a given label
   std::vector<std::vector<int>> labelPoints(numUniqueLabels);
-
   for (int i = 0; i < numUniqueLabels; ++i) {
     labelPoints[i].clear();
   }
@@ -2045,7 +2044,6 @@ void generateBoundaries(vtkPoints *points,
 
   // stores the index bounds of particles with a given label
   std::vector<std::array<int,6>> labelExtents(numUniqueLabels);
-  
   calcLabelExtents(points_tmp, labels_tmp, labelsRange, grid, labelExtents);
 
   const float isoValue = 0.501f;

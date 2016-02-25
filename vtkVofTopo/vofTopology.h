@@ -102,6 +102,17 @@ void findNeighbors(const int myExtents[6],
 
 int outOfBounds(const float4 particle, const double bounds[6], const double globalBounds[6]);
 int withinBounds(const float4 particle, const double bounds[6]);
+
+void generateBoundary(const std::vector<float4> &points,
+		      const std::vector<float> &labels,
+		      vtkRectilinearGrid *grid,
+		      const int refinement,
+		      const int localExtentNoGhosts[6],
+		      int &vertexID,
+		      std::vector<int> &labelOffsets,
+		      std::vector<float4> &vertices,
+		      std::vector<float4> &normals,
+		      std::vector<int> &indices);
   
 template<typename T> 
 void sendData(const std::vector<std::vector<T> > &dataToSend, std::vector<T> &dataToRecv,

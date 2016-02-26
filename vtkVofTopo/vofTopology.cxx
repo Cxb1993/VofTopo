@@ -2139,12 +2139,12 @@ void generateBoundary(const std::vector<float4> &points,
       continue;
     }
 
-    int ijk0[3] = {labelExtents[i][0]-1,
-		   labelExtents[i][2]-1,
-		   labelExtents[i][4]-1};
-    int ijk1[3] = {labelExtents[i][1]+1,
-		   labelExtents[i][3]+1,
-		   labelExtents[i][5]+1};
+    int ijk0[3] = {labelExtents[i][0],
+		   labelExtents[i][2],
+		   labelExtents[i][4]};
+    int ijk1[3] = {labelExtents[i][1],
+		   labelExtents[i][3],
+		   labelExtents[i][5]};
 
     // this is a node-based grid so +1 for each dimension
     int subNodeRes[3] = {ijk1[0]-ijk0[0]+1+1,
@@ -2179,12 +2179,18 @@ void generateBoundary(const std::vector<float4> &points,
 		     0, subNodeRes[1]-1,
 		     0, subNodeRes[2]-1};
 
-    if (localExtentNoGhosts[0] > labelExtents[i][0]) extent[0] += r*boundarySize;
-    if (localExtentNoGhosts[1] < labelExtents[i][1]) extent[1] -= r*boundarySize;
-    if (localExtentNoGhosts[2] > labelExtents[i][2]) extent[2] += r*boundarySize;
-    if (localExtentNoGhosts[3] < labelExtents[i][3]) extent[3] -= r*boundarySize;
-    if (localExtentNoGhosts[4] > labelExtents[i][4]) extent[4] += r*boundarySize;
-    if (localExtentNoGhosts[5] < labelExtents[i][5]) extent[5] -= r*boundarySize;    
+    if (localExtentNoGhosts[0] > labelExtents[i][0])
+      extent[0] += r*std::min(localExtentNoGhosts[0]-labelExtents[i][0],boundarySize);
+    if (localExtentNoGhosts[1] < labelExtents[i][1])
+      extent[1] -= r*std::min(labelExtents[i][1]-localExtentNoGhosts[1],boundarySize);
+    if (localExtentNoGhosts[2] > labelExtents[i][2])
+      extent[2] += r*std::min(localExtentNoGhosts[2]-labelExtents[i][2],boundarySize);
+    if (localExtentNoGhosts[3] < labelExtents[i][3])
+      extent[3] -= r*std::min(labelExtents[i][3]-localExtentNoGhosts[3],boundarySize);
+    if (localExtentNoGhosts[4] > labelExtents[i][4])
+      extent[4] += r*std::min(localExtentNoGhosts[4]-labelExtents[i][4],boundarySize);
+    if (localExtentNoGhosts[5] < labelExtents[i][5])
+      extent[5] -= r*std::min(labelExtents[i][5]-localExtentNoGhosts[5],boundarySize);    
 
     int numVertsPrev = vertices.size();
     extractSurface(field.data(), subNodeRes, subcoords, extent, 0.501f, indices, vertices, vertexID);

@@ -52,9 +52,7 @@ namespace
 		      const std::vector<float> &normalsInt,
 		      const double bounds[6],
 		      const int cell_x, const int cell_y, const int cell_z,
-		      const int idx,
-		      std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> &seedPos,
-		      int &seedIdx)
+		      const int idx)
   {
     float originOffset[3] = {0.0f,0.0f,0.0f};
     float cellSizeTmp[3] = {cellSize[0], cellSize[1], cellSize[2]};
@@ -107,11 +105,6 @@ namespace
 	      (f < g_emf1 && d < lstar[idx] || f >= g_emf1)) {	    
 
 	    seeds->InsertNextPoint(seed);
-	    int3 pos = {cell_x*subdiv + xr, 
-			cell_y*subdiv + yr, 
-			cell_z*subdiv + zr};
-	    seedPos[pos] = seedIdx;
-	    ++seedIdx;
  	  }
 	}
       }
@@ -143,13 +136,6 @@ namespace
     int id_back   = i + j*res[0] + km*res[0]*res[1];
     int id_front  = i + j*res[0] + kp*res[0]*res[1];
 
-    // int f_left = ;
-    // int f_right;
-    // int f_bottom;
-    // int f_top;   
-    // int f_back;
-    // int f_front;
-    
     grad[0] = (data->GetComponent(id_right,0) - 
 	       data->GetComponent(id_left,0))/dx;
     grad[1] = (data->GetComponent(id_top,0) - 
@@ -1010,10 +996,6 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
   int extent[6];
   vofGrid->GetExtent(extent);
 
-  std::map<int3, int, bool(*)(const int3 &a, const int3 &b)> seedPos(compare_int3);
-  seedPos.clear();
-  int seedIdx = 0;
-
   //---------------------------------------------------------------------------
   // populate the grid with seed points
   // int idx = 0;
@@ -1047,7 +1029,7 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 	if (f > g_emf0) {
 
 	  placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes, f, lstar, normalsInt,
-			 bounds, i, j, k, idx, seedPos, seedIdx);
+			 bounds, i, j, k, idx);
 	}
 	++icur;
       }

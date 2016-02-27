@@ -85,6 +85,9 @@ private:
 			      std::vector<float> &labels);
   void TransferParticleDataToSeeds(std::vector<float> &particleData,
 				   const std::string arrayName);
+  void TransferIntermParticlesToSeeds(std::vector<std::vector<float4>> &particles,
+				      std::vector<std::vector<int>> &ids,
+				      std::vector<std::vector<short>> &procs);
   
   void GenerateBoundaries(vtkPolyData *boundaries, 
 			  vtkPolyData *boundarySeeds,
@@ -145,6 +148,8 @@ private:
 
   // Intermediate particles
   std::vector<std::vector<float4>> IntermParticles;
+  std::vector<std::vector<int>> IntermParticleIds;
+  std::vector<std::vector<short>> IntermParticleProcs;
   std::vector<float> IntermParticlesTimeStamps;
   
   // Temporal boundaries

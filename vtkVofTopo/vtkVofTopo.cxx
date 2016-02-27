@@ -331,8 +331,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	InitParticles(VofGrid[0], nullptr);	
       }
 
-      IntermParticles.push_back(Particles);
-      IntermParticlesTimeStamps.push_back(TimestepT0);
+      // IntermParticles.push_back(Particles);
+      // IntermParticlesTimeStamps.push_back(TimestepT0);
       
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
@@ -347,11 +347,15 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   if (TimestepT0 != TimestepT1) {    
     if(TimestepT0 < TargetTimeStep) {
 
-      // AdvectParticlesInt(VofGrid, VelocityGrid);
+      //AdvectParticlesInt(VofGrid, VelocityGrid);
       AdvectParticles(VofGrid, VelocityGrid);
 
-      IntermParticles.push_back(Particles);
-      IntermParticlesTimeStamps.push_back(TimestepT1);
+      if (TimestepT0 < TargetTimeStep-1) {
+	IntermParticles.push_back(Particles);
+	IntermParticlesTimeStamps.push_back(TimestepT1);
+	IntermParticleIds.push_back(ParticleIds);
+	IntermParticleProcs.push_back(ParticleProcs);
+      }
     }
     
     if (ComputeComponentLabels) {
@@ -368,6 +372,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferParticleDataToSeeds(particleLabels, "Labels");
 	TransferParticleDataToSeeds(Uncertainty, "Uncertainty");
+	
+	TransferIntermParticlesToSeeds(IntermParticles, IntermParticleIds, IntermParticleProcs);
 
 	// Transfer seed points from neighbors ---------------------------------
 	vtkPolyData *boundarySeeds = vtkPolyData::New();
@@ -415,35 +421,41 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// writeData(components, 3, Controller->GetLocalProcessId(), "out2/out2_");
 
 	{
-	  vtkPolyData *intParticles = vtkPolyData::New();
-	  vtkPoints *intPoints = vtkPoints::New();
-	  vtkFloatArray *intTimeStamps = vtkFloatArray::New();
-	  intTimeStamps->SetName("IntermediateTimeStamps");
-	  intTimeStamps->SetNumberOfComponents(1);
-
-	  vtkFloatArray *intLabels = vtkFloatArray::New();
-	  intLabels->SetName("Labels");
-	  intLabels->SetNumberOfComponents(1);
 	  int numPoints = 0;
 	  for (const auto &ps : IntermParticles) {
 	    numPoints += ps.size();
 	  }
+
+	  vtkPolyData *intParticles = vtkPolyData::New();
+	  vtkPoints *intPoints = vtkPoints::New();
 	  intPoints->SetNumberOfPoints(numPoints);
+	  
+	  vtkFloatArray *intTimeStamps = vtkFloatArray::New();
+	  intTimeStamps->SetName("IntermediateTimeStamps");
+	  intTimeStamps->SetNumberOfComponents(1);
 	  intTimeStamps->SetNumberOfTuples(numPoints);
+	  
+	  vtkFloatArray *intLabels = vtkFloatArray::New();
+	  intLabels->SetName("Labels");
+	  intLabels->SetNumberOfComponents(1);
 	  intLabels->SetNumberOfTuples(numPoints);
+	  
 	  int idx = 0;
-	  int ts = 0;
-	  for (const auto &ps : IntermParticles) {
-	    int pId = 0;
-	    for (const auto &p : ps) {
+
+	  for (int i = 0; i < IntermParticles.size(); ++i) {
+	    for (int j = 0; j < IntermParticles[i].size(); ++j) {
+	      
+	      const float4 &p = IntermParticles[i][j];
 	      float pf[3] = {p.x, p.y, p.z};
 	      intPoints->SetPoint(idx, pf);
-	      intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[ts]);
-	      intLabels->SetValue(idx, particleLabels[pId]);
+	      intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[i]);
+	      
+	      const int id = IntermParticleIds[i][j];
+	      float label = Seeds->GetPointData()->GetArray("Labels")->GetComponent(id,0);
+	      intLabels->SetValue(idx, label);
+
 	      ++idx;
-	      ++pId;
 	    }
-	    ++ts;
 	  }
 	  intParticles->SetPoints(intPoints);
 	  intParticles->GetPointData()->AddArray(intTimeStamps);
@@ -769,7 +781,6 @@ void vtkVofTopo::ExchangeParticles()
     uncertaintyToSend[i].resize(0);
   }
 
-  std::vector<float4>::iterator it;
   std::vector<float4> particlesToKeep;
   std::vector<int> particleIdsToKeep;
   std::vector<short> particleProcsToKeep;
@@ -783,7 +794,6 @@ void vtkVofTopo::ExchangeParticles()
       // for (int j = 0; j < numProcesses; ++j) {	
 
   	int neighborId = NeighborProcesses[bound][j];
-  	// int neighborId = j;//NeighborProcesses[bound][j];	
 	if (neighborId != processId) {
 	  particlesToSend[neighborId].push_back(Particles[i]);
 	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
@@ -1055,7 +1065,7 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
       dataArray->SetValue(i, particleData[i]);
     }
   }
-  else {
+  else { // parallel
     
     const int processId = Controller->GetLocalProcessId();
     const int numProcesses = Controller->GetNumberOfProcesses();
@@ -1096,6 +1106,10 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
 	allIdsToSend.push_back(idsToSend[i][j]);
       }
     }
+
+    // no longer needed
+    dataToSend.clear();
+    idsToSend.clear();
 
     std::vector<int> RecvLengths(numProcesses);
     std::vector<int> RecvOffsets(numProcesses);
@@ -1563,3 +1577,60 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   //   writer->Write();
   // }
 }
+
+void vtkVofTopo::TransferIntermParticlesToSeeds(std::vector<std::vector<float4>> &particles,
+						std::vector<std::vector<int>> &ids,
+						std::vector<std::vector<short>> &procs)
+{
+  if (Controller->GetCommunicator() == 0) {
+    return;
+  }
+  const int numProcesses = Controller->GetNumberOfProcesses();
+  const int processId = Controller->GetLocalProcessId();
+  const int numTimeSteps = particles.size();
+  
+  for (int i = 0; i < numTimeSteps; ++i) {
+
+    // one vector for each side of the process
+    std::vector<std::vector<float4>> particlesToSend(numProcesses);
+    std::vector<std::vector<int> > idsToSend(numProcesses);
+  
+    for (int j = 0; j < numProcesses; ++j) {
+      particlesToSend[j].resize(0);
+      idsToSend[j].resize(0);
+    }
+
+    std::vector<float4> particlesToKeep(0);
+    std::vector<int> idsToKeep(0);
+
+    for (int j = 0; j < particles[i].size(); ++j) {
+
+      int procId = procs[i][j];
+      if (processId != procId) {
+	particlesToSend[procId].push_back(particles[i][j]);
+	idsToSend[procId].push_back(ids[i][j]);
+      }
+      else {
+	particlesToKeep.push_back(particles[i][j]);
+	idsToKeep.push_back(ids[i][j]);
+      }
+    }
+ 
+    particles[i] = particlesToKeep;
+    ids[i] = idsToKeep;
+
+    std::vector<float4> particlesToRecv;
+    std::vector<int> idsToRecv;
+    sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
+    sendData(idsToSend, idsToRecv, numProcesses, Controller);
+
+    // insert the paricles that are within the domain
+    for (int j = 0; j < particlesToRecv.size(); ++j) {
+      particles[i].push_back(particlesToRecv[j]);
+      ids[i].push_back(idsToRecv[j]);
+    }
+
+    Controller->GetCommunicator()->Barrier();    
+  }
+}
+

@@ -40,95 +40,6 @@ vtkStandardNewMacro(vtkVofTopo);
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 
-// namespace
-// {
-//   //==============================================================================
-//   // the code below has been taken from stackoverflow
-//   // http://stackoverflow.com/questions/63166/
-//   // how-to-determine-cpu-and-memory-consumption-from-inside-a-process
-//   //==============================================================================
-//   inline int parseLine(char* line){
-//     int i = strlen(line);
-//     while (*line < '0' || *line > '9') line++;
-//     line[i-3] = '\0';
-//     i = atoi(line);
-//     return i;
-//   }
-//   //==============================================================================
-//   inline int getValueVirtual()
-//   { //Note: this value is in KB!
-//     FILE* file = fopen("/proc/self/status", "r");
-//     int result = -1;
-//     char line[128];
-    
-
-//     while (fgets(line, 128, file) != NULL){
-//       if (strncmp(line, "VmSize:", 7) == 0){
-// 	result = parseLine(line);
-// 	break;
-//       }
-//     }
-//     fclose(file);
-//     return result;
-//   }
-//   //==============================================================================
-//   inline int getValuePhysical()
-//   { //Note: this value is in KB!
-//     FILE* file = fopen("/proc/self/status", "r");
-//     int result = -1;
-//     char line[128];
-    
-
-//     while (fgets(line, 128, file) != NULL){
-//       if (strncmp(line, "VmRSS:", 6) == 0){
-// 	result = parseLine(line);
-// 	break;
-//       }
-//     }
-//     fclose(file);
-//     return result;
-//   }
-//   //==============================================================================
-//   inline void cpuMemPrint()
-//   {
-//     struct sysinfo memInfo;
-
-//     sysinfo (&memInfo);
-
-//     long long totalVirtualMem = memInfo.totalram;
-//     //Add other values in next statement to avoid int overflow on right hand side...
-//     totalVirtualMem += memInfo.totalswap;
-//     totalVirtualMem *= memInfo.mem_unit;
-
-//     long long virtualMemUsed = memInfo.totalram - memInfo.freeram;
-//     //Add other values in next statement to avoid int overflow on right hand side...
-//     virtualMemUsed += memInfo.totalswap - memInfo.freeswap;
-//     virtualMemUsed *= memInfo.mem_unit;
-
-//     long long totalPhysMem = memInfo.totalram;
-//     //Multiply in next statement to avoid int overflow on right hand side...
-//     totalPhysMem *= memInfo.mem_unit;
-
-//     long long physMemUsed = memInfo.totalram - memInfo.freeram;
-//     //Multiply in next statement to avoid int overflow on right hand side...
-//     physMemUsed *= memInfo.mem_unit;
-
-//     printf("[CPU physMem] total: %.3f MB, free: %.3f MB, used : %.3f MB, "
-// 	   "used by process: %.3f MB\n",
-// 	   ((double)totalPhysMem)/1024.0/1024.0, 
-// 	   ((double)(totalPhysMem-physMemUsed))/1024.0/1024.0, 
-// 	   ((double)physMemUsed)/1024.0/1024.0, 
-// 	   ((double)getValuePhysical())/1024.0);
-//     printf("[CPU virtMem] total: %.3f MB, free: %.3f MB, used : %.3f MB, " 
-// 	   "used by process: %.3f MB\n",
-// 	   ((double)totalVirtualMem)/1024.0/1024.0, 
-// 	   ((double)(totalVirtualMem-virtualMemUsed))/1024.0/1024.0, 
-// 	   ((double)virtualMemUsed)/1024.0/1024.0, 
-// 	   ((double)getValueVirtual())/1024.0);
-//   }
-
-// }
-
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
 				   vtkInformationVector **inputVector,
@@ -331,9 +242,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	InitParticles(VofGrid[0], nullptr);	
       }
 
-      // IntermParticles.push_back(Particles);
-      // IntermParticlesTimeStamps.push_back(TimestepT0);
-      
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
 
@@ -349,12 +257,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       //AdvectParticlesInt(VofGrid, VelocityGrid);
       AdvectParticles(VofGrid, VelocityGrid);
-
-      if (TimestepT0 < TargetTimeStep-1) {
+      
+      if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1) {
 	IntermParticles.push_back(Particles);
 	IntermParticlesTimeStamps.push_back(TimestepT1);
-	IntermParticleIds.push_back(ParticleIds);
-	IntermParticleProcs.push_back(ParticleProcs);
+	if (Controller->GetCommunicator() != 0) {
+	  IntermParticleIds.push_back(ParticleIds);
+	  IntermParticleProcs.push_back(ParticleProcs);
+	}
       }
     }
     
@@ -372,9 +282,13 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// Stage V -------------------------------------------------------------
 	TransferParticleDataToSeeds(particleLabels, "Labels");
 	TransferParticleDataToSeeds(Uncertainty, "Uncertainty");
-	
-	TransferIntermParticlesToSeeds(IntermParticles, IntermParticleIds, IntermParticleProcs);
 
+	if (StoreIntermParticles) {
+	  TransferIntermParticlesToSeeds(IntermParticles,
+					 IntermParticleIds,
+					 IntermParticleProcs);
+	}
+	
 	// Transfer seed points from neighbors ---------------------------------
 	vtkPolyData *boundarySeeds = vtkPolyData::New();
 	if (Controller->GetCommunicator() != 0) {
@@ -420,7 +334,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	// writeData(Boundaries, 2, Controller->GetLocalProcessId(), "out2/out2_");
 	// writeData(components, 3, Controller->GetLocalProcessId(), "out2/out2_");
 
-	{
+	if (StoreIntermParticles) { 
 	  int numPoints = 0;
 	  for (const auto &ps : IntermParticles) {
 	    numPoints += ps.size();
@@ -442,19 +356,38 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  
 	  int idx = 0;
 
-	  for (int i = 0; i < IntermParticles.size(); ++i) {
-	    for (int j = 0; j < IntermParticles[i].size(); ++j) {
-	      
-	      const float4 &p = IntermParticles[i][j];
-	      float pf[3] = {p.x, p.y, p.z};
-	      intPoints->SetPoint(idx, pf);
-	      intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[i]);
-	      
-	      const int id = IntermParticleIds[i][j];
-	      float label = Seeds->GetPointData()->GetArray("Labels")->GetComponent(id,0);
-	      intLabels->SetValue(idx, label);
 
-	      ++idx;
+	  if (Controller->GetCommunicator() == 0) { 
+	    for (int i = 0; i < IntermParticles.size(); ++i) {
+	      for (int j = 0; j < IntermParticles[i].size(); ++j) {
+	      
+		const float4 &p = IntermParticles[i][j];
+		float pf[3] = {p.x, p.y, p.z};
+		intPoints->SetPoint(idx, pf);
+		intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[i]);
+	      
+		float label = Seeds->GetPointData()->GetArray("Labels")->GetComponent(j,0);
+		intLabels->SetValue(idx, label);
+
+		++idx;
+	      }
+	    }
+	  }
+	  else {
+	    for (int i = 0; i < IntermParticles.size(); ++i) {
+	      for (int j = 0; j < IntermParticles[i].size(); ++j) {
+	      
+		const float4 &p = IntermParticles[i][j];
+		float pf[3] = {p.x, p.y, p.z};
+		intPoints->SetPoint(idx, pf);
+		intTimeStamps->SetValue(idx, IntermParticlesTimeStamps[i]);
+	      
+		const int id = IntermParticleIds[i][j];
+		float label = Seeds->GetPointData()->GetArray("Labels")->GetComponent(id,0);
+		intLabels->SetValue(idx, label);
+
+		++idx;
+	      }
 	    }
 	  }
 	  intParticles->SetPoints(intPoints);
@@ -462,14 +395,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  intParticles->GetPointData()->AddArray(intLabels);
 
 	  output->SetBlock(4, intParticles);
-
-	  // // for (int i = 0; i < IntermParticles.size(); ++i)
-	  // {
-	  //   int i = 0;
-	  //   vtkPolyData *boundary = vtkPolyData::New();
-	  //   GenerateBoundaries(boundary, 0, intParticles);
-	  //   output->SetBlock(5+i, boundary);	  
-	  // }
 
 	}
 	// {
@@ -732,34 +657,34 @@ void vtkVofTopo::AdvectParticlesInt(vtkRectilinearGrid *vof[2],
       
   InterpolateField(VofGrid, VelocityGrid, intVof, intVelocity, 0.5f);
 
-  // {
-  // vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
-  // vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
+  {
+  vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
+  vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
 
-  // advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt, PLICCorrection, VOFCorrection);
-  // if (Controller->GetCommunicator() != 0) {
-  //   ExchangeParticles();
-  // }
-  // }
+  advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt, PLICCorrection, VOFCorrection);
+  if (Controller->GetCommunicator() != 0) {
+    ExchangeParticles();
+  }
+  }
   
-  {
-    vtkRectilinearGrid *vofTmp[2] = {vof[0], intVof};
-    vtkRectilinearGrid *velocityTmp[2] = {velocity[0], intVelocity};
-    advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
-		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
-    if (Controller->GetCommunicator() != 0) {
-      ExchangeParticles();
-    }
-  }  
-  {
-    vtkRectilinearGrid *vofTmp[2] = {intVof,vof[1]};
-    vtkRectilinearGrid *velocityTmp[2] = {intVelocity,velocity[1]};
-    advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
-		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
-    if (Controller->GetCommunicator() != 0) {
-      ExchangeParticles();
-    }
-  }  
+  // {
+  //   vtkRectilinearGrid *vofTmp[2] = {vof[0], intVof};
+  //   vtkRectilinearGrid *velocityTmp[2] = {velocity[0], intVelocity};
+  //   advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
+  // 		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
+  //   if (Controller->GetCommunicator() != 0) {
+  //     ExchangeParticles();
+  //   }
+  // }  
+  // {
+  //   vtkRectilinearGrid *vofTmp[2] = {intVof,vof[1]};
+  //   vtkRectilinearGrid *velocityTmp[2] = {intVelocity,velocity[1]};
+  //   advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
+  // 		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
+  //   if (Controller->GetCommunicator() != 0) {
+  //     ExchangeParticles();
+  //   }
+  // }  
 }
 
 //----------------------------------------------------------------------------
@@ -1320,8 +1245,10 @@ vtkVofTopo::vtkVofTopo() :
   IntegrationMethod(0), // Heun
   PLICCorrection(0),
   VOFCorrection(0),
-  RK4NumSteps(8)
+  RK4NumSteps(8),
+  StoreIntermParticles(0)
 {
+  std::cout << "voftopo instance created" << std::endl;
   this->SetNumberOfInputPorts(3);
   this->Controller = vtkMPIController::New();
   this->Boundaries = vtkPolyData::New();
@@ -1330,6 +1257,9 @@ vtkVofTopo::vtkVofTopo() :
   this->VelocityGrid[0] = vtkRectilinearGrid::New();
   this->VelocityGrid[1] = vtkRectilinearGrid::New();
   IntermParticles.clear();
+  IntermParticlesTimeStamps.clear();
+  IntermParticleIds.clear();
+  IntermParticleProcs.clear();
 }
 
 //----------------------------------------------------------------------------
@@ -1344,6 +1274,7 @@ vtkVofTopo::~vtkVofTopo()
   this->VofGrid[1]->Delete();
   this->VelocityGrid[0]->Delete();
   this->VelocityGrid[1]->Delete();
+  std::cout << "voftopo instance destroyed" << std::endl;
 }
 
 //----------------------------------------------------------------------------

@@ -106,6 +106,15 @@
       </IntVectorProperty>
 
       <IntVectorProperty
+          name="StoreIntermParticles"
+	  label="Store Intermediate Particles"
+          command="SetStoreIntermParticles"
+          number_of_elements="1"
+          default_values="0">
+	<BooleanDomain name="bool"/>
+      </IntVectorProperty>
+      
+      <IntVectorProperty
           name="PLIC-based correction"
 	  label="PLIC-based correction"
           command="SetPLICCorrection"

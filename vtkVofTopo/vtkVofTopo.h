@@ -38,6 +38,9 @@ public:
   vtkGetMacro(ComputeComponentLabels, int);
   vtkSetMacro(ComputeComponentLabels, int);
 
+  vtkGetMacro(StoreIntermParticles, int);
+  vtkSetMacro(StoreIntermParticles, int);
+
   vtkGetMacro(IntegrationMethod, int);
   vtkSetMacro(IntegrationMethod, int);
 
@@ -168,6 +171,7 @@ private:
   int PLICCorrection;
   int VOFCorrection;
   int RK4NumSteps;
+  int StoreIntermParticles;  
 };
 
 #endif

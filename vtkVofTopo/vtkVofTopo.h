@@ -52,7 +52,13 @@ public:
 
   vtkGetMacro(RK4NumSteps, int);
   vtkSetMacro(RK4NumSteps, int);  
-  //~GUI -------------------------------
+
+  vtkGetMacro(EMF0, double);
+  vtkSetMacro(EMF0, double);  
+
+  vtkGetMacro(EMF1, double);
+  vtkSetMacro(EMF1, double);  
+//~GUI -------------------------------
 
 protected:
   vtkVofTopo();
@@ -171,7 +177,10 @@ private:
   int PLICCorrection;
   int VOFCorrection;
   int RK4NumSteps;
-  int StoreIntermParticles;  
+  int StoreIntermParticles;
+
+  double EMF0;
+  double EMF1;
 };
 
 #endif

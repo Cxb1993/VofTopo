@@ -22,7 +22,7 @@
 
 #include "vtkXMLMultiBlockDataWriter.h"
 #include "vtkXMLPolyDataWriter.h"
-#include "vtkXMLRectilinearGridWriter.h"
+#include "vtkXMLRectilinearGridWriter.h"1
 
 #include <iostream>
 #include <vector>
@@ -185,6 +185,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 			    vtkInformationVector **inputVector,
 			    vtkInformationVector *outputVector)
 {
+  g_emf0 = EMF0;
+  g_emf1 = EMF1;
+    
   std::cout << "Timestep T0 T1 = " << TimestepT0 << " " << TimestepT1 << std::endl;
   vtkInformation *inInfoVelocity = inputVector[0]->GetInformationObject(0);
   vtkInformation *inInfoVof = inputVector[1]->GetInformationObject(0);
@@ -255,7 +258,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   if (TimestepT0 != TimestepT1) {    
     if(TimestepT0 < TargetTimeStep) {
 
-      //AdvectParticlesInt(VofGrid, VelocityGrid);
+      // AdvectParticlesInt(VofGrid, VelocityGrid);
       AdvectParticles(VofGrid, VelocityGrid);
       
       if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1) {
@@ -324,6 +327,20 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	particles->GetPointData()->AddArray(labels);
 	particles->GetPointData()->AddArray(uncertainty);
 
+	// //
+	// vtkFloatArray *ids = vtkFloatArray::New();
+	// ids->SetName("Ids");
+	// ids->SetNumberOfComponents(1);
+	// ids->SetNumberOfTuples(Particles.size());
+	// for (int i = 0; i < Particles.size(); ++i) {
+
+	//   ids->SetValue(i, i);
+	// }
+
+	// Seeds->GetPointData()->AddArray(ids);
+	// particles->GetPointData()->AddArray(ids);
+	// //
+	
 	output->SetBlock(0, Seeds);
 	output->SetBlock(1, particles);
 	output->SetBlock(2, Boundaries);
@@ -1260,6 +1277,8 @@ vtkVofTopo::vtkVofTopo() :
   IntermParticlesTimeStamps.clear();
   IntermParticleIds.clear();
   IntermParticleProcs.clear();
+  g_emf0 = EMF0;
+  g_emf1 = EMF1;
 }
 
 //----------------------------------------------------------------------------
@@ -1346,8 +1365,7 @@ void getFluidExtent(vtkRectilinearGrid *vof, const int globalExtent[6],
 	}
       }
     }
-  }
-    
+  }    
 }
 
 void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
@@ -1356,12 +1374,16 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
 				  vtkRectilinearGrid *intVelocity,
 				  const float a)
 {
+  float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
+  if (TimeStepDelta != 0.0) {
+    dt = TimeStepDelta;
+  }
+  dt *= Incr;
+
   int nodeRes[3];
   vof[0]->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
   int optExtent[6];
-
   {
     int fluidExtent0[6];
     getFluidExtent(vof[0], GlobalExtent, NumGhostLevels, fluidExtent0);
@@ -1388,63 +1410,21 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   std::vector<float4> particles;
   particles.clear();
   generateSeedPointsInCellCenters(VelocityGrid[0], Refinement, particles, optExtent, GlobalExtent, NumGhostLevels);
-  
-  
-  float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
-  if (TimeStepDelta != 0.0) {
-    dt = TimeStepDelta;
-  }
-  
-  dt *= Incr;
 
   std::vector<float4> particlesForward = particles;
-  float t = (1.0f-a)*InputTimeValues[TimestepT1] + a*InputTimeValues[TimestepT0];
+  float t = InputTimeValues[TimestepT0];
 
   advectParticles(velocity, particlesForward, t, 1.0f,
-		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
-
-  // {
-  //   vtkPolyData *outParticles = vtkPolyData::New();
-  //   vtkPoints *ppoints = vtkPoints::New();
-  //   ppoints->SetNumberOfPoints(particlesForward.size());
-    
-  //   for (int i = 0; i < particlesForward.size(); ++i) {
-
-  //     float p[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
-  //     ppoints->SetPoint(i, p);
-  //   }
-  //   outParticles->SetPoints(ppoints);
-
-  //   vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-  //   writer->SetInputData(outParticles);
-  //   writer->SetFileName("/tmp/intPartForward.vtp");
-  //   writer->Write();
-  // }
-
+		  InputTimeValues[TimestepT0],
+		  InputTimeValues[TimestepT0] + (InputTimeValues[TimestepT1]-InputTimeValues[TimestepT0])/2.0f,
+		  RK4NumSteps);
   
   std::vector<float4> particlesBackward = particles;
+  t = InputTimeValues[TimestepT1];
+  
   advectParticles(velocity, particlesBackward, t, -1.0f,
-		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
-
-  // {
-  //   vtkPolyData *outParticles = vtkPolyData::New();
-  //   vtkPoints *ppoints = vtkPoints::New();
-  //   ppoints->SetNumberOfPoints(particlesBackward.size());
-    
-  //   for (int i = 0; i < particlesBackward.size(); ++i) {
-
-  //     float p[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};
-  //     ppoints->SetPoint(i, p);
-  //   }
-  //   outParticles->SetPoints(ppoints);
-
-  //   vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
-  //   writer->SetInputData(outParticles);
-  //   writer->SetFileName("/tmp/intPartBackward.vtp");
-  //   writer->Write();
-  // }
-
-
+		  InputTimeValues[TimestepT0] + (InputTimeValues[TimestepT1]-InputTimeValues[TimestepT0])/2.0f,
+		  InputTimeValues[TimestepT1], RK4NumSteps);
 
   intVof->CopyStructure(vof[0]);
   intVelocity->CopyStructure(velocity[0]);
@@ -1467,47 +1447,327 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   velocityArray->FillComponent(1,0.0f);
   velocityArray->FillComponent(2,0.0f);
   
-#pragma omp parallel for
+  //#pragma omp parallel for
   for (int i = 0; i < particles.size(); ++i) {
 
     int ijk[3];
-    double pcoords[3];
+    double pcoords[3];    
+    double x[3] = {particles[i].x, particles[i].y, particles[i].z};    
+    vof[0]->ComputeStructuredCoordinates(x, ijk, pcoords);    
+    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
     
-    double x0[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};    
+    float f0 = vofArray0->GetComponent(idx,0);
+    float3 v0 = make_float3(velocityArray0->GetComponent(idx,0),
+			    velocityArray0->GetComponent(idx,1),
+			    velocityArray0->GetComponent(idx,2));
+    float f1 = vofArray1->GetComponent(idx,0);
+    float3 v1 = make_float3(velocityArray1->GetComponent(idx,0),
+			    velocityArray1->GetComponent(idx,1),
+			    velocityArray1->GetComponent(idx,2));
+    
+    double x0[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
     vof[0]->ComputeStructuredCoordinates(x0, ijk, pcoords);
-    float f0 = interpolateScaCellBasedData(vofArray0, cellRes, ijk, pcoords);
-    float3 v0 = interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords);
-    
-    double x1[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
-    vof[1]->ComputeStructuredCoordinates(x1, ijk, pcoords);
-    float f1 = interpolateScaCellBasedData(vofArray1, cellRes, ijk, pcoords);
-    float3 v1 = interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords);
-    
-    double x[3] = {particles[i].x, particles[i].y, particles[i].z};
-    vof[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    float f = (1.0f-a)*f0 + a*f1;
-    float3 v = (1.0f-a)*v0 + a*v1;
+    {
+      int lx = ijk[0];
+      int ly = ijk[1];
+      int lz = ijk[2];
+      float bx = pcoords[0] - 0.5;
+      float by = pcoords[1] - 0.5;
+      float bz = pcoords[2] - 0.5;
 
-    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];    
-    vofArray->SetValue(idx,f);
-    velocityArray->SetTuple3(idx,v.x,v.y,v.z);
+      if (pcoords[0] < 0.5) {
+	lx -= 1;
+	bx = pcoords[0] + 0.5;
+      }
+      if (pcoords[1] < 0.5) {
+	ly -= 1;
+	by = pcoords[1] + 0.5;
+      }
+      if (pcoords[2] < 0.5) {
+	lz -= 1;
+	bz = pcoords[2] + 0.5;
+      }
+   
+      int ux = lx+1;
+      int uy = ly+1;
+      int uz = lz+1;
+    
+      if (lx < 0) lx = 0;
+      if (ly < 0) ly = 0;
+      if (lz < 0) lz = 0;
+      if (ux > cellRes[0]-1) ux = cellRes[0]-1;
+      if (uy > cellRes[1]-1) uy = cellRes[1]-1;
+      if (uz > cellRes[2]-1) uz = cellRes[2]-1;
+
+      float contr[8] = {(1.0f-bx)*(1.0f-by)*(1.0f-bz),
+			(bx)     *(1.0f-by)*(1.0f-bz),
+			(1.0f-bx)*(by)     *(1.0f-bz),
+			(bx)     *(by)     *(1.0f-bz),
+			(1.0f-bx)*(1.0f-by)*(bz),
+			(bx)     *(1.0f-by)*(bz),
+			(1.0f-bx)*(by)     *(bz),
+			(bx)     *(by)     *(bz)};
+
+      int lzslab = lz*cellRes[0]*cellRes[1];
+      int uzslab = uz*cellRes[0]*cellRes[1];
+      int lyr = ly*cellRes[0];
+      int uyr = uy*cellRes[0];
+    
+      int id[8] = {lx + lyr + lzslab,
+		   ux + lyr + lzslab,
+		   lx + uyr + lzslab,
+		   ux + uyr + lzslab,
+		   lx + lyr + uzslab,
+		   ux + lyr + uzslab,
+		   lx + uyr + uzslab,
+		   ux + uyr + uzslab};
+
+      for (int j = 0; j < 8; ++j) {
+	vofArray->SetComponent(id[j],0,vofArray->GetComponent(id[j],0)+contr[j]*f0);
+	velocityArray->SetComponent(id[j],0,velocityArray->GetComponent(id[j],0)+contr[j]*v0.x);
+	velocityArray->SetComponent(id[j],1,velocityArray->GetComponent(id[j],1)+contr[j]*v0.y);
+	velocityArray->SetComponent(id[j],2,velocityArray->GetComponent(id[j],2)+contr[j]*v0.z);
+      }
+    }
+        
+    double x1[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};
+    vof[0]->ComputeStructuredCoordinates(x1, ijk, pcoords);
+    {
+      int lx = ijk[0];
+      int ly = ijk[1];
+      int lz = ijk[2];
+      float bx = pcoords[0] - 0.5;
+      float by = pcoords[1] - 0.5;
+      float bz = pcoords[2] - 0.5;
+
+      if (pcoords[0] < 0.5) {
+	lx -= 1;
+	bx = pcoords[0] + 0.5;
+      }
+      if (pcoords[1] < 0.5) {
+	ly -= 1;
+	by = pcoords[1] + 0.5;
+      }
+      if (pcoords[2] < 0.5) {
+	lz -= 1;
+	bz = pcoords[2] + 0.5;
+      }
+   
+      int ux = lx+1;
+      int uy = ly+1;
+      int uz = lz+1;
+    
+      if (lx < 0) lx = 0;
+      if (ly < 0) ly = 0;
+      if (lz < 0) lz = 0;
+      if (ux > cellRes[0]-1) ux = cellRes[0]-1;
+      if (uy > cellRes[1]-1) uy = cellRes[1]-1;
+      if (uz > cellRes[2]-1) uz = cellRes[2]-1;
+
+      float contr[8] = {(1.0f-bx)*(1.0f-by)*(1.0f-bz),
+			(bx)     *(1.0f-by)*(1.0f-bz),
+			(1.0f-bx)*(by)     *(1.0f-bz),
+			(bx)     *(by)     *(1.0f-bz),
+			(1.0f-bx)*(1.0f-by)*(bz),
+			(bx)     *(1.0f-by)*(bz),
+			(1.0f-bx)*(by)     *(bz),
+			(bx)     *(by)     *(bz)};
+
+      int lzslab = lz*cellRes[0]*cellRes[1];
+      int uzslab = uz*cellRes[0]*cellRes[1];
+      int lyr = ly*cellRes[0];
+      int uyr = uy*cellRes[0];
+    
+      int id[8] = {lx + lyr + lzslab,
+		   ux + lyr + lzslab,
+		   lx + uyr + lzslab,
+		   ux + uyr + lzslab,
+		   lx + lyr + uzslab,
+		   ux + lyr + uzslab,
+		   lx + uyr + uzslab,
+		   ux + uyr + uzslab};
+
+      for (int j = 0; j < 8; ++j) {
+	vofArray->SetComponent(id[j],0,vofArray->GetComponent(id[j],0)+contr[j]*f1);
+	velocityArray->SetComponent(id[j],0,velocityArray->GetComponent(id[j],0)+contr[j]*v1.x);
+	velocityArray->SetComponent(id[j],1,velocityArray->GetComponent(id[j],1)+contr[j]*v1.y);
+	velocityArray->SetComponent(id[j],2,velocityArray->GetComponent(id[j],2)+contr[j]*v1.z);
+      }
+    }
   }
+  const int numCells = cellRes[0]*cellRes[1]*cellRes[2];
+  for (int idx = 0; idx < numCells; ++idx) {
+    float f = vofArray->GetComponent(idx,0);
+    vofArray->SetComponent(idx,0,f/2.0f);
+
+    float3 v = make_float3(velocityArray->GetComponent(idx,0),
+  			   velocityArray->GetComponent(idx,1),
+  			   velocityArray->GetComponent(idx,2));
+    v /= 2.0f;
+    velocityArray->SetComponent(idx,0,v.x);
+    velocityArray->SetComponent(idx,1,v.y);
+    velocityArray->SetComponent(idx,2,v.z);
+  }
+  
   intVof->GetCellData()->AddArray(vofArray);
   intVelocity->GetCellData()->AddArray(velocityArray);
-
-  // {
-  //   vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
-  //   writer->SetInputData(intVof);
-  //   writer->SetFileName("/tmp/intVof.vtr");
-  //   writer->Write();
-  // }
-  // {
-  //   vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
-  //   writer->SetInputData(intVelocity);
-  //   writer->SetFileName("/tmp/intVelocity.vtr");
-  //   writer->Write();
-  // }
 }
+
+// void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
+// 				  vtkRectilinearGrid *velocity[2],
+// 				  vtkRectilinearGrid *intVof,
+// 				  vtkRectilinearGrid *intVelocity,
+// 				  const float a)
+// {
+//   int nodeRes[3];
+//   vof[0]->GetDimensions(nodeRes);
+//   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+
+//   int optExtent[6];
+
+//   {
+//     int fluidExtent0[6];
+//     getFluidExtent(vof[0], GlobalExtent, NumGhostLevels, fluidExtent0);
+
+//     int fluidExtent1[6];
+//     getFluidExtent(vof[1], GlobalExtent, NumGhostLevels, fluidExtent1);
+
+//     optExtent[0] = std::min(fluidExtent0[0],fluidExtent1[0]);
+//     optExtent[1] = std::max(fluidExtent0[1],fluidExtent1[1]);
+//     optExtent[2] = std::min(fluidExtent0[2],fluidExtent1[2]);
+//     optExtent[3] = std::max(fluidExtent0[3],fluidExtent1[3]);
+//     optExtent[4] = std::min(fluidExtent0[4],fluidExtent1[4]);
+//     optExtent[5] = std::max(fluidExtent0[5],fluidExtent1[5]);
+      
+//     optExtent[0] -= 4;
+//     optExtent[2] -= 4;
+//     optExtent[4] -= 4;
+
+//     optExtent[1] += 4;
+//     optExtent[3] += 4;
+//     optExtent[5] += 4;
+//   }
+  
+//   std::vector<float4> particles;
+//   particles.clear();
+//   generateSeedPointsInCellCenters(VelocityGrid[0], Refinement, particles, optExtent, GlobalExtent, NumGhostLevels);
+  
+  
+//   float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
+//   if (TimeStepDelta != 0.0) {
+//     dt = TimeStepDelta;
+//   }
+  
+//   dt *= Incr;
+
+//   std::vector<float4> particlesForward = particles;
+//   float t = (1.0f-a)*InputTimeValues[TimestepT1] + a*InputTimeValues[TimestepT0];
+
+//   advectParticles(velocity, particlesForward, t, 1.0f,
+// 		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
+
+//   // {
+//   //   vtkPolyData *outParticles = vtkPolyData::New();
+//   //   vtkPoints *ppoints = vtkPoints::New();
+//   //   ppoints->SetNumberOfPoints(particlesForward.size());
+    
+//   //   for (int i = 0; i < particlesForward.size(); ++i) {
+
+//   //     float p[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
+//   //     ppoints->SetPoint(i, p);
+//   //   }
+//   //   outParticles->SetPoints(ppoints);
+
+//   //   vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+//   //   writer->SetInputData(outParticles);
+//   //   writer->SetFileName("/tmp/intPartForward.vtp");
+//   //   writer->Write();
+//   // }
+ 
+//   std::vector<float4> particlesBackward = particles;
+//   advectParticles(velocity, particlesBackward, t, -1.0f,
+// 		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
+
+//   // {
+//   //   vtkPolyData *outParticles = vtkPolyData::New();
+//   //   vtkPoints *ppoints = vtkPoints::New();
+//   //   ppoints->SetNumberOfPoints(particlesBackward.size());
+    
+//   //   for (int i = 0; i < particlesBackward.size(); ++i) {
+
+//   //     float p[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};
+//   //     ppoints->SetPoint(i, p);
+//   //   }
+//   //   outParticles->SetPoints(ppoints);
+
+//   //   vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+//   //   writer->SetInputData(outParticles);
+//   //   writer->SetFileName("/tmp/intPartBackward.vtp");
+//   //   writer->Write();
+//   // }
+
+//   intVof->CopyStructure(vof[0]);
+//   intVelocity->CopyStructure(velocity[0]);
+
+//   int index0,index1;
+//   vtkDataArray *vofArray0 = vof[0]->GetCellData()->GetArray("Data", index0);
+//   vtkDataArray *vofArray1 = vof[1]->GetCellData()->GetArray("Data", index1);
+//   vtkSmartPointer<vtkFloatArray> vofArray = vtkSmartPointer<vtkFloatArray>::New();
+//   vofArray->SetName("Data");
+//   vofArray->SetNumberOfComponents(1);
+//   vofArray->SetNumberOfTuples(vofArray0->GetNumberOfTuples());
+//   vofArray->FillComponent(0,0.0f);
+//   vtkDataArray *velocityArray0 = velocity[0]->GetCellData()->GetArray("Data", index0);
+//   vtkDataArray *velocityArray1 = velocity[1]->GetCellData()->GetArray("Data", index1);
+//   vtkSmartPointer<vtkFloatArray> velocityArray = vtkSmartPointer<vtkFloatArray>::New();
+//   velocityArray->SetName("Data");
+//   velocityArray->SetNumberOfComponents(3);
+//   velocityArray->SetNumberOfTuples(velocityArray0->GetNumberOfTuples());
+//   velocityArray->FillComponent(0,0.0f);
+//   velocityArray->FillComponent(1,0.0f);
+//   velocityArray->FillComponent(2,0.0f);
+  
+// #pragma omp parallel for
+//   for (int i = 0; i < particles.size(); ++i) {
+
+//     int ijk[3];
+//     double pcoords[3];
+    
+//     double x0[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};    
+//     vof[0]->ComputeStructuredCoordinates(x0, ijk, pcoords);
+//     float f0 = interpolateScaCellBasedData(vofArray0, cellRes, ijk, pcoords);
+//     float3 v0 = interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords);
+    
+//     double x1[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
+//     vof[1]->ComputeStructuredCoordinates(x1, ijk, pcoords);
+//     float f1 = interpolateScaCellBasedData(vofArray1, cellRes, ijk, pcoords);
+//     float3 v1 = interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords);
+    
+//     double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+//     vof[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//     float f = (1.0f-a)*f0 + a*f1;
+//     float3 v = (1.0f-a)*v0 + a*v1;
+
+//     int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];    
+//     vofArray->SetValue(idx,f);
+//     velocityArray->SetTuple3(idx,v.x,v.y,v.z);
+//   }
+//   intVof->GetCellData()->AddArray(vofArray);
+//   intVelocity->GetCellData()->AddArray(velocityArray);
+
+//   // {
+//   //   vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+//   //   writer->SetInputData(intVof);
+//   //   writer->SetFileName("/tmp/intVof.vtr");
+//   //   writer->Write();
+//   // }
+//   // {
+//   //   vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+//   //   writer->SetInputData(intVelocity);
+//   //   writer->SetFileName("/tmp/intVelocity.vtr");
+//   //   writer->Write();
+//   // }
+// }
 
 void vtkVofTopo::TransferIntermParticlesToSeeds(std::vector<std::vector<float4>> &particles,
 						std::vector<std::vector<int>> &ids,

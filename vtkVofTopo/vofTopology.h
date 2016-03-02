@@ -226,8 +226,8 @@ void sendData(const std::vector<T> &dataToSend, std::vector<T> &dataToRecv,
 }
 
 // components
-static const double g_emf0 = 0.000001;
-static const double g_emf1 = 0.999999;
+extern double g_emf0;
+extern double g_emf1;
 static int g_res[3];
 static int g_labelId = 0;
 
@@ -242,7 +242,7 @@ static void grow(std::vector<T> &data, const int &idx,
   }
 
   labels[idx] = g_labelId;
-  data[idx] = 0.0;
+  data[idx] = g_emf0;//0.0;
 
   int i = idx%g_res[0];
   int j = (idx/g_res[0])%g_res[1];

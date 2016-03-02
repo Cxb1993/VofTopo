@@ -152,6 +152,22 @@
 	  default_values="8">
       </IntVectorProperty>
 
+      <DoubleVectorProperty
+	  name="EMF0"
+	  label="EMF0"
+	  command="SetEMF0"
+	  number_of_elements="1"
+	  default_values="0.000001">
+      </DoubleVectorProperty>
+
+      <DoubleVectorProperty
+	  name="EMF1"
+	  label="EMF1"
+	  command="SetEMF1"
+	  number_of_elements="1"
+	  default_values="0.999999">
+      </DoubleVectorProperty>
+
       <IntVectorProperty
 	  name="Refinement"
 	  label="Refinement"

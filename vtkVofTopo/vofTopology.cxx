@@ -20,6 +20,9 @@
 
 #include "marchingCubes_cpu.h"
 
+double g_emf0 = 0.000001;
+double g_emf1 = 0.999999;
+
 namespace
 {
 
@@ -400,34 +403,6 @@ int findClosestTimeStep(double requestedTimeValue,
     }
   }
   return ts;
-}
-
-
-bool cellOnInterface(vtkDataArray *data, int res[3], int i, int j, int k)
-{
-  int idx_left =   i-1 + j*res[0] +    k*res[0]*res[1];
-  int idx_right =  i+1 + j*res[0] +    k*res[0]*res[1];
-  int idx_bottom = i +  (j-1)*res[0] + k*res[0]*res[1];
-  int idx_top =    i +  (j+1)*res[0] + k*res[0]*res[1];
-  int idx_back =   i +   j*res[0] +   (k-1)*res[0]*res[1];
-  int idx_front =  i +   j*res[0] +   (k+1)*res[0]*res[1];
-  int idx = i + j*res[0] + k*res[0]*res[1];
-  float f = data->GetComponent(idx,0);
-  if (f > g_emf0 && f < g_emf1) {
-    return true;
-  }
-  else if (f >= g_emf1) {
-    if ((i-1 >= 0 && data->GetComponent(idx-1, 0) <= g_emf0) || 
-	(i+1 < res[0] && data->GetComponent(idx+1, 0) <= g_emf0) || 
-	(j-1 >= 0 && data->GetComponent(idx-res[0], 0) <= g_emf0) || 
-	(j+1 < res[1] && data->GetComponent(idx+res[0], 0) <= g_emf0) || 
-	(k-1 >= 0 && data->GetComponent(idx-res[0]*res[1], 0) <= g_emf0) || 
-	(k+1 < res[2] && data->GetComponent(idx+res[0]*res[1], 0) <= g_emf0)) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 float dot(float* a, float* b)
@@ -1430,9 +1405,9 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 #pragma omp parallel for  
   for (int i = 0; i < particles.size(); ++i) {
 
-    if (particles[i].w <= g_emf0) {
-      continue;
-    }
+    // if (particles[i].w <= g_emf0) {
+    //   continue;
+    // }
     if (integrationMethod == 0) { // Heun
       particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
 				   vofArray1, cellRes, deltaT);
@@ -1470,9 +1445,9 @@ void advectParticlesInt(vtkRectilinearGrid *vofGrid[3],
 #pragma omp parallel for  
   for (int i = 0; i < particles.size(); ++i) {
 
-    if (particles[i].w <= g_emf0) {
-      continue;
-    }
+    // if (particles[i].w <= g_emf0) {
+    //   continue;
+    // }
     particles[i] = rungeKutta4Int(particles[i], velocityGrid,
 				  velocityArray0, velocityArray1,
 				  velocityArray2, cellRes, deltaT);    

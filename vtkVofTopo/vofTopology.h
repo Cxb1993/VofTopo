@@ -108,6 +108,7 @@ void generateBoundary(const std::vector<float4> &points,
 		      vtkRectilinearGrid *grid,
 		      const int refinement,
 		      const int localExtentNoGhosts[6],
+		      const int localExtent[6],
 		      int &vertexID,
 		      std::vector<int> &labelOffsets,
 		      std::vector<float4> &vertices,
@@ -340,9 +341,13 @@ void generateBoundaries(vtkPoints *points,
 			vtkRectilinearGrid *grid,			
 			vtkPolyData *boundaries,
 			const int localExtentNoGhosts[6],
+			const int localExtent[6],
 			const int refinement);
 
-void smoothSurface(std::vector<float3>& vertices,
-		   std::vector<int>& indices);
+void writeData(vtkPolyData *data, const int blockId,
+	       const int processId, const std::string path);
+
+void writeData(vtkRectilinearGrid *data, const int blockId,
+	       const int processId, const std::string path);
 
 #endif//VOFTOPOLOGY_H

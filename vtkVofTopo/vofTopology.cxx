@@ -7,6 +7,10 @@
 #include "vtkIdTypeArray.h"
 #include "vtkShortArray.h"
 #include "vtkCellArray.h"
+#include "vtkXMLMultiBlockDataWriter.h"
+#include "vtkXMLPolyDataWriter.h"
+#include "vtkXMLRectilinearGridWriter.h"
+
 #include <iostream>
 #include <map>
 #include <vector>
@@ -1915,8 +1919,10 @@ void resamplePointsOnGrid(const std::vector<int> &labelPoints,
   }
 }
 
-void generateCoords(vtkDataArray *coords, const int subNodeRes,
-		    const int subone, const int r,
+void generateCoords(vtkDataArray *coords,
+		    const int subNodeRes,
+		    const int subone,
+		    const int r,
 		    const int ijk0, const int ijk1,
 		    vtkFloatArray **subcoords)
 {
@@ -1925,7 +1931,7 @@ void generateCoords(vtkDataArray *coords, const int subNodeRes,
   (*subcoords)->SetNumberOfTuples(subNodeRes);
 
   float xprev = coords->GetComponent(ijk0, 0);    
-  int ires = (subNodeRes + subone)/r;
+  int ires = (subNodeRes + (r-1))/r;   // subNodeRes = subNodeRes*r - (r-1);
 
   for (int j = 0; j < ires-1; ++j) {
     float x = coords->GetComponent(ijk0+j+1, 0);
@@ -1946,6 +1952,7 @@ void generateBoundaries(vtkPoints *points,
 			vtkRectilinearGrid *grid,			
 			vtkPolyData *boundaries,
 			const int localExtentNoGhosts[6],
+			const int localExtent[6],
 			const int refinement)
 {
   if (points->GetNumberOfPoints() == 0) {
@@ -1995,8 +2002,10 @@ void generateBoundaries(vtkPoints *points,
   std::vector<float4> vertices(0);
   std::vector<float4> normals(0);
 
-  generateBoundary(points_tmp, labels_tmp, grid, refinement, localExtentNoGhosts,
-		   vertexID, labelOffsets, vertices, normals, indices);
+  generateBoundary(points_tmp, labels_tmp, grid, refinement,
+		   localExtentNoGhosts, localExtent,
+		   vertexID, labelOffsets,
+		   vertices, normals, indices);
     
   vtkPoints *outputPoints = vtkPoints::New();
   outputPoints->SetNumberOfPoints(vertices.size());
@@ -2057,6 +2066,7 @@ void generateBoundary(const std::vector<float4> &points,
 		      vtkRectilinearGrid *grid,
 		      const int refinement,
 		      const int localExtentNoGhosts[6],
+		      const int localExtent[6],
 		      int &vertexID,
 		      std::vector<int> &labelOffsets,
 		      std::vector<float4> &vertices,
@@ -2103,6 +2113,14 @@ void generateBoundary(const std::vector<float4> &points,
 		   labelExtents[i][3],
 		   labelExtents[i][5]};
 
+    if (ijk0[0] > localExtent[0]) ijk0[0] -= 1;
+    if (ijk0[1] > localExtent[2]) ijk0[1] -= 1;
+    if (ijk0[2] > localExtent[4]) ijk0[2] -= 1;
+
+    if (ijk1[0] < localExtent[1]-1) ijk1[0] += 1;
+    if (ijk1[1] < localExtent[3]-1) ijk1[1] += 1;
+    if (ijk1[2] < localExtent[5]-1) ijk1[2] += 1;
+
     // this is a node-based grid so +1 for each dimension
     int subNodeRes[3] = {ijk1[0]-ijk0[0]+1+1,
 			 ijk1[1]-ijk0[1]+1+1,
@@ -2110,9 +2128,9 @@ void generateBoundary(const std::vector<float4> &points,
 
     const int r = std::pow(2,refinement);
     // grid refinement comes here...
-    subNodeRes[0] = subNodeRes[0]*r - subone;
-    subNodeRes[1] = subNodeRes[1]*r - subone;
-    subNodeRes[2] = subNodeRes[2]*r - subone;
+    subNodeRes[0] = subNodeRes[0]*r - (r-1);
+    subNodeRes[1] = subNodeRes[1]*r - (r-1);
+    subNodeRes[2] = subNodeRes[2]*r - (r-1);
     
     vtkFloatArray *subcoords[3];
     for (int n = 0; n < 3; n++) {
@@ -2158,3 +2176,31 @@ void generateBoundary(const std::vector<float4> &points,
     labelOffsets[i+1] = vertices.size();
   }
 }
+
+
+
+void writeData(vtkPolyData *data, const int blockId,
+	       const int processId, const std::string path)
+{
+  vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+  writer->SetInputData(data);
+  std::string outFile = path;
+  outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+  outFile += ".vtp";
+  writer->SetFileName(outFile.c_str());
+  writer->SetDataModeToBinary();
+  writer->Write();
+}
+void writeData(vtkRectilinearGrid *data, const int blockId,
+	       const int processId, const std::string path)
+{
+  vtkSmartPointer<vtkXMLRectilinearGridWriter> writer = vtkSmartPointer<vtkXMLRectilinearGridWriter>::New();
+  writer->SetInputData(data);
+  std::string outFile = path;
+  outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+  outFile += ".vtr";
+  writer->SetFileName(outFile.c_str());
+  writer->SetDataModeToBinary();
+  writer->Write();
+}
+

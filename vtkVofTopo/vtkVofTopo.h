@@ -110,6 +110,12 @@ private:
 			vtkRectilinearGrid *intVelocity,
 			const float a);
 
+  void GenerateIntParticles(vtkPolyData *intParticles);
+
+  void CreateScalarField(vtkRectilinearGrid *grid,
+			 const std::vector<float4> &particles,
+			 vtkRectilinearGrid *scalarField);
+
   std::vector<double> InputTimeValues;
   
   int InitTimeStep; // time t0

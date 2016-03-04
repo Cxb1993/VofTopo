@@ -1965,6 +1965,7 @@ void generateBoundary(const std::vector<float4> &points,
   const int boundarySize = 2;
   double range[2] = {*std::min_element(labels.begin(), labels.end()),
 		     *std::max_element(labels.begin(), labels.end())};
+  range[0] = -1;
   const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
   const int labelsRange[2] = {range[0], range[1]};
 

@@ -44,7 +44,6 @@ vtkVofTopo::vtkVofTopo() :
   LastLoadedTimestep(-1),
   UseCache(false),
   IterType(ITERATE_OVER_TARGET),
-  ComputeComponentLabels(1),
   Seeds(0),
   Incr(1.0),
   TimestepT0(-1),
@@ -310,21 +309,45 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       	std::vector<float> particleLabels;
       	LabelAdvectedParticles(components, particleLabels);
 
-      	vtkPoints *points = Seeds->GetPoints();
-      	vtkFloatArray *labels = vtkFloatArray::
-      	  SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+	vtkSmartPointer<vtkPolyData> tmpSeeds = vtkSmartPointer<vtkPolyData>::New();
+	tmpSeeds->SetPoints(Seeds->GetPoints());
 
-      	// merge points ------------------------------------------------------------
+	TransferParticleDataToSeeds(particleLabels, "Labels", tmpSeeds);
+	
+	// Transfer seed points from neighbors ---------------------------------
+	vtkPolyData *boundarySeeds = vtkPolyData::New();
+	if (Controller->GetCommunicator() != 0) {
+	  ExchangeBoundarySeedPoints(boundarySeeds, tmpSeeds);
+	}
+
+     	vtkPoints *points = tmpSeeds->GetPoints();
       	std::vector<float4> points_tmp(particleLabels.size());
 	for (int i = 0; i < points_tmp.size(); ++i) {
 	  double p[3];
 	  points->GetPoint(i, p);
 	  points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
 	}
-      	// merge labels ------------------------------------------------------------
       	std::vector<float> labels_tmp(particleLabels.size());
 	for (int i = 0; i < labels_tmp.size(); ++i) {
 	  labels_tmp[i] = particleLabels[i];
+	}
+
+      	// merge points ------------------------------------------------------------
+	int numbs = boundarySeeds->GetNumberOfPoints();
+	if (numbs > 0) {
+	  vtkPoints *bspoints = boundarySeeds->GetPoints();
+	  vtkFloatArray *bslabels = vtkFloatArray::
+	    SafeDownCast(boundarySeeds->GetPointData()->GetArray("Labels"));
+
+	  int numpts = points_tmp.size();
+	  points_tmp.resize(numpts+numbs);
+	  labels_tmp.resize(numpts+numbs);
+	  for (int i = numpts; i < points_tmp.size(); ++i) {
+	    double p[3];
+	    bspoints->GetPoint(i-numpts, p);
+	    points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
+	    labels_tmp[i] = bslabels->GetComponent(i-numpts, 0);
+	  }	  
 	}
 
 	std::vector<int> labelOffsets;
@@ -334,8 +357,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	
       	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
       			 LocalExtentNoGhosts, LocalExtent, VertexID,
-      			 IntermBoundaryLabelOffsets.back(), IntermBoundaryVertices.back(),
-      			 IntermBoundaryNormals.back(), IntermBoundaryIndices.back());	
+      			 labelOffsets, vertices, normals, indices);	
 
       	IntermBoundaryLabelOffsets.push_back(labelOffsets);
       	IntermBoundaryVertices.push_back(vertices);
@@ -344,142 +366,87 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
     }
     
-    if (ComputeComponentLabels) {
-      bool finishedAdvection = TimestepT1 >= TargetTimeStep;
-      if (finishedAdvection) {
+    bool finishedAdvection = TimestepT1 >= TargetTimeStep;
+    if (finishedAdvection) {
 
-	// Stage III -----------------------------------------------------------
-	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+      // Stage III -----------------------------------------------------------
+      vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 
-	// vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
-	// CreateScalarField(VelocityGrid[0], Particles, scalarField);	
-	// ExtractComponents(scalarField, components);
+      // vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
+      // CreateScalarField(VelocityGrid[0], Particles, scalarField);	
+      // ExtractComponents(scalarField, components);
 	
-	ExtractComponents(VofGrid[1], components);
+      ExtractComponents(VofGrid[1], components);
 	
-	// Stage IV ------------------------------------------------------------
-	std::vector<float> particleLabels;
-	LabelAdvectedParticles(components, particleLabels);
+      // Stage IV ------------------------------------------------------------
+      std::vector<float> particleLabels;
+      LabelAdvectedParticles(components, particleLabels);
 
-	// Stage V -------------------------------------------------------------
-	TransferParticleDataToSeeds(particleLabels, "Labels");
-	TransferParticleDataToSeeds(Uncertainty, "Uncertainty");
-
-	if (StoreIntermParticles) {
-	  TransferIntermParticlesToSeeds(IntermParticles,
-					 IntermParticleIds,
-					 IntermParticleProcs);
-	}
+      // Stage V -------------------------------------------------------------
+      TransferParticleDataToSeeds(particleLabels, "Labels", Seeds);
+      TransferParticleDataToSeeds(Uncertainty, "Uncertainty", Seeds);
 	
-	// Transfer seed points from neighbors ---------------------------------
-	vtkPolyData *boundarySeeds = vtkPolyData::New();
-	if (Controller->GetCommunicator() != 0) {
-	  ExchangeBoundarySeedPoints(boundarySeeds);
-	}
+      // Transfer seed points from neighbors ---------------------------------
+      vtkPolyData *boundarySeeds = vtkPolyData::New();
+      if (Controller->GetCommunicator() != 0) {
+	ExchangeBoundarySeedPoints(boundarySeeds, Seeds);
+      }
 	
-	// Stage VI ------------------------------------------------------------
-	GenerateBoundaries(Boundaries, boundarySeeds, this->Seeds);
+      // Stage VI ------------------------------------------------------------
+      GenerateBoundaries(Boundaries, boundarySeeds, this->Seeds);
 
-	boundarySeeds->Delete();
+      boundarySeeds->Delete();
 
-	// Generate output -----------------------------------------------------
-	vtkPolyData *particles = vtkPolyData::New();
-	vtkPoints *ppoints = vtkPoints::New();
-	ppoints->SetNumberOfPoints(Particles.size());
-	vtkFloatArray *labels = vtkFloatArray::New();
-	labels->SetName("Labels");
-	labels->SetNumberOfComponents(1);
-	labels->SetNumberOfTuples(particleLabels.size());
-	vtkFloatArray *uncertainty = vtkFloatArray::New();
-	uncertainty->SetName("Uncertainty");
-	uncertainty->SetNumberOfComponents(1);
-	uncertainty->SetNumberOfTuples(Uncertainty.size());
+      // Generate output -----------------------------------------------------
+      vtkPolyData *particles = vtkPolyData::New();
+      vtkPoints *ppoints = vtkPoints::New();
+      ppoints->SetNumberOfPoints(Particles.size());
+      vtkFloatArray *labels = vtkFloatArray::New();
+      labels->SetName("Labels");
+      labels->SetNumberOfComponents(1);
+      labels->SetNumberOfTuples(particleLabels.size());
+      vtkFloatArray *uncertainty = vtkFloatArray::New();
+      uncertainty->SetName("Uncertainty");
+      uncertainty->SetNumberOfComponents(1);
+      uncertainty->SetNumberOfTuples(Uncertainty.size());
 
-	for (int i = 0; i < Particles.size(); ++i) {
+      for (int i = 0; i < Particles.size(); ++i) {
 
-	  float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
-	  ppoints->SetPoint(i, p);
-	  labels->SetValue(i, particleLabels[i]);
-	  uncertainty->SetValue(i, Uncertainty[i]);
-	}
-	particles->SetPoints(ppoints);
-	particles->GetPointData()->AddArray(labels);
-	particles->GetPointData()->AddArray(uncertainty);
+	float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+	ppoints->SetPoint(i, p);
+	labels->SetValue(i, particleLabels[i]);
+	uncertainty->SetValue(i, Uncertainty[i]);
+      }
+      particles->SetPoints(ppoints);
+      particles->GetPointData()->AddArray(labels);
+      particles->GetPointData()->AddArray(uncertainty);
 	
-	output->SetBlock(0, Seeds);
-	output->SetBlock(1, particles);
-	output->SetBlock(2, Boundaries);
-	output->SetBlock(3, components);
+      output->SetBlock(0, Seeds);
+      output->SetBlock(1, particles);
+      output->SetBlock(2, Boundaries);
+      output->SetBlock(3, components);
 
-	int nextBlock = 4;
-	if (StoreIntermParticles) {
+      int nextBlock = 4;
+      if (StoreIntermParticles) {
 
-	  vtkSmartPointer<vtkPolyData> intParticles = vtkSmartPointer<vtkPolyData>::New();
-	  GenerateIntParticles(intParticles);
-	  output->SetBlock(nextBlock, intParticles);
-	  ++nextBlock;
-	}
+	TransferIntermParticlesToSeeds(IntermParticles,
+				       IntermParticleIds,
+				       IntermParticleProcs);
 
-	if (StoreIntermBoundaries) {
+	vtkSmartPointer<vtkPolyData> intParticles = vtkSmartPointer<vtkPolyData>::New();
+	GenerateIntParticles(intParticles);
+	output->SetBlock(nextBlock, intParticles);
+	++nextBlock;
+      }
+
+      if (StoreIntermBoundaries) {
 	  
-	  vtkSmartPointer<vtkPolyData> intermBoundaries = vtkSmartPointer<vtkPolyData>::New();
-	  vtkPoints *ppoints = vtkPoints::New();
+	vtkSmartPointer<vtkPolyData> intermBoundaries = vtkSmartPointer<vtkPolyData>::New();
 
-	  // vtkPoints *outputPoints = vtkPoints::New();
-	  // outputPoints->SetNumberOfPoints(vertices.size());
-	  // for (int i = 0; i < vertices.size(); ++i) {
-    
-	  //   double p[3] = {vertices[i].x,
-	  // 		   vertices[i].y,
-	  // 		   vertices[i].z};
-	  //   outputPoints->SetPoint(i, p);        
-	  // }
+	GenerateIntBoundaries(intermBoundaries);
 
-	  // vtkIdTypeArray *cells = vtkIdTypeArray::New();
-	  // cells->SetNumberOfComponents(1);
-	  // cells->SetNumberOfTuples(indices.size()/3*4);
-	  // for (int i = 0; i < indices.size()/3; ++i) {
-	  //   cells->SetValue(i*4+0,3);
-	  //   cells->SetValue(i*4+1,indices[i*3+0]);
-	  //   cells->SetValue(i*4+2,indices[i*3+1]);
-	  //   cells->SetValue(i*4+3,indices[i*3+2]);
-	  // }
-
-	  // vtkCellArray *outputTriangles = vtkCellArray::New();
-	  // outputTriangles->SetNumberOfCells(indices.size()/3);
-	  // outputTriangles->SetCells(indices.size()/3, cells);
-
-	  // vtkShortArray *boundaryLabels = vtkShortArray::New();
-	  // boundaryLabels->SetName("Labels");
-	  // boundaryLabels->SetNumberOfComponents(1);
-	  // boundaryLabels->SetNumberOfTuples(outputPoints->GetNumberOfPoints());
-
-	  // double range[2];
-	  // labels->GetRange(range, 0);
-	  // const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
-
-	  // for (int i = 0; i < numUniqueLabels; ++i) {
-	  //   for (int j = labelOffsets[i]; j < labelOffsets[i+1]; ++j) {
-	  //     boundaryLabels->SetValue(j, i+range[0]);
-	  //   }
-	  // }
-
-	  // vtkFloatArray *pointNormals = vtkFloatArray::New();
-	  // pointNormals->SetName("Normals");
-	  // pointNormals->SetNumberOfComponents(3);
-	  // pointNormals->SetNumberOfTuples(normals.size());
-	  // for (int i = 0; i < normals.size(); ++i) {
-	  //   float n[3] = {normals[i].x, normals[i].y, normals[i].z};
-	  //   pointNormals->SetTuple3(i,n[0],n[1],n[2]);
-	  // }
-
-	  // boundaries->SetPoints(outputPoints);
-	  // boundaries->SetPolys(outputTriangles);
-	  // boundaries->GetPointData()->AddArray(boundaryLabels);
-	  // boundaries->GetPointData()->SetNormals(pointNormals);
-
-
-	}
+	output->SetBlock(nextBlock, intermBoundaries);
+	++nextBlock;
       }
     }
   }
@@ -972,13 +939,14 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
 
 //----------------------------------------------------------------------------
 void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
-					     const std::string arrayName)
+					     const std::string arrayName,
+					     vtkPolyData *dst)
 {
   vtkFloatArray *dataArray = vtkFloatArray::New();
   dataArray->SetName(arrayName.c_str());
   dataArray->SetNumberOfComponents(1);
-  dataArray->SetNumberOfTuples(Seeds->GetNumberOfPoints());
-  for (int i = 0; i < Seeds->GetNumberOfPoints(); ++i) {
+  dataArray->SetNumberOfTuples(dst->GetNumberOfPoints());
+  for (int i = 0; i < dst->GetNumberOfPoints(); ++i) {
     dataArray->SetValue(i, -10.0f);
   }
 
@@ -1073,7 +1041,7 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
     }
 
   }
-  Seeds->GetPointData()->AddArray(dataArray);
+  dst->GetPointData()->AddArray(dataArray);
 }
 
 //----------------------------------------------------------------------------
@@ -1212,7 +1180,7 @@ int isInside(const int ijk[3], const int cellRes[3],
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
+void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds, vtkPolyData *seeds)
 {
   const int boundarySize = 2;
   int extent[6];
@@ -1278,8 +1246,8 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 	  boundaryCells.emplace(std::array<int,3>{i,j,k});
   }
 
-  vtkPoints *seedPoints = Seeds->GetPoints();
-  vtkFloatArray *labels = vtkFloatArray::SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+  vtkPoints *seedPoints = seeds->GetPoints();
+  vtkFloatArray *labels = vtkFloatArray::SafeDownCast(seeds->GetPointData()->GetArray("Labels"));
   const int numSeedPoints = seedPoints->GetNumberOfPoints();
 
   std::vector<float3> pointsToSend;
@@ -1621,6 +1589,102 @@ void vtkVofTopo::GenerateIntParticles(vtkPolyData *intParticles)
   intParticles->SetPoints(intPoints);
   intParticles->GetPointData()->AddArray(intTimeStamps);
   intParticles->GetPointData()->AddArray(intLabels);
+}
+
+void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
+{
+  
+  int numPoints = 0;
+  for (int i = 0; i < IntermBoundaryVertices.size(); ++i) {
+    numPoints += IntermBoundaryVertices[i].size();
+  }
+
+  vtkPoints *points = vtkPoints::New();
+  points->SetNumberOfPoints(numPoints);
+
+  vtkFloatArray *pointNormals = vtkFloatArray::New();
+  pointNormals->SetName("Normals");
+  pointNormals->SetNumberOfComponents(3);
+  pointNormals->SetNumberOfTuples(numPoints);
+
+  vtkFloatArray *intTimeStamps = vtkFloatArray::New();
+  intTimeStamps->SetName("IntermediateTimeStamps");
+  intTimeStamps->SetNumberOfComponents(1);
+  intTimeStamps->SetNumberOfTuples(numPoints);
+
+  vtkFloatArray *intLabels = vtkFloatArray::New();
+  intLabels->SetName("Labels");
+  intLabels->SetNumberOfComponents(1);
+  intLabels->SetNumberOfTuples(numPoints);
+	  
+  int idx = 0;
+  for (int i = 0; i < IntermBoundaryVertices.size(); ++i) {
+    for (int j = 0; j < IntermBoundaryVertices[i].size(); ++j) {
+    
+      double p[3] = {IntermBoundaryVertices[i][j].x,
+		     IntermBoundaryVertices[i][j].y,
+		     IntermBoundaryVertices[i][j].z};
+      points->SetPoint(idx, p);
+
+      float n[3] = {IntermBoundaryNormals[i][j].x,
+		    IntermBoundaryNormals[i][j].y,
+		    IntermBoundaryNormals[i][j].z};
+      pointNormals->SetTuple3(idx,n[0],n[1],n[2]);
+	      
+      intTimeStamps->SetValue(idx, i);
+
+      float label = IntermBoundaryLabelOffsets[i][j];
+      intLabels->SetValue(idx, label);
+      ++idx;
+    }
+  }
+
+  for (int i = 0; i < IntermBoundaryLabelOffsets.size(); ++i) {
+    for (int j = 0; j < IntermBoundaryLabelOffsets[i].size()-1; ++j) {
+      int labelId = 0;
+      for (int k = IntermBoundaryLabelOffsets[i][j]; 
+	   k < IntermBoundaryLabelOffsets[i][j+1]; ++k) {
+
+	intLabels->SetValue(j, labelId);
+	++labelId;
+      }
+    }
+  }
+
+  int numCells = 0;
+  for (int i = 0; i < IntermBoundaryIndices.size(); ++i) {
+    numCells += IntermBoundaryIndices[i].size()/3;
+  }
+
+  vtkIdTypeArray *cells = vtkIdTypeArray::New();
+  cells->SetNumberOfComponents(1);
+  cells->SetNumberOfTuples(numCells*4);
+  idx = 0;
+  for (int i = 0; i < IntermBoundaryIndices.size(); ++i) {
+    for (int j = 0; j < IntermBoundaryIndices[i].size()/3; ++j) {
+
+      int id0 = IntermBoundaryIndices[i][j*3+0];
+      int id1 = IntermBoundaryIndices[i][j*3+1];
+      int id2 = IntermBoundaryIndices[i][j*3+2];
+      cells->SetValue(idx*4+0,3);
+      cells->SetValue(idx*4+1,id0);
+      cells->SetValue(idx*4+2,id1);
+      cells->SetValue(idx*4+3,id2);
+
+      ++idx;
+    }
+  }
+
+  vtkCellArray *outputTriangles = vtkCellArray::New();
+  outputTriangles->SetNumberOfCells(numCells);
+  outputTriangles->SetCells(numCells, cells);
+
+  intermBoundaries->SetPoints(points);
+  intermBoundaries->GetPointData()->AddArray(intTimeStamps);
+  intermBoundaries->GetPointData()->AddArray(intLabels);
+  intermBoundaries->SetPolys(outputTriangles);
+  intermBoundaries->GetPointData()->SetNormals(pointNormals);
+
 }
 
 void vtkVofTopo::CreateScalarField(vtkRectilinearGrid *grid,

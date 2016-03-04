@@ -35,9 +35,6 @@ public:
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
 
-  vtkGetMacro(ComputeComponentLabels, int);
-  vtkSetMacro(ComputeComponentLabels, int);
-
   vtkGetMacro(StoreIntermParticles, int);
   vtkSetMacro(StoreIntermParticles, int);
 
@@ -96,7 +93,8 @@ private:
   void LabelAdvectedParticles(vtkRectilinearGrid *components,
 			      std::vector<float> &labels);
   void TransferParticleDataToSeeds(std::vector<float> &particleData,
-				   const std::string arrayName);
+				   const std::string arrayName,
+				   vtkPolyData *dst);
   void TransferIntermParticlesToSeeds(std::vector<std::vector<float4>> &particles,
 				      std::vector<std::vector<int>> &ids,
 				      std::vector<std::vector<short>> &procs);
@@ -105,7 +103,7 @@ private:
 			  vtkPolyData *boundarySeeds,
 			  vtkPolyData *seeds);
 
-  void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds);
+  void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds, vtkPolyData *seeds);
 
   void InterpolateField(vtkRectilinearGrid *vof[2],
 			vtkRectilinearGrid *velocity[2],
@@ -114,6 +112,7 @@ private:
 			const float a);
 
   void GenerateIntParticles(vtkPolyData *intParticles);
+  void GenerateIntBoundaries(vtkPolyData *intermBoundaries);
 
   void CreateScalarField(vtkRectilinearGrid *grid,
 			 const std::vector<float4> &particles,
@@ -131,10 +130,6 @@ private:
   static const int ITERATE_OVER_INIT = 0;
   static const int ITERATE_OVER_TARGET = 1;
   int IterType;
-
-  // Visualization type
-  int ComputeComponentLabels;
-
   double Incr;
 
   // for data sets without or with incorrect time stamp information

@@ -328,22 +328,6 @@ void unifyLabelsInDomain(std::vector<int> &allLabelUnions, int numAllLabels,
 			 std::vector<int> &allLabels, vtkFloatArray *labels,
 			 std::vector<int> &labelOffsets, int processId);
 
-void generateBoundaries(vtkPoints *points,
-			vtkFloatArray *labels,
-			vtkIntArray *connectivity,
-			vtkShortArray *coords,
-			vtkPolyData *boundaries);
-
-void generateBoundaries(vtkPoints *points,
-			vtkPoints *boundaryPoints,
-			vtkFloatArray *labels,
-			vtkFloatArray *boundarylabels,
-			vtkRectilinearGrid *grid,			
-			vtkPolyData *boundaries,
-			const int localExtentNoGhosts[6],
-			const int localExtent[6],
-			const int refinement);
-
 void writeData(vtkPolyData *data, const int blockId,
 	       const int processId, const std::string path);
 

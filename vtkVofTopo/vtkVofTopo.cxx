@@ -248,13 +248,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       if (finishedAdvection) {
 	// Stage III -----------------------------------------------------------
 
-	vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
-	CreateScalarField(VelocityGrid[0], Particles, scalarField);
-	
+
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 
-	ExtractComponents(scalarField, components);
-	// ExtractComponents(VofGrid[1], components);
+	// vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
+	// CreateScalarField(VelocityGrid[0], Particles, scalarField);	
+	// ExtractComponents(scalarField, components);
+	
+	ExtractComponents(VofGrid[1], components);
 	
 	// Stage IV ------------------------------------------------------------
 	std::vector<float> particleLabels;
@@ -931,12 +932,111 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *bounda
     boundarySeedPoints = boundarySeeds->GetPoints();
     boundarySeedLabels = vtkFloatArray::SafeDownCast(boundarySeeds->GetPointData()->GetArray("Labels"));
   }
-  generateBoundaries(points, boundarySeedPoints,
-		     labels, boundarySeedLabels,
-		     this->VofGrid[1], boundaries, 
-		     this->LocalExtentNoGhosts,
-		     this->LocalExtent,
-		     this->Refinement);
+  if (points->GetNumberOfPoints() == 0) {
+    return;
+  }
+  // merge points ------------------------------------------------------------
+  std::vector<float4> points_tmp;
+  points_tmp.clear();
+  {
+    int nps = points->GetNumberOfPoints();
+    int nnps = 0;
+    if (boundarySeedPoints != nullptr) {
+      nnps = boundarySeedPoints->GetNumberOfPoints();
+    }
+    points_tmp.resize(nps+nnps);
+    for (int i = 0; i < nps; ++i) {
+      double p[3];
+      points->GetPoint(i, p);
+      points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
+    }
+    for (int i = 0; i < nnps; ++i) {
+      double p[3];
+      boundarySeedPoints->GetPoint(i, p);
+      points_tmp[i+nps] = make_float4(p[0],p[1],p[2],1.0f);
+    }
+  }
+  // merge labels ------------------------------------------------------------
+  std::vector<float> labels_tmp;
+  {
+    int nls = labels->GetNumberOfTuples();
+    int nnls = 0;
+    if (boundarySeedLabels != nullptr) {
+      nnls = boundarySeedLabels->GetNumberOfTuples();
+    }
+    labels_tmp.resize(nls+nnls);
+    for (int i = 0; i < nls; ++i) {
+      labels_tmp[i] = labels->GetComponent(i,0);
+    }
+    for (int i = 0; i < nnls; ++i) {
+      labels_tmp[i+nls] = boundarySeedLabels->GetComponent(i, 0);
+    }
+  }
+
+  std::vector<int> labelOffsets;
+  int vertexID = 0;
+  std::vector<int> indices(0);
+  std::vector<float4> vertices(0);
+  std::vector<float4> normals(0);
+
+  generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
+		   LocalExtentNoGhosts, LocalExtent,
+		   vertexID, labelOffsets,
+		   vertices, normals, indices);
+    
+  vtkPoints *outputPoints = vtkPoints::New();
+  outputPoints->SetNumberOfPoints(vertices.size());
+  for (int i = 0; i < vertices.size(); ++i) {
+    
+    double p[3] = {vertices[i].x,
+  		   vertices[i].y,
+  		   vertices[i].z};
+    outputPoints->SetPoint(i, p);        
+  }
+
+  vtkIdTypeArray *cells = vtkIdTypeArray::New();
+  cells->SetNumberOfComponents(1);
+  cells->SetNumberOfTuples(indices.size()/3*4);
+  for (int i = 0; i < indices.size()/3; ++i) {
+    cells->SetValue(i*4+0,3);
+    cells->SetValue(i*4+1,indices[i*3+0]);
+    cells->SetValue(i*4+2,indices[i*3+1]);
+    cells->SetValue(i*4+3,indices[i*3+2]);
+  }
+
+  vtkCellArray *outputTriangles = vtkCellArray::New();
+  outputTriangles->SetNumberOfCells(indices.size()/3);
+  outputTriangles->SetCells(indices.size()/3, cells);
+
+  vtkShortArray *boundaryLabels = vtkShortArray::New();
+  boundaryLabels->SetName("Labels");
+  boundaryLabels->SetNumberOfComponents(1);
+  boundaryLabels->SetNumberOfTuples(outputPoints->GetNumberOfPoints());
+
+  double range[2];
+  labels->GetRange(range, 0);
+  const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
+
+  for (int i = 0; i < numUniqueLabels; ++i) {
+    for (int j = labelOffsets[i]; j < labelOffsets[i+1]; ++j) {
+      boundaryLabels->SetValue(j, i+range[0]);
+    }
+  }
+
+  vtkFloatArray *pointNormals = vtkFloatArray::New();
+  pointNormals->SetName("Normals");
+  pointNormals->SetNumberOfComponents(3);
+  pointNormals->SetNumberOfTuples(normals.size());
+  for (int i = 0; i < normals.size(); ++i) {
+    float n[3] = {normals[i].x, normals[i].y, normals[i].z};
+    pointNormals->SetTuple3(i,n[0],n[1],n[2]);
+  }
+
+  boundaries->SetPoints(outputPoints);
+  boundaries->SetPolys(outputTriangles);
+  boundaries->GetPointData()->AddArray(boundaryLabels);
+  boundaries->GetPointData()->SetNormals(pointNormals);
+
 }
 
 int isInside(const int ijk[3], const int cellRes[3],

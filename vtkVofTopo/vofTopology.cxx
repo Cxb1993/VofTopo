@@ -2042,29 +2042,36 @@ void generateBoundary(const std::vector<float4> &points,
 		     0, subNodeRes[1]-1,
 		     0, subNodeRes[2]-1};
 
-    if (localExtentNoGhosts[0] > labelExtents[i][0]+localExtent[0]) {
-      extent[0] += r*std::min(localExtentNoGhosts[0]+localExtent[0]-labelExtents[i][0],boundarySize);
+    int labelExtentGlobal[6] = {labelExtents[i][0]+localExtent[0],
+				labelExtents[i][1]+localExtent[0],
+				labelExtents[i][2]+localExtent[2],
+				labelExtents[i][3]+localExtent[2],
+				labelExtents[i][4]+localExtent[4],
+				labelExtents[i][5]+localExtent[4]};
+
+    if (localExtentNoGhosts[0] > labelExtentGlobal[0]) {
+      extent[0] += r*std::min(localExtentNoGhosts[0]-labelExtentGlobal[0],boundarySize);
       if (ijk0[0] > 0) extent[0] += r;   
     }
-    if (localExtentNoGhosts[2] > labelExtents[i][2]+localExtent[2]) {
-      extent[2] += r*std::min(localExtentNoGhosts[2]+localExtent[2]-labelExtents[i][2],boundarySize);
+    if (localExtentNoGhosts[2] > labelExtentGlobal[2]) {
+      extent[2] += r*std::min(localExtentNoGhosts[2]-labelExtentGlobal[2],boundarySize);
       if (ijk0[1] > 0) extent[2] += r;
     }
-    if (localExtentNoGhosts[4] > labelExtents[i][4]+localExtent[4]) {
-      extent[4] += r*std::min(localExtentNoGhosts[4]+localExtent[4]-labelExtents[i][4],boundarySize);
+    if (localExtentNoGhosts[4] > labelExtentGlobal[4]) {
+      extent[4] += r*std::min(localExtentNoGhosts[4]-labelExtentGlobal[4],boundarySize);
       if (ijk0[2] > 0) extent[4] += r;
     }
 
-    if (localExtentNoGhosts[1]-1 < labelExtents[i][1]+localExtent[0]) {
-      extent[1] -= r*std::min(labelExtents[i][1]+localExtent[0]-(localExtentNoGhosts[1]-1),boundarySize);
+    if (localExtentNoGhosts[1]-1 < labelExtentGlobal[1]) {
+      extent[1] -= r*std::min(labelExtentGlobal[1]-(localExtentNoGhosts[1]-1),boundarySize);
       if (ijk1[0] < cellRes[0]-1) extent[1] -= r;
     }
-    if (localExtentNoGhosts[3]-1 < labelExtents[i][3]+localExtent[2]) {
-      extent[3] -= r*std::min(labelExtents[i][3]+localExtent[2]-(localExtentNoGhosts[3]-1),boundarySize);
+    if (localExtentNoGhosts[3]-1 < labelExtentGlobal[3]) {
+      extent[3] -= r*std::min(labelExtentGlobal[3]-(localExtentNoGhosts[3]-1),boundarySize);
       if (ijk1[1] < cellRes[1]-1) extent[3] -= r;
     }
-    if (localExtentNoGhosts[5]-1 < labelExtents[i][5]+localExtent[4]) {
-      extent[5] -= r*std::min(labelExtents[i][5]+localExtent[4]-(localExtentNoGhosts[5]-1),boundarySize);
+    if (localExtentNoGhosts[5]-1 < labelExtentGlobal[5]) {
+      extent[5] -= r*std::min(labelExtentGlobal[5]-(localExtentNoGhosts[5]-1),boundarySize);
       if (ijk1[2] < cellRes[2]-1) extent[5] -= r;
     }
     int numVertsPrev = vertices.size();

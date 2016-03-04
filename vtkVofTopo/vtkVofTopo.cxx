@@ -37,6 +37,66 @@ vtkStandardNewMacro(vtkVofTopo);
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 
+
+
+//----------------------------------------------------------------------------
+vtkVofTopo::vtkVofTopo() :
+  LastLoadedTimestep(-1),
+  UseCache(false),
+  IterType(ITERATE_OVER_TARGET),
+  ComputeComponentLabels(1),
+  Seeds(0),
+  Incr(1.0),
+  TimestepT0(-1),
+  TimestepT1(-1),
+  NumGhostLevels(4),
+  SeedPointsProvided(false),
+  IntegrationMethod(0), // Heun
+  PLICCorrection(0),
+  VOFCorrection(0),
+  RK4NumSteps(8),
+  StoreIntermParticles(0),
+  VertexID(0)
+{
+  std::cout << "voftopo instance created" << std::endl;
+  this->SetNumberOfInputPorts(3);
+  this->Controller = vtkMPIController::New();
+  this->Boundaries = vtkPolyData::New();
+  this->VofGrid[0] = vtkRectilinearGrid::New();
+  this->VofGrid[1] = vtkRectilinearGrid::New();
+  this->VelocityGrid[0] = vtkRectilinearGrid::New();
+  this->VelocityGrid[1] = vtkRectilinearGrid::New();
+  IntermParticles.clear();
+  IntermParticlesTimeStamps.clear();
+  IntermParticleIds.clear();
+  IntermParticleProcs.clear();
+
+  IntermBoundaryLabelOffsets.clear();
+  IntermBoundaryIndices.clear();
+  IntermBoundaryVertices.clear();
+  IntermBoundaryNormals.clear();
+
+  g_emf0 = EMF0;
+  g_emf1 = EMF1;
+
+  if (Controller->GetCommunicator() == 0) {
+    NumGhostLevels = 0;
+  }
+}
+//----------------------------------------------------------------------------
+vtkVofTopo::~vtkVofTopo()
+{
+  if (Seeds != 0) {
+    Seeds->Delete();
+  }
+  this->Controller->Delete();
+  this->Boundaries->Delete();
+  this->VofGrid[0]->Delete();
+  this->VofGrid[1]->Delete();
+  this->VelocityGrid[0]->Delete();
+  this->VelocityGrid[1]->Delete();
+  std::cout << "voftopo instance destroyed" << std::endl;
+}
 //----------------------------------------------------------------------------
 int vtkVofTopo::RequestInformation(vtkInformation *vtkNotUsed(request),
 				   vtkInformationVector **inputVector,
@@ -177,6 +237,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     if (Controller->GetCommunicator() != 0) {
       // find neighbor processes and global domain bounds
       GetGlobalContext(inInfoVof);
+
+      VertexID = 0;
     }
     else {
       vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
@@ -242,61 +304,51 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	}
       }
       if (StoreIntermBoundaries) {
-	vtkPoints *points = Seeds->GetPoints();
-	vtkFloatArray *labels = vtkFloatArray::
-	  SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
 
-	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
-	ExtractComponents(VofGrid[1], components);
-	std::vector<float> particleLabels;
-	LabelAdvectedParticles(components, particleLabels);
+      	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+      	ExtractComponents(VofGrid[1], components);
+      	std::vector<float> particleLabels;
+      	LabelAdvectedParticles(components, particleLabels);
 
-	// merge points ------------------------------------------------------------
-	std::vector<float4> points_tmp;
-	points_tmp.clear();
-	{
-	  int nps = points->GetNumberOfPoints();
-	  points_tmp.resize(nps);
-	  for (int i = 0; i < nps; ++i) {
-	    double p[3];
-	    points->GetPoint(i, p);
-	    points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
-	  }
+      	vtkPoints *points = Seeds->GetPoints();
+      	vtkFloatArray *labels = vtkFloatArray::
+      	  SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+
+      	// merge points ------------------------------------------------------------
+      	std::vector<float4> points_tmp(particleLabels.size());
+	for (int i = 0; i < points_tmp.size(); ++i) {
+	  double p[3];
+	  points->GetPoint(i, p);
+	  points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
 	}
-	// merge labels ------------------------------------------------------------
-	std::vector<float> labels_tmp;
-	{
-	  int nls = labels->GetNumberOfTuples();
-	  labels_tmp.resize(nls);
-	  for (int i = 0; i < nls; ++i) {
-	    labels_tmp[i] = labels->GetComponent(i,0);
-	  }
+      	// merge labels ------------------------------------------------------------
+      	std::vector<float> labels_tmp(particleLabels.size());
+	for (int i = 0; i < labels_tmp.size(); ++i) {
+	  labels_tmp[i] = particleLabels[i];
 	}
 
-	int vertexID = 0;
-	IntermBoundaryLabelOffsets.resize(IntermBoundaryLabelOffsets.size()+1);
-	IntermBoundaryLabelOffsets.back().clear();
-	IntermBoundaryVertices.resize(IntermBoundaryVertices.size()+1);
-	IntermBoundaryVertices.back().clear();
-	IntermBoundaryNormals.resize(IntermBoundaryNormals.size()+1);
-	IntermBoundaryNormals.back().clear();
-	IntermBoundaryIndices.resize(IntermBoundaryIndices.size()+1);
-	IntermBoundaryIndices.back().clear();
+	std::vector<int> labelOffsets;
+	std::vector<int> indices(0);
+	std::vector<float4> vertices(0);
+	std::vector<float4> normals(0);
 	
-	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
-			 LocalExtentNoGhosts, LocalExtent,
-			 vertexID,
-			 IntermBoundaryLabelOffsets.back(), IntermBoundaryVertices.back(),
-			 IntermBoundaryNormals.back(), IntermBoundaryIndices.back());	
+      	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
+      			 LocalExtentNoGhosts, LocalExtent, VertexID,
+      			 IntermBoundaryLabelOffsets.back(), IntermBoundaryVertices.back(),
+      			 IntermBoundaryNormals.back(), IntermBoundaryIndices.back());	
+
+      	IntermBoundaryLabelOffsets.push_back(labelOffsets);
+      	IntermBoundaryVertices.push_back(vertices);
+      	IntermBoundaryNormals.push_back(normals);
+      	IntermBoundaryIndices.push_back(indices);
       }
     }
     
     if (ComputeComponentLabels) {
       bool finishedAdvection = TimestepT1 >= TargetTimeStep;
       if (finishedAdvection) {
+
 	// Stage III -----------------------------------------------------------
-
-
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
 
 	// vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
@@ -359,11 +411,74 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	output->SetBlock(2, Boundaries);
 	output->SetBlock(3, components);
 
+	int nextBlock = 4;
 	if (StoreIntermParticles) {
 
 	  vtkSmartPointer<vtkPolyData> intParticles = vtkSmartPointer<vtkPolyData>::New();
 	  GenerateIntParticles(intParticles);
-	  output->SetBlock(4, intParticles);
+	  output->SetBlock(nextBlock, intParticles);
+	  ++nextBlock;
+	}
+
+	if (StoreIntermBoundaries) {
+	  
+	  vtkSmartPointer<vtkPolyData> intermBoundaries = vtkSmartPointer<vtkPolyData>::New();
+	  vtkPoints *ppoints = vtkPoints::New();
+
+	  // vtkPoints *outputPoints = vtkPoints::New();
+	  // outputPoints->SetNumberOfPoints(vertices.size());
+	  // for (int i = 0; i < vertices.size(); ++i) {
+    
+	  //   double p[3] = {vertices[i].x,
+	  // 		   vertices[i].y,
+	  // 		   vertices[i].z};
+	  //   outputPoints->SetPoint(i, p);        
+	  // }
+
+	  // vtkIdTypeArray *cells = vtkIdTypeArray::New();
+	  // cells->SetNumberOfComponents(1);
+	  // cells->SetNumberOfTuples(indices.size()/3*4);
+	  // for (int i = 0; i < indices.size()/3; ++i) {
+	  //   cells->SetValue(i*4+0,3);
+	  //   cells->SetValue(i*4+1,indices[i*3+0]);
+	  //   cells->SetValue(i*4+2,indices[i*3+1]);
+	  //   cells->SetValue(i*4+3,indices[i*3+2]);
+	  // }
+
+	  // vtkCellArray *outputTriangles = vtkCellArray::New();
+	  // outputTriangles->SetNumberOfCells(indices.size()/3);
+	  // outputTriangles->SetCells(indices.size()/3, cells);
+
+	  // vtkShortArray *boundaryLabels = vtkShortArray::New();
+	  // boundaryLabels->SetName("Labels");
+	  // boundaryLabels->SetNumberOfComponents(1);
+	  // boundaryLabels->SetNumberOfTuples(outputPoints->GetNumberOfPoints());
+
+	  // double range[2];
+	  // labels->GetRange(range, 0);
+	  // const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
+
+	  // for (int i = 0; i < numUniqueLabels; ++i) {
+	  //   for (int j = labelOffsets[i]; j < labelOffsets[i+1]; ++j) {
+	  //     boundaryLabels->SetValue(j, i+range[0]);
+	  //   }
+	  // }
+
+	  // vtkFloatArray *pointNormals = vtkFloatArray::New();
+	  // pointNormals->SetName("Normals");
+	  // pointNormals->SetNumberOfComponents(3);
+	  // pointNormals->SetNumberOfTuples(normals.size());
+	  // for (int i = 0; i < normals.size(); ++i) {
+	  //   float n[3] = {normals[i].x, normals[i].y, normals[i].z};
+	  //   pointNormals->SetTuple3(i,n[0],n[1],n[2]);
+	  // }
+
+	  // boundaries->SetPoints(outputPoints);
+	  // boundaries->SetPolys(outputTriangles);
+	  // boundaries->GetPointData()->AddArray(boundaryLabels);
+	  // boundaries->GetPointData()->SetNormals(pointNormals);
+
+
 	}
       }
     }
@@ -838,11 +953,6 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
 
   for (int i = 0; i < Particles.size(); ++i) {
 
-    // if (Particles[i].w <= g_emf0) {
-    //   labels[i] = -1.0f;
-    //   continue;
-    // }
-    
     double x[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
     int ijk[3];
     double pcoords[3];
@@ -1218,67 +1328,6 @@ void vtkVofTopo::ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds)
 
   boundarySeeds->SetPoints(boundarySeedPoints);
   boundarySeeds->GetPointData()->AddArray(boundarySeedLabels);
-}
-
-
-
-//----------------------------------------------------------------------------
-vtkVofTopo::vtkVofTopo() :
-  LastLoadedTimestep(-1),
-  UseCache(false),
-  IterType(ITERATE_OVER_TARGET),
-  ComputeComponentLabels(1),
-  Seeds(0),
-  Incr(1.0),
-  TimestepT0(-1),
-  TimestepT1(-1),
-  NumGhostLevels(4),
-  SeedPointsProvided(false),
-  IntegrationMethod(0), // Heun
-  PLICCorrection(0),
-  VOFCorrection(0),
-  RK4NumSteps(8),
-  StoreIntermParticles(0)
-{
-  std::cout << "voftopo instance created" << std::endl;
-  this->SetNumberOfInputPorts(3);
-  this->Controller = vtkMPIController::New();
-  this->Boundaries = vtkPolyData::New();
-  this->VofGrid[0] = vtkRectilinearGrid::New();
-  this->VofGrid[1] = vtkRectilinearGrid::New();
-  this->VelocityGrid[0] = vtkRectilinearGrid::New();
-  this->VelocityGrid[1] = vtkRectilinearGrid::New();
-  IntermParticles.clear();
-  IntermParticlesTimeStamps.clear();
-  IntermParticleIds.clear();
-  IntermParticleProcs.clear();
-
-  IntermBoundaryLabelOffsets.clear();
-  IntermBoundaryIndices.clear();
-  IntermBoundaryVertices.clear();
-  IntermBoundaryNormals.clear();
-
-  g_emf0 = EMF0;
-  g_emf1 = EMF1;
-
-  if (Controller->GetCommunicator() == 0) {
-    NumGhostLevels = 0;
-  }
-}
-
-//----------------------------------------------------------------------------
-vtkVofTopo::~vtkVofTopo()
-{
-  if (Seeds != 0) {
-    Seeds->Delete();
-  }
-  this->Controller->Delete();
-  this->Boundaries->Delete();
-  this->VofGrid[0]->Delete();
-  this->VofGrid[1]->Delete();
-  this->VelocityGrid[0]->Delete();
-  this->VelocityGrid[1]->Delete();
-  std::cout << "voftopo instance destroyed" << std::endl;
 }
 
 //----------------------------------------------------------------------------

@@ -41,6 +41,9 @@ public:
   vtkGetMacro(StoreIntermParticles, int);
   vtkSetMacro(StoreIntermParticles, int);
 
+  vtkGetMacro(StoreIntermBoundaries, int);
+  vtkSetMacro(StoreIntermBoundaries, int);
+
   vtkGetMacro(IntegrationMethod, int);
   vtkSetMacro(IntegrationMethod, int);
 
@@ -174,6 +177,7 @@ private:
   std::vector<std::vector<int>> IntermBoundaryIndices;
   std::vector<std::vector<float4>> IntermBoundaryVertices;
   std::vector<std::vector<float4>> IntermBoundaryNormals;
+  int VertexID;
   
   // Caching  
   bool UseCache;

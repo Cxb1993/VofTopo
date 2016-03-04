@@ -115,6 +115,15 @@
       </IntVectorProperty>
       
       <IntVectorProperty
+          name="StoreIntermBoundaries"
+	  label="Store Intermediate Boundaries"
+          command="SetStoreIntermBoundaries"
+          number_of_elements="1"
+          default_values="0">
+	<BooleanDomain name="bool"/>
+      </IntVectorProperty>
+      
+      <IntVectorProperty
           name="PLIC-based correction"
 	  label="PLIC-based correction"
           command="SetPLICCorrection"

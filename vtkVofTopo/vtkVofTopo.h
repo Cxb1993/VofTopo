@@ -169,7 +169,12 @@ private:
   
   // Temporal boundaries
   vtkPolyData *Boundaries;
-
+  // Intermediate boundaries
+  std::vector<std::vector<int>> IntermBoundaryLabelOffsets;
+  std::vector<std::vector<int>> IntermBoundaryIndices;
+  std::vector<std::vector<float4>> IntermBoundaryVertices;
+  std::vector<std::vector<float4>> IntermBoundaryNormals;
+  
   // Caching  
   bool UseCache;
   int LastLoadedTimestep;
@@ -184,6 +189,7 @@ private:
   int VOFCorrection;
   int RK4NumSteps;
   int StoreIntermParticles;
+  int StoreIntermBoundaries;
 
   double EMF0;
   double EMF1;

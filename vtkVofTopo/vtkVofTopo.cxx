@@ -241,6 +241,54 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  IntermParticleProcs.push_back(ParticleProcs);
 	}
       }
+      if (StoreIntermBoundaries) {
+	vtkPoints *points = Seeds->GetPoints();
+	vtkFloatArray *labels = vtkFloatArray::
+	  SafeDownCast(Seeds->GetPointData()->GetArray("Labels"));
+
+	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+	ExtractComponents(VofGrid[1], components);
+	std::vector<float> particleLabels;
+	LabelAdvectedParticles(components, particleLabels);
+
+	// merge points ------------------------------------------------------------
+	std::vector<float4> points_tmp;
+	points_tmp.clear();
+	{
+	  int nps = points->GetNumberOfPoints();
+	  points_tmp.resize(nps);
+	  for (int i = 0; i < nps; ++i) {
+	    double p[3];
+	    points->GetPoint(i, p);
+	    points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
+	  }
+	}
+	// merge labels ------------------------------------------------------------
+	std::vector<float> labels_tmp;
+	{
+	  int nls = labels->GetNumberOfTuples();
+	  labels_tmp.resize(nls);
+	  for (int i = 0; i < nls; ++i) {
+	    labels_tmp[i] = labels->GetComponent(i,0);
+	  }
+	}
+
+	int vertexID = 0;
+	IntermBoundaryLabelOffsets.resize(IntermBoundaryLabelOffsets.size()+1);
+	IntermBoundaryLabelOffsets.back().clear();
+	IntermBoundaryVertices.resize(IntermBoundaryVertices.size()+1);
+	IntermBoundaryVertices.back().clear();
+	IntermBoundaryNormals.resize(IntermBoundaryNormals.size()+1);
+	IntermBoundaryNormals.back().clear();
+	IntermBoundaryIndices.resize(IntermBoundaryIndices.size()+1);
+	IntermBoundaryIndices.back().clear();
+	
+	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
+			 LocalExtentNoGhosts, LocalExtent,
+			 vertexID,
+			 IntermBoundaryLabelOffsets.back(), IntermBoundaryVertices.back(),
+			 IntermBoundaryNormals.back(), IntermBoundaryIndices.back());	
+      }
     }
     
     if (ComputeComponentLabels) {
@@ -1204,6 +1252,12 @@ vtkVofTopo::vtkVofTopo() :
   IntermParticlesTimeStamps.clear();
   IntermParticleIds.clear();
   IntermParticleProcs.clear();
+
+  IntermBoundaryLabelOffsets.clear();
+  IntermBoundaryIndices.clear();
+  IntermBoundaryVertices.clear();
+  IntermBoundaryNormals.clear();
+
   g_emf0 = EMF0;
   g_emf1 = EMF1;
 

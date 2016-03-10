@@ -294,7 +294,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // AdvectParticlesInt(VofGrid, VelocityGrid);
       AdvectParticles(VofGrid, VelocityGrid);
       
-      if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1) {
+      if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1 && (TimestepT1%8 == 0)) {
 	IntermParticles.push_back(Particles);
 	IntermParticlesTimeStamps.push_back(TimestepT1);
 	if (Controller->GetCommunicator() != 0) {
@@ -425,6 +425,11 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       output->SetBlock(1, particles);
       output->SetBlock(2, Boundaries);
       output->SetBlock(3, components);
+
+      writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
 
       int nextBlock = 4;
       if (StoreIntermParticles) {
@@ -1139,13 +1144,14 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *bounda
   boundaryLabels->SetNumberOfComponents(1);
   boundaryLabels->SetNumberOfTuples(outputPoints->GetNumberOfPoints());
 
-  double range[2];
-  labels->GetRange(range, 0);
-  const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
-
-  for (int i = 0; i < numUniqueLabels; ++i) {
+  // double range[2];
+  // labels->GetRange(range, 0);
+  // const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
+  float range0 = -1.0f;
+  
+  for (int i = 0; i < labelOffsets.size()-1; ++i) {
     for (int j = labelOffsets[i]; j < labelOffsets[i+1]; ++j) {
-      boundaryLabels->SetValue(j, i+range[0]);
+      boundaryLabels->SetValue(j, i+range0);
     }
   }
 

@@ -85,18 +85,6 @@
       </DoubleVectorProperty>
 
       <IntVectorProperty
-          name="IterType"
-	  label="Iterate over"
-          command="SetIterType"
-          number_of_elements="1"
-          default_values="1">
-        <EnumerationDomain name="enum">
-          <Entry value="0" text="Init time"/>
-          <Entry value="1" text="Target time"/>
-        </EnumerationDomain>
-      </IntVectorProperty>
-
-      <IntVectorProperty
           name="StoreIntermParticles"
 	  label="Store Intermediate Particles"
           command="SetStoreIntermParticles"
@@ -177,6 +165,15 @@
 	<Documentation>
 	  Seed points refinement; numNewPoints = numCells*8^Refinement
 	</Documentation>
+      </IntVectorProperty>
+
+      <IntVectorProperty
+	  name="SeedByPLIC"
+	  label="SeedByPLIC"
+	  command="SetSeedByPLIC"
+	  number_of_elements="1"
+	  default_values="1">
+	<BooleanDomain name="bool"/>
       </IntVectorProperty>
 
       <Hints>

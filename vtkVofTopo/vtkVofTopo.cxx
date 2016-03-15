@@ -43,7 +43,6 @@ vtkStandardNewMacro(vtkVofTopo);
 vtkVofTopo::vtkVofTopo() :
   LastLoadedTimestep(-1),
   UseCache(false),
-  IterType(ITERATE_OVER_TARGET),
   Seeds(0),
   Incr(1.0),
   TimestepT0(-1),
@@ -55,7 +54,8 @@ vtkVofTopo::vtkVofTopo() :
   VOFCorrection(0),
   RK4NumSteps(8),
   StoreIntermParticles(0),
-  VertexID(0)
+  VertexID(0),
+  SeedByPLIC(1)
 {
   std::cout << "voftopo instance created" << std::endl;
   this->SetNumberOfInputPorts(3);
@@ -426,10 +426,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       output->SetBlock(2, Boundaries);
       output->SetBlock(3, components);
 
-      writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      // writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      // writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      // writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
 
       int nextBlock = 4;
       if (StoreIntermParticles) {
@@ -497,7 +497,7 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
   }
   else {
     seedPoints = vtkPoints::New();
-    generateSeedPointsPLIC(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels);
+    generateSeedPoints(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels, SeedByPLIC);
   }
   Particles.clear();
   ParticleIds.clear();

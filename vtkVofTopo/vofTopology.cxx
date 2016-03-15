@@ -58,7 +58,6 @@ namespace
 		      const std::vector<float> &lstar,
 		      const std::vector<float> &normalsInt,
 		      const double bounds[6],
-		      const int cell_x, const int cell_y, const int cell_z,
 		      const int idx)
   {
     float originOffset[3] = {0.0f,0.0f,0.0f};
@@ -111,6 +110,56 @@ namespace
 	  if (pointWithinBounds(seed, bounds) &&
 	      (f < g_emf1 && d < lstar[idx] || f >= g_emf1)) {	    
 
+	    seeds->InsertNextPoint(seed);
+ 	  }
+	}
+      }
+    }    
+  }
+
+  void placeSeeds(vtkPoints *seeds,
+		  const float cellCenter[3], 
+		  const float cellSize[3],
+		  const int refinement,
+		  const int cellRes[3],
+		  const float f,
+		  const double bounds[6],
+		  const int idx)
+  {
+    float originOffset[3] = {0.0f,0.0f,0.0f};
+    float cellSizeTmp[3] = {cellSize[0], cellSize[1], cellSize[2]};
+    int subdiv = 1;
+    float offset[3] = {0.5f,0.5f,0.5f};
+    float scale[3] = {1.0f,1.0f,1.0f}; 
+    for (int i = 0; i < refinement; ++i) {
+      cellSizeTmp[0] /= 2.0f;
+      cellSizeTmp[1] /= 2.0f;
+      cellSizeTmp[2] /= 2.0f;
+      originOffset[0] -= cellSizeTmp[0]/2.0f;
+      originOffset[1] -= cellSizeTmp[1]/2.0f;
+      originOffset[2] -= cellSizeTmp[2]/2.0f;
+      subdiv *= 2;
+
+      offset[0] /= 2.0f;
+      offset[1] /= 2.0f;
+      offset[2] /= 2.0f;
+      scale[0] /= 2.0f;
+      scale[1] /= 2.0f;
+      scale[2] /= 2.0f;
+    }
+
+    for (int zr = 0; zr < subdiv; ++zr) {
+      for (int yr = 0; yr < subdiv; ++yr) {
+	for (int xr = 0; xr < subdiv; ++xr) {
+
+	  float dx[3] = {originOffset[0] + xr*cellSizeTmp[0],
+			 originOffset[1] + yr*cellSizeTmp[1],
+			 originOffset[2] + zr*cellSizeTmp[2]};
+	  float seed[3] = {cellCenter[0]+dx[0], // pos within cell
+			   cellCenter[1]+dx[1],
+			   cellCenter[2]+dx[2]};
+
+	  if (pointWithinBounds(seed, bounds)) {
 	    seeds->InsertNextPoint(seed);
  	  }
 	}
@@ -761,10 +810,9 @@ void computeL(const int cellRes[3],
 }
 
 void generateSeedPointsOnNodes(vtkRectilinearGrid *velocityGrid,
-				   int refinement,
-				   vtkPoints *points,
-				   int globalExtent[6],
-				   int numGhostLevels)
+			       vtkPoints *points,
+			       int globalExtent[6],
+			       int numGhostLevels)
 {
   vtkDataArray *coords[3] = {velocityGrid->GetXCoordinates(), 
 			     velocityGrid->GetYCoordinates(), 
@@ -793,7 +841,6 @@ void generateSeedPointsOnNodes(vtkRectilinearGrid *velocityGrid,
 }
 
 void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
-				     int refinement,
 				     vtkPoints *points,
 				     int globalExtent[6],
 				     int numGhostLevels)
@@ -905,11 +952,12 @@ void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
   }
 }
 
-void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
-			    int refinement,
-			    vtkPoints *points,
-			    int globalExtent[6],
-			    int numGhostLevels)
+void generateSeedPoints(vtkRectilinearGrid *vofGrid,
+			int refinement,
+			vtkPoints *points,
+			int globalExtent[6],
+			int numGhostLevels,
+			int plicSeeding)
 {
   int index;
   vtkDataArray *vofArray =
@@ -937,15 +985,18 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
     }
   }
 
-  std::vector<float> normals;  
-  normals.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
-
-  computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray, normals);
-
-  std::vector<float> lstar(cellRes[0]*cellRes[1]*cellRes[2]);
-  std::vector<float> normalsInt(cellRes[0]*cellRes[1]*cellRes[2]*3);
-  computeL(cellRes, dx[0], dx[1], dx[2], vofArray, normals, lstar, normalsInt);
-
+  std::vector<float> normals;
+  if (plicSeeding) {
+    normals.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
+    computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray, normals);
+  }
+  std::vector<float> lstar;
+  std::vector<float> normalsInt;
+  if (plicSeeding) {
+    lstar.resize(cellRes[0]*cellRes[1]*cellRes[2]);
+    normalsInt.resize(cellRes[0]*cellRes[1]*cellRes[2]*3);
+    computeL(cellRes, dx[0], dx[1], dx[2], vofArray, normals, lstar, normalsInt);
+  }
   //--------------
   vtkDataArray *data =
     vofGrid->GetCellData()->GetArray("Data", index);
@@ -1007,8 +1058,13 @@ void generateSeedPointsPLIC(vtkRectilinearGrid *vofGrid,
 	float f = data->GetComponent(0,idx);
 	if (f > g_emf0) {
 
-	  placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes, f, lstar, normalsInt,
-			 bounds, i, j, k, idx);
+	  if (plicSeeding) {
+	    placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes,
+			   f, lstar, normalsInt, bounds, idx);
+	  }
+	  else {
+	    placeSeeds(points, cellCenter, cellSize, refinement, cellRes, f, bounds, idx);
+	  }
 	}
 	++icur;
       }
@@ -1690,9 +1746,9 @@ void unifyLabelsInProcess(std::vector<std::vector<int> > &NeighborProcesses,
 	int y = labelsToRecv[nidx][s].y;
 	int z = labelsToRecv[nidx][s].z;
 
-	if (x >= myExtent[0] && x <= myExtent[1] &&
-	    y >= myExtent[2] && y <= myExtent[3] &&
-	    z >= myExtent[4] && z <= myExtent[5]) {
+	if (x >= myExtent[0] && x < myExtent[1] &&
+	    y >= myExtent[2] && y < myExtent[3] &&
+	    z >= myExtent[4] && z < myExtent[5]) {
 	    
 	  x -= myExtent[0];
 	  y -= myExtent[2];
@@ -1963,7 +2019,7 @@ void generateBoundary(const std::vector<float4> &points,
 		      std::vector<float4> &normals,
 		      std::vector<int> &indices)
 {
-  const float isoValue = 0.55f;
+  const float isoValue = 0.75f;
   vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
 			     grid->GetYCoordinates(), 
 			     grid->GetZCoordinates()};
@@ -2071,6 +2127,13 @@ void generateBoundary(const std::vector<float4> &points,
 
     const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
     std::vector<float> field(numElements, 0.0f);
+
+    // test
+
+    // field[subNodeRes[0]/2 + subNodeRes[1]/2*subNodeRes[0] + subNodeRes[2]/2*subNodeRes[0]*subNodeRes[1]] = 1.0f;
+    // field[subNodeRes[0]/2 + subNodeRes[1]/2*subNodeRes[0] + subNodeRes[2]/2*subNodeRes[0]*subNodeRes[1] +
+    // 	  1+subNodeRes[0]*subNodeRes[1]] = 1.0f;
+    // test
 
     resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
 

@@ -29,9 +29,6 @@ public:
   vtkGetMacro(TimeStepDelta, double);
   vtkSetMacro(TimeStepDelta, double);
 
-  vtkGetMacro(IterType, int);
-  vtkSetMacro(IterType, int);
-
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
 
@@ -58,6 +55,9 @@ public:
 
   vtkGetMacro(EMF1, double);
   vtkSetMacro(EMF1, double);  
+
+  vtkGetMacro(SeedByPLIC, int);
+  vtkSetMacro(SeedByPLIC, int);  
 //~GUI -------------------------------
 
 protected:
@@ -126,10 +126,6 @@ private:
   int TimestepT0;
   int TimestepT1;
   
-  // we can iterate over t0 or t1
-  static const int ITERATE_OVER_INIT = 0;
-  static const int ITERATE_OVER_TARGET = 1;
-  int IterType;
   double Incr;
 
   // for data sets without or with incorrect time stamp information
@@ -192,6 +188,8 @@ private:
 
   double EMF0;
   double EMF1;
+
+  int SeedByPLIC;
 };
 
 #endif

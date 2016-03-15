@@ -30,16 +30,19 @@ int findClosestTimeStep(double requestedTimeValue,
 			const std::vector<double>& timeSteps);
 
 
-void generateSeedPointsPLIC(vtkRectilinearGrid *input, /*  */
-			    int refinement,
-			    vtkPoints *points,
-			    /* vtkIntArray *connectivity, */
-			    /* vtkShortArray *coords, */
-			    int globalExtent[6],
-			    int numGhostLevels);
+void generateSeedPoints(vtkRectilinearGrid *input,
+			int refinement,
+			vtkPoints *points,
+			int globalExtent[6],
+			int numGhostLevels,
+			int plicSeeding);
+
+void generateSeedPointsOnNodes(vtkRectilinearGrid *velocityGrid,
+			       vtkPoints *points,
+			       int globalExtent[6],
+			       int numGhostLevels);
 
 void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
-				     int refinement,
 				     vtkPoints *points,
 				     int globalExtent[6],
 				     int numGhostLevels);

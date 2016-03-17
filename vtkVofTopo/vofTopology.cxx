@@ -122,10 +122,12 @@ namespace
 		  const float cellSize[3],
 		  const int refinement,
 		  const int cellRes[3],
-		  const float f,
+		  vtkRectilinearGrid *grid,
+		  vtkDataArray *data,
 		  const double bounds[6],
 		  const int idx)
   {
+    const float fcell = data->GetComponent(0,idx);
     float originOffset[3] = {0.0f,0.0f,0.0f};
     float cellSizeTmp[3] = {cellSize[0], cellSize[1], cellSize[2]};
     int subdiv = 1;
@@ -159,74 +161,26 @@ namespace
 			   cellCenter[1]+dx[1],
 			   cellCenter[2]+dx[2]};
 
+
+	  double x[3] = {seed[0],seed[1],seed[2]};
+	  double pcoords[3];
+	  int ijk[3];
+	  grid->ComputeStructuredCoordinates(x, ijk, pcoords);
+	  
 	  if (pointWithinBounds(seed, bounds)) {
-	    seeds->InsertNextPoint(seed);
+	    if (fcell >= g_emf1) {
+	      seeds->InsertNextPoint(seed);
+	    }
+	    else {
+	      float f = interpolateScaCellBasedData(data, cellRes, ijk, pcoords);
+	      if (f > g_emf0) {
+		seeds->InsertNextPoint(seed);		  
+	      }
+	    }
  	  }
 	}
       }
     }    
-  }
-
-  void computeGradient(vtkRectilinearGrid *grid, vtkDataArray *data,
-		       const int res[3], int ijk[3],
-		       vtkDataArray *coordCenters[3],
-		       double pcoords[3], float grad[3])
-  {
-    int i = ijk[0];
-    int j = ijk[1];
-    int k = ijk[2];
-    int im = std::max(i-1,0);
-    int ip = std::min(i+1,res[0]-1);
-    float dx = coordCenters[0]->GetComponent(ip,0) - coordCenters[0]->GetComponent(im,0);
-    int jm = std::max(j-1,0);	  
-    int jp = std::min(j+1,res[1]-1);
-    float dy = coordCenters[1]->GetComponent(jp,0) - coordCenters[1]->GetComponent(jm,0);
-    int km = std::max(k-1,0);	  
-    int kp = std::min(k+1,res[2]-1);
-    float dz = coordCenters[2]->GetComponent(kp,0) - coordCenters[2]->GetComponent(km,0);
-
-    int id_left   = im + j*res[0] + k*res[0]*res[1];
-    int id_right  = ip + j*res[0] + k*res[0]*res[1];
-    int id_bottom = i + jm*res[0] + k*res[0]*res[1];
-    int id_top    = i + jp*res[0] + k*res[0]*res[1];
-    int id_back   = i + j*res[0] + km*res[0]*res[1];
-    int id_front  = i + j*res[0] + kp*res[0]*res[1];
-
-    grad[0] = (data->GetComponent(id_right,0) - 
-	       data->GetComponent(id_left,0))/dx;
-    grad[1] = (data->GetComponent(id_top,0) - 
-	       data->GetComponent(id_bottom,0))/dy;
-    grad[2] = (data->GetComponent(id_front,0) - 
-	       data->GetComponent(id_back,0))/dz;
-  }
-
-  void computeGradient(vtkDataArray *data, const int res[3], 
-		       int i, int j, int k, 
-		       vtkDataArray *coordCenters[3], float grad[3])
-  {
-    int im = std::max(i-1,0);
-    int ip = std::min(i+1,res[0]-1);
-    float dx = coordCenters[0]->GetComponent(ip,0) - coordCenters[0]->GetComponent(im,0);
-    int jm = std::max(j-1,0);	  
-    int jp = std::min(j+1,res[1]-1);
-    float dy = coordCenters[1]->GetComponent(jp,0) - coordCenters[1]->GetComponent(jm,0);
-    int km = std::max(k-1,0);	  
-    int kp = std::min(k+1,res[2]-1);
-    float dz = coordCenters[2]->GetComponent(kp,0) - coordCenters[2]->GetComponent(km,0);
-
-    int id_left = im + j*res[0] + k*res[0]*res[1];
-    int id_right = ip + j*res[0] + k*res[0]*res[1];
-    int id_bottom = i + jm*res[0] + k*res[0]*res[1];
-    int id_top = i + jp*res[0] + k*res[0]*res[1];
-    int id_back = i + j*res[0] + km*res[0]*res[1];
-    int id_front = i + j*res[0] + kp*res[0]*res[1];
-
-    grad[0] = (data->GetComponent(id_right,0) - 
-	       data->GetComponent(id_left,0))/dx;
-    grad[1] = (data->GetComponent(id_top,0) - 
-	       data->GetComponent(id_bottom,0))/dy;
-    grad[2] = (data->GetComponent(id_front,0) - 
-	       data->GetComponent(id_back,0))/dz;
   }
 
   // data on nodes
@@ -310,7 +264,51 @@ namespace
   };
 }
 
-float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* res,
+void computeGradient(vtkDataArray *data,
+		     const int cellRes[3], int ijk[3],
+		     vtkFloatArray *coordCenters[3],
+		     double pcoords[3], float grad[3])
+{
+  int i = ijk[0];
+  int j = ijk[1];
+  int k = ijk[2];
+  int im = std::max(i-1,0);
+  int ip = std::min(i+1,cellRes[0]-1);
+  float dx = coordCenters[0]->GetComponent(ip,0) - coordCenters[0]->GetComponent(im,0);
+  int jm = std::max(j-1,0);	  
+  int jp = std::min(j+1,cellRes[1]-1);
+  float dy = coordCenters[1]->GetComponent(jp,0) - coordCenters[1]->GetComponent(jm,0);
+  int km = std::max(k-1,0);	  
+  int kp = std::min(k+1,cellRes[2]-1);
+  float dz = coordCenters[2]->GetComponent(kp,0) - coordCenters[2]->GetComponent(km,0);
+
+  int id_left[3]   = {im, j, k};
+  int id_right[3]  = {ip, j, k};
+  int id_bottom[3] = {i, jm, k};
+  int id_top[3]    = {i, jp, k};
+  int id_back[3]   = {i, j, km};
+  int id_front[3]  = {i, j, kp};
+
+  float3 ddx = {dx,dy,dz};
+  float3 dgrad = {
+    (interpolateScaCellBasedData(data, cellRes, id_right, pcoords) - 
+     interpolateScaCellBasedData(data, cellRes, id_left, pcoords))/dx,
+    (interpolateScaCellBasedData(data, cellRes, id_top, pcoords) - 
+     interpolateScaCellBasedData(data, cellRes, id_bottom, pcoords))/dy,
+    (interpolateScaCellBasedData(data, cellRes, id_front, pcoords) - 
+     interpolateScaCellBasedData(data, cellRes, id_back, pcoords))/dz};
+
+  if (length(dgrad) > 0.0) {
+    dgrad = normalize(dgrad);
+  }
+  dgrad *= ddx/2.0f;
+
+  grad[0] = dgrad.x;
+  grad[1] = dgrad.y;
+  grad[2] = dgrad.z;
+}
+
+float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* cellRes,
 				  const int idxCell[3], const double bcoords[3])
 {
   int lx = idxCell[0];
@@ -341,14 +339,14 @@ float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* res,
   if (lx < 0) lx = 0;
   if (ly < 0) ly = 0;
   if (lz < 0) lz = 0;
-  if (ux > res[0]-1) ux = res[0]-1;
-  if (uy > res[1]-1) uy = res[1]-1;
-  if (uz > res[2]-1) uz = res[2]-1;
+  if (ux > cellRes[0]-1) ux = cellRes[0]-1;
+  if (uy > cellRes[1]-1) uy = cellRes[1]-1;
+  if (uz > cellRes[2]-1) uz = cellRes[2]-1;
 
-  unsigned lzslab = lz*res[0]*res[1];
-  unsigned uzslab = uz*res[0]*res[1];
-  int lyr = ly*res[0];
-  int uyr = uy*res[0];
+  unsigned lzslab = lz*cellRes[0]*cellRes[1];
+  unsigned uzslab = uz*cellRes[0]*cellRes[1];
+  int lyr = ly*cellRes[0];
+  int uyr = uy*cellRes[0];
 
   unsigned id[8] = {lx + lyr + lzslab,
 		    ux + lyr + lzslab,
@@ -952,6 +950,34 @@ void generateSeedPointsInCellCenters(vtkRectilinearGrid *velocityGrid,
   }
 }
 
+float neighborF(vtkDataArray *data, int i, int j, int k, const int cellRes[3])
+{
+  int im = std::max(i-1,0);
+  int ip = std::min(i+1,cellRes[0]-1);
+  int jm = std::max(j-1,0);	  
+  int jp = std::min(j+1,cellRes[1]-1);
+  int km = std::max(k-1,0);	  
+  int kp = std::min(k+1,cellRes[2]-1);
+
+  float ff = 0.0f;
+  int idx;
+
+  idx = im + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+  ff += data->GetComponent(idx,0);
+  idx = ip + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+  ff += data->GetComponent(idx,0);
+  idx = i + jm*cellRes[0] + k*cellRes[0]*cellRes[1];
+  ff += data->GetComponent(idx,0);
+  idx = i + jp*cellRes[0] + k*cellRes[0]*cellRes[1];
+  ff += data->GetComponent(idx,0);
+  idx = i + j*cellRes[0] + km*cellRes[0]*cellRes[1];
+  ff += data->GetComponent(idx,0);
+  idx = i + j*cellRes[0] + kp*cellRes[0]*cellRes[1];
+  ff += data->GetComponent(idx,0);
+
+  return ff;
+}
+
 void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 			int refinement,
 			vtkPoints *points,
@@ -1056,16 +1082,25 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 
 	int idx = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
 	float f = data->GetComponent(0,idx);
-	if (f > g_emf0) {
 
-	  if (plicSeeding) {
+	if (plicSeeding) {
+	  if (f > g_emf0) {
 	    placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes,
 			   f, lstar, normalsInt, bounds, idx);
 	  }
+	}
+	else {	  
+	  if (f > g_emf0) {
+	    placeSeeds(points, cellCenter, cellSize, refinement, cellRes, vofGrid, data, bounds, idx);
+	  }
 	  else {
-	    placeSeeds(points, cellCenter, cellSize, refinement, cellRes, f, bounds, idx);
+	    float fn = neighborF(data,i,j,k,cellRes);
+	    if (fn > g_emf0) {
+	      placeSeeds(points, cellCenter, cellSize, refinement, cellRes, vofGrid, data, bounds, idx);
+	    }
 	  }
 	}
+
 	++icur;
       }
       ++jcur;

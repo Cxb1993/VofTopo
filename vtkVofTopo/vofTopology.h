@@ -25,8 +25,15 @@ float interpolateScaCellBasedData(vtkDataArray *scalarField, const int* res,
 float3 interpolateVecCellBasedData(vtkDataArray *velocityField,
 				   const int* res, const int idxCell[3],
 				   const double bcoords[3]);
-  
-int findClosestTimeStep(double requestedTimeValue,
+
+void computeGradient(vtkDataArray *data,
+		     const int cellRes[3], int ijk[3],
+		     vtkFloatArray *coordCenters[3],
+		     double pcoords[3], float grad[3]);
+
+float neighborF(vtkDataArray *data, int i, int j, int k, const int cellRes[3]);
+
+  int findClosestTimeStep(double requestedTimeValue,
 			const std::vector<double>& timeSteps);
 
 

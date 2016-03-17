@@ -923,21 +923,94 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
   components->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
 
+  int index;
+  vtkDataArray *vofArray =
+    VofGrid[1]->GetCellData()->GetArray("Data", index);
+
+  vtkFloatArray *coordCenters[3] = {nullptr,nullptr,nullptr};
+  if (!SeedByPLIC) {
+    vtkDataArray *coords[3] = {VofGrid[1]->GetXCoordinates(),
+			       VofGrid[1]->GetYCoordinates(),
+			       VofGrid[1]->GetZCoordinates()};
+    for (int i = 0; i < 3; ++i) {
+      coordCenters[i] = vtkFloatArray::New();
+      int numCellCenters = coords[i]->GetNumberOfTuples()-1;
+      coordCenters[i]->SetNumberOfComponents(1);
+      coordCenters[i]->SetNumberOfTuples(numCellCenters);
+      for (int j = 0; j < numCellCenters; ++j) {
+	double c = (coords[i]->GetComponent(j,0) + coords[i]->GetComponent(j+1,0))/2.0;
+	coordCenters[i]->SetComponent(j,0,c);
+      }
+    }
+  }
+
   for (int i = 0; i < Particles.size(); ++i) {
 
     double x[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
     int ijk[3];
     double pcoords[3];
     int particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
-
+    
     if (particleInsideGrid) {
-      
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
       float label = data->GetComponent(idx,0);
-      labels[i] = label;
+      if (SeedByPLIC) {      
+	labels[i] = label;
+      }
+      else {
+	float f = vofArray->GetComponent(idx,0);
+	if (f >= g_emf1) {
+	  labels[i] = label;
+	}
+	else if (f > g_emf0) {
+	  f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
+	  if (f > g_emf0) {
+	    labels[i] = label;
+	  }
+	  else {
+	    labels[i] = -1.0f;
+	  }
+	}
+	else {
+	  f = neighborF(vofArray,ijk[0],ijk[1],ijk[2],cellRes);
+	  if (f > g_emf0) {
+	    f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
+	    if (f > g_emf0) {
+	      float grad[3];
+	      computeGradient(vofArray, cellRes, ijk, coordCenters, pcoords, grad);
+	      x[0] += grad[0];
+	      x[1] += grad[1];
+	      x[2] += grad[2];
+	      particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
+	      
+	      if (particleInsideGrid) {
+		idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+		label = data->GetComponent(idx,0);
+		labels[i] = label;
+	      }
+	      else {
+		labels[i] = -1.0f;
+	      }
+	    }
+	    else {
+	      labels[i] = -1.0f;
+	    }
+	  }
+	  else {
+	    labels[i] = -1.0f;
+	  }	  
+	}
+      }
     }
     else {
       labels[i] = -1.0f;
+    }
+  }
+  if (!SeedByPLIC) {
+    for (int i = 0; i < 3; ++i) {
+      if (coordCenters[i] != nullptr) {
+	coordCenters[i]->Delete();
+      }
     }
   }
 }

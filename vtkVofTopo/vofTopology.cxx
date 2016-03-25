@@ -1975,6 +1975,85 @@ void computeNormals(vtkRectilinearGrid *grid,
   }
 }
 
+
+void computeNormals(std::vector<float4> &vertices,
+		    std::vector<int> &indices,
+		    int begin, int end,
+		    std::vector<float4> &normals)
+{
+  std::map<int,std::vector<int>> neighborVertices;
+  neighborVertices.clear();
+
+  for (int i = begin; i < end; i+=3) {
+    for (int j = 0; j < 3; ++j) {
+      int id0 = indices[i*3+j];
+      int id1 = indices[i*3+((j+1)%3)];
+      int id2 = indices[i*3+((j+2)%3)];
+      if (neighborVertices.find(id0) == neighborVertices.end()) {
+	std::vector<int> ve(2);
+	ve[0] = id1;
+	ve[1] = id2;
+	neighborVertices[id0] = ve;
+      }
+      else {
+	neighborVertices[id0].push_back(id1);
+	neighborVertices[id0].push_back(id2);
+      }
+    }
+  }
+
+  // int numNormals = 0;
+  int numNormals = normals.size();
+
+  std::map<int,std::vector<int>>::iterator it = neighborVertices.begin();
+  for (; it != neighborVertices.end(); ++it) {
+    std::vector<int> &neighbors = it->second;
+    float3 normal = make_float3(0.0f);
+    float3 v0 = make_float3(vertices[it->first]);
+    for (int i = 0; i < neighbors.size(); i+=2) {
+
+      float3 v1 = make_float3(vertices[neighbors[i]]);
+      float3 v2 = make_float3(vertices[neighbors[i+1]]);
+      float3 e1 = v1 - v0;
+      float3 e2 = v2 - v0;
+      normal += cross(e1,e2);
+    }
+    normals.push_back(make_float4(normalize(normal)));
+    // ++numNormals;
+  }
+
+  // smooth normals
+  // std::vector<float4> normalsTmp(numNormals);
+  // for (int i = 0; i < numNormals; ++i)
+  //   normalsTmp[i] = make_float4(0.0f);
+  std::vector<float4> normalsTmp(0);
+  
+  for (; it != neighborVertices.end(); ++it) {
+    std::vector<int> &neighbors = it->second;
+    float3 n0 = make_float3(normals[it->first]);
+    float3 v0 = make_float3(vertices[it->first]);
+
+    float3 normal = make_float3(0.0f);
+    for (int i = 0; i < neighbors.size(); i+=2) {
+
+      float3 v1 = make_float3(vertices[neighbors[i]]);
+      float3 v2 = make_float3(vertices[neighbors[i+1]]);
+      float3 n1 = make_float3(normals[neighbors[i]]);
+      float3 n2 = make_float3(normals[neighbors[i+1]]);
+      float3 e1 = v1 - v0;
+      float3 e2 = v2 - v0;
+      float area = length(cross(e1,e2));
+      float3 sumn = (n0+n1+n2)*area;
+      normal += sumn;
+    }
+    normalsTmp.push_back(make_float4(normalize(normal)));
+  }
+
+  for (int i = 0; i < normalsTmp.size(); ++i) {
+    normals[numNormals+i] = normalsTmp[i];
+  }
+}
+
 #if 1
 
 void resamplePointsOnGrid(const std::vector<int> &labelPoints,
@@ -1989,12 +2068,14 @@ void resamplePointsOnGrid(const std::vector<int> &labelPoints,
     double x[3] = {px.x, px.y, px.z};
     int ijk[3];
     double pcoords[3];    
-    subGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    int inside = subGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
 
     // pcoords[0] += 0.5;
     // pcoords[1] += 0.5;
     // pcoords[2] += 0.5;
 
+    if (!inside) continue;
+    
     int ids[8] =
       {ijk[0]   +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
        ijk[0]+1 +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
@@ -2092,8 +2173,11 @@ void generateBoundary(const std::vector<float4> &points,
 
     const std::array<int,6> &labelExtent = labelExtents[i];
     const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
-					  labelExtent[2]-1,labelExtent[3]+1,
-					  labelExtent[4]-1,labelExtent[5]+1};
+    					  labelExtent[2]-1,labelExtent[3]+1,
+    					  labelExtent[4]-1,labelExtent[5]+1};
+    // const std::array<int,6> nodeExtent = {labelExtent[0],labelExtent[1]+1,
+    // 					  labelExtent[2],labelExtent[3]+1,
+    // 					  labelExtent[4],labelExtent[5]+1};
     int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
 			 nodeExtent[3]-nodeExtent[2]+1,
 			 nodeExtent[5]-nodeExtent[4]+1};
@@ -2109,14 +2193,14 @@ void generateBoundary(const std::vector<float4> &points,
       if (nodeExtent[j*2] < 0) {
 	float x0 = coords[j]->GetComponent(0,0);
 	float x1 = coords[j]->GetComponent(1,0);
-	subcoords[j]->SetComponent(0,0,x0-(x1-x0));
+	subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
 	beg = 1;
       }
       int end = subNodeRes[j];
-      if (nodeExtent[j*2+1] > nodeRes[j]) {
+      if (nodeExtent[j*2] + end > nodeRes[j]-1) {
 	float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
 	float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
-	subcoords[j]->SetComponent(0,0,x1+(x1-x0));
+	subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
 	end = subNodeRes[j]-1;	
       }
 
@@ -2196,7 +2280,10 @@ void generateBoundary(const std::vector<float4> &points,
     if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
 
     int numVertsPrev = vertices.size();
+    int numIndicesPrev = indices.size();
     extractSurface(field.data(), subNodeRes, subcoords, subGridExtent, isoValue, indices, vertices, vertexID);
+
+    //computeNormals(vertices, indices, numIndicesPrev, indices.size(), normals);
     computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
     
     subGrid->Delete();

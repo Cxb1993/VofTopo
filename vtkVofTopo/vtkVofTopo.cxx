@@ -32,12 +32,92 @@
 #include <ctime>
 #include <omp.h>
 
-vtkStandardNewMacro(vtkVofTopo);
-
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 
+vtkStandardNewMacro(vtkVofTopo);
 
+#define MEASURE_TIME 0
+
+#if MEASURE_TIME
+
+#include <chrono>
+
+typedef std::chrono::high_resolution_clock Clock;
+typedef Clock::time_point TimePoint;
+typedef std::chrono::nanoseconds Nanoseconds;
+typedef std::chrono::milliseconds Milliseconds;
+typedef std::chrono::seconds Seconds;
+
+ #define STOPWATCH(fn,unit) {                                            \
+  TimePoint start = Clock::now();                                       \
+  fn;                                                                   \
+  TimePoint end = Clock::now();                                         \
+  unit delta = std::chrono::duration_cast<unit>(end-start);             \
+  std::cout << "    " << #fn << " took " << delta.count() << " " << #unit << std::endl; \
+}
+
+TimePoint start_all;
+TimePoint end_all;
+
+TimePoint start_seeding;
+TimePoint end_seeding;
+
+std::vector<TimePoint> start_oneStep;
+std::vector<TimePoint> end_oneStep;
+
+std::vector<TimePoint> start_advection;
+std::vector<TimePoint> end_advection;
+
+TimePoint start_boundary;
+TimePoint end_boundary;
+
+TimePoint start_components;
+TimePoint end_components;
+
+TimePoint start_assignment;
+TimePoint end_assignment;
+
+void writeTimings(std::string filename, int t0, int t1)
+{
+  std::ofstream file(filename, std::ofstream::app);
+
+  file << "timesteps," << t0 << "," << t1 << std::endl;
+
+  Milliseconds dur_all_ms = std::chrono::duration_cast<Milliseconds>(end_all-start_all);
+  Seconds dur_all_s = std::chrono::duration_cast<Seconds>(end_all-start_all);
+  file << "all," << dur_all_s.count() << "," << dur_all_ms.count() << std::endl;
+
+  Milliseconds dur_boundary_ms = std::chrono::duration_cast<Milliseconds>(end_boundary-start_boundary);
+  Seconds dur_boundary_s = std::chrono::duration_cast<Seconds>(end_boundary-start_boundary);
+  file << "boundary," << dur_boundary_s.count() << "," << dur_boundary_ms.count() << std::endl;
+
+  Milliseconds dur_components_ms = std::chrono::duration_cast<Milliseconds>(end_components-start_components);
+  Seconds dur_components_s = std::chrono::duration_cast<Seconds>(end_components-start_components);
+  file << "components," << dur_components_s.count() << "," << dur_components_ms.count() << std::endl;
+
+  Milliseconds dur_assignment_ms = std::chrono::duration_cast<Milliseconds>(end_assignment-start_assignment);
+  Seconds dur_assignment_s = std::chrono::duration_cast<Seconds>(end_assignment-start_assignment);
+  file << "assignment," << dur_assignment_s.count() << "," << dur_assignment_ms.count() << std::endl;
+
+  if (start_oneStep.size() == end_oneStep.size()) {
+    for (int i = 0; i < start_oneStep.size(); ++i) {
+      Milliseconds dur_step_ms = std::chrono::duration_cast<Milliseconds>(end_oneStep[i]-start_oneStep[i]);
+      Seconds dur_step_s = std::chrono::duration_cast<Seconds>(end_oneStep[i]-start_oneStep[i]);
+      file << "oneStep," << i << "," << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
+    }
+  }
+  if (start_advection.size() == end_advection.size()) {
+    for (int i = 0; i < start_advection.size(); ++i) {
+      Milliseconds dur_step_ms = std::chrono::duration_cast<Milliseconds>(end_advection[i]-start_advection[i]);
+      Seconds dur_step_s = std::chrono::duration_cast<Seconds>(end_advection[i]-start_advection[i]);
+      file << "advection," << i << "," << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
+    }
+  }
+  file.close();
+}
+
+#endif
 
 //----------------------------------------------------------------------------
 vtkVofTopo::vtkVofTopo() :
@@ -55,7 +135,8 @@ vtkVofTopo::vtkVofTopo() :
   RK4NumSteps(8),
   StoreIntermParticles(0),
   VertexID(0),
-  SeedByPLIC(1)
+  SeedByPLIC(1),
+  InterpolateFields(0)
 {
   std::cout << "voftopo instance created" << std::endl;
   this->SetNumberOfInputPorts(3);
@@ -234,12 +315,37 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
   if (TimestepT0 == TimestepT1) {
     if (Controller->GetCommunicator() != 0) {
+
+#if MEASURE_TIME
+      Controller->Barrier();
+      // Timing start
+      if (Controller->GetLocalProcessId() == 0) {
+	start_oneStep.clear();
+	end_oneStep.clear();
+	start_advection.clear();
+	end_advection.clear();
+
+	start_all = Clock::now();
+      }
+#endif//MEASURE_TIME
       // find neighbor processes and global domain bounds
       GetGlobalContext(inInfoVof);
 
       VertexID = 0;
     }
     else {
+
+      // Timing start
+#if MEASURE_TIME
+      start_oneStep.clear();
+      end_oneStep.clear();
+      start_advection.clear();
+      end_advection.clear();
+      
+      start_all = Clock::now();
+      
+#endif//MEASURE_TIME
+      
       vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
 	SafeDownCast(inInfoVof->Get(vtkDataObject::DATA_OBJECT()));
       // store local extent --------------------------------------------------
@@ -291,9 +397,53 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   if (TimestepT0 != TimestepT1) {    
     if(TimestepT0 < TargetTimeStep) {
 
-      // AdvectParticlesInt(VofGrid, VelocityGrid);
-      AdvectParticles(VofGrid, VelocityGrid);
-      
+      // Timing one step start
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  start_oneStep.push_back(Clock::now());
+	}
+      }
+      else {
+	start_oneStep.push_back(Clock::now());
+      }
+#endif//MEASURE_TIME
+
+      // Timing advection start
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  start_advection.push_back(Clock::now());
+	}
+      }
+      else {
+	start_advection.push_back(Clock::now());
+      }
+#endif//MEASURE_TIME
+
+      if (InterpolateFields) {
+	AdvectParticlesInt(VofGrid, VelocityGrid);
+      }
+      else {
+	AdvectParticles(VofGrid, VelocityGrid);
+      }
+
+      // Timing advection end
+
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  end_advection.push_back(Clock::now());
+	}
+      }
+      else {
+	end_advection.push_back(Clock::now());
+      }
+#endif//MEASURE_TIME
+     
       if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1 && (TimestepT1%8 == 0)) {
 	IntermParticles.push_back(Particles);
 	IntermParticlesTimeStamps.push_back(TimestepT1);
@@ -364,19 +514,67 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       	IntermBoundaryNormals.push_back(normals);
       	IntermBoundaryIndices.push_back(indices);
       }
+
+      // Timing one step end
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  end_oneStep.push_back(Clock::now());
+	}
+      }
+      else {
+	end_oneStep.push_back(Clock::now());
+      }
+#endif//MEASURE_TIME
     }
     
     bool finishedAdvection = TimestepT1 >= TargetTimeStep;
     if (finishedAdvection) {
 
+      // Timing boundary start
+
       // Stage III -----------------------------------------------------------
       vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
-
+      
       // vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
       // CreateScalarField(VelocityGrid[0], Particles, scalarField);	
       // ExtractComponents(scalarField, components);
-	
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  start_components = Clock::now();
+	}
+      }
+      else {
+	start_components = Clock::now();
+      }
+#endif//MEASURE_TIME
       ExtractComponents(VofGrid[1], components);
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  end_components = Clock::now();
+	}
+      }
+      else {
+	end_components = Clock::now();
+      }
+#endif//MEASURE_TIME
+      	
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  start_assignment = Clock::now();
+	}
+      }
+      else {
+	start_assignment = Clock::now();
+      }
+#endif//MEASURE_TIME
 	
       // Stage IV ------------------------------------------------------------
       std::vector<float> particleLabels;
@@ -391,7 +589,32 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       if (Controller->GetCommunicator() != 0) {
 	ExchangeBoundarySeedPoints(boundarySeeds, Seeds);
       }
-	
+
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  end_assignment = Clock::now();
+	}
+      }
+      else {
+	end_assignment = Clock::now();
+      }
+#endif//MEASURE_TIME
+
+      
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  start_boundary = Clock::now();
+	}
+      }
+      else {
+	start_boundary = Clock::now();
+      }
+#endif//MEASURE_TIME
+      	
       // Stage VI ------------------------------------------------------------
       GenerateBoundaries(Boundaries, boundarySeeds, this->Seeds);
 
@@ -424,7 +647,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       output->SetBlock(0, Seeds);
       output->SetBlock(1, particles);
       output->SetBlock(2, Boundaries);
-      output->SetBlock(3, components);
+      output->SetBlock(3, components);      
 
       // writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
@@ -453,6 +676,19 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	output->SetBlock(nextBlock, intermBoundaries);
 	++nextBlock;
       }
+
+      // Timing boundary end
+#if MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  end_boundary = Clock::now();
+	}
+      }
+      else {
+	end_boundary = Clock::now();
+      }
+#endif//MEASURE_TIME      
     }
   }
 
@@ -460,6 +696,21 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   bool finishedAdvection = TimestepT1 >= TargetTimeStep;
   if (finishedAdvection) {
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
+
+    // Timing end
+#if MEASURE_TIME
+    if (Controller->GetCommunicator() != 0) {
+      Controller->Barrier();
+      if (Controller->GetLocalProcessId() == 0) {
+	end_all = Clock::now();
+      }
+    }
+    else {
+      end_all = Clock::now();
+    }
+
+    writeTimings("timings.csv", InitTimeStep, TimestepT1);
+#endif//MEASURE_TIME
   }
   else {
     request->Set(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING(), 1);
@@ -636,34 +887,34 @@ void vtkVofTopo::AdvectParticlesInt(vtkRectilinearGrid *vof[2],
       
   InterpolateField(VofGrid, VelocityGrid, intVof, intVelocity, 0.5f);
 
-  {
-  vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
-  vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
+  // {
+  // vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
+  // vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
 
-  advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt, PLICCorrection, VOFCorrection);
-  if (Controller->GetCommunicator() != 0) {
-    ExchangeParticles();
-  }
-  }
+  // advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt, PLICCorrection, VOFCorrection);
+  // if (Controller->GetCommunicator() != 0) {
+  //   ExchangeParticles();
+  // }
+  // }
   
-  // {
-  //   vtkRectilinearGrid *vofTmp[2] = {vof[0], intVof};
-  //   vtkRectilinearGrid *velocityTmp[2] = {velocity[0], intVelocity};
-  //   advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
-  // 		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
-  //   if (Controller->GetCommunicator() != 0) {
-  //     ExchangeParticles();
-  //   }
-  // }  
-  // {
-  //   vtkRectilinearGrid *vofTmp[2] = {intVof,vof[1]};
-  //   vtkRectilinearGrid *velocityTmp[2] = {intVelocity,velocity[1]};
-  //   advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
-  // 		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
-  //   if (Controller->GetCommunicator() != 0) {
-  //     ExchangeParticles();
-  //   }
-  // }  
+  {
+    vtkRectilinearGrid *vofTmp[2] = {vof[0], intVof};
+    vtkRectilinearGrid *velocityTmp[2] = {velocity[0], intVelocity};
+    advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
+  		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
+    if (Controller->GetCommunicator() != 0) {
+      ExchangeParticles();
+    }
+  }  
+  {
+    vtkRectilinearGrid *vofTmp[2] = {intVof,vof[1]};
+    vtkRectilinearGrid *velocityTmp[2] = {intVelocity,velocity[1]};
+    advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
+  		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
+    if (Controller->GetCommunicator() != 0) {
+      ExchangeParticles();
+    }
+  }  
 }
 
 //----------------------------------------------------------------------------
@@ -1412,9 +1663,6 @@ void getFluidExtent(vtkRectilinearGrid *vof, const int globalExtent[6],
 
   int index;
   vtkDataArray *vofArray = vof->GetCellData()->GetArray("Data", index);
-  if (index == -1) {
-    std::cout << "KURWA" << std::endl;
-  }
   int nodeRes[3];
   vof->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
@@ -1473,12 +1721,12 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
     optExtent[4] = std::min(fluidExtent0[4],fluidExtent1[4]);
     optExtent[5] = std::max(fluidExtent0[5],fluidExtent1[5]);
       
-    optExtent[0] -= 4;
-    optExtent[2] -= 4;
-    optExtent[4] -= 4;
-    optExtent[1] += 4;
-    optExtent[3] += 4;
-    optExtent[5] += 4;
+    optExtent[0] -= NumGhostLevels;
+    optExtent[2] -= NumGhostLevels;
+    optExtent[4] -= NumGhostLevels;
+    optExtent[1] += NumGhostLevels;
+    optExtent[3] += NumGhostLevels;
+    optExtent[5] += NumGhostLevels;
   }
   
   std::vector<float4> particles;

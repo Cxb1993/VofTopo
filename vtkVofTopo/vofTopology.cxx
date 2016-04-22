@@ -264,6 +264,57 @@ namespace
   };
 }
 
+float interpolateSca(vtkDataArray *vofField,
+		     const int* res, const int idxCell[3],
+		     const double bcoords[3])
+{
+  int lx = idxCell[0];
+  int ly = idxCell[1];
+  int lz = idxCell[2];
+  float x = bcoords[0];
+  float y = bcoords[1];
+  float z = bcoords[2];
+    
+  int ux = lx+1;
+  int uy = ly+1;
+  int uz = lz+1;
+
+  if (lx < 0) lx = 0;
+  if (ly < 0) ly = 0;
+  if (lz < 0) lz = 0;
+  if (ux > res[0]-1) ux = res[0]-1;
+  if (uy > res[1]-1) uy = res[1]-1;
+  if (uz > res[2]-1) uz = res[2]-1;
+
+  unsigned lzslab = lz*res[0]*res[1];
+  unsigned uzslab = uz*res[0]*res[1];
+  int lyr = ly*res[0];
+  int uyr = uy*res[0];
+
+  unsigned id[8] = {lx + lyr + lzslab,
+		    ux + lyr + lzslab,
+		    lx + uyr + lzslab,
+		    ux + uyr + lzslab,
+		    lx + lyr + uzslab,
+		    ux + lyr + uzslab,
+		    lx + uyr + uzslab,
+		    ux + uyr + uzslab};
+  float vv[8];
+  for (int i = 0; i < 8; i++) {
+    vv[i] = vofField->GetComponent(id[i],0);
+  }
+
+  float a = (1.0f-x)*vv[0] + x*vv[1];
+  float b = (1.0f-x)*vv[2] + x*vv[3];
+  float c = (1.0f-y)*a + y*b;
+  a = (1.0f-x)*vv[4] + x*vv[5];
+  b = (1.0f-x)*vv[6] + x*vv[7];
+  float d = (1.0f-y)*a + y*b;
+
+  return (1.0f-z)*c + z*d;
+}
+
+
 void computeGradient(vtkDataArray *data,
 		     const int cellRes[3], int ijk[3],
 		     vtkFloatArray *coordCenters[3],
@@ -1310,32 +1361,35 @@ void correctParticles(std::vector<float4> &particles,
   
 #pragma omp parallel for
   for (int i = 0; i < particles.size(); ++i) {
-    int ijk[3];
-    double pcoords[3];
-    float f = getCellVof(particles[i], vofGrid, vofArray1, cellRes, ijk, pcoords);
-    if (vofCorrection && f <= g_emf0) {
-      float4 prev_pos1 = particles[i];
-      particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
-      uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
-    }
-    if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
 
-      double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+    if (particles[i].w > -1.0f) {
+      int ijk[3];
       double pcoords[3];
-      vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
-    			     coords[0]->GetComponent(ijk[0]+1,0),
-    			     coords[1]->GetComponent(ijk[1],0),
-    			     coords[1]->GetComponent(ijk[1]+1,0),
-    			     coords[2]->GetComponent(ijk[2],0),
-    			     coords[2]->GetComponent(ijk[2]+1,0)};
-      float3 norm = make_float3(normals[idx*3+0],
-    				normals[idx*3+1],
-    				normals[idx*3+2]);
-      float4 prev_pos1 = particles[i];
-      particles[i] = plicCorrector(particles[i], norm, lstar[idx], cubeCoords);
-      uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+      float f = getCellVof(particles[i], vofGrid, vofArray1, cellRes, ijk, pcoords);
+      if (vofCorrection && f <= g_emf0) {
+	float4 prev_pos1 = particles[i];
+	particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
+	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+      }
+      if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
+
+	double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+	double pcoords[3];
+	vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+	float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
+			       coords[0]->GetComponent(ijk[0]+1,0),
+			       coords[1]->GetComponent(ijk[1],0),
+			       coords[1]->GetComponent(ijk[1]+1,0),
+			       coords[2]->GetComponent(ijk[2],0),
+			       coords[2]->GetComponent(ijk[2]+1,0)};
+	float3 norm = make_float3(normals[idx*3+0],
+				  normals[idx*3+1],
+				  normals[idx*3+2]);
+	float4 prev_pos1 = particles[i];
+	particles[i] = plicCorrector(particles[i], norm, lstar[idx], cubeCoords);
+	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+      }
     }
   }
 }
@@ -1516,6 +1570,31 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
   correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
 }
 
+void advectParticles(vtkRectilinearGrid *velocityGrid[2],
+		     std::vector<float4> &particles,
+		     const float deltaT, int integrationMethod,
+		     int plicCorrection, int vofCorrection,
+		     int numSubSteps)
+{
+  int index0,index1;
+  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index1);
+  if (index0 == -1 || index1 == -1) {
+    std::cout << __LINE__ << ": Array not found!" << std::endl;
+  }
+
+  int nodeRes[3];
+  velocityGrid[1]->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+  
+#pragma omp parallel for  
+  for (int i = 0; i < particles.size(); ++i) {
+    particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1, cellRes,
+			       0.0f, 1.0f, 0.0f, deltaT, numSubSteps);
+  }
+}
+
+
 void advectParticlesInt(vtkRectilinearGrid *vofGrid[3],
 			vtkRectilinearGrid *velocityGrid[3],
 			std::vector<float4> &particles,
@@ -1553,33 +1632,6 @@ void advectParticlesInt(vtkRectilinearGrid *vofGrid[3],
   }
 
   correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
-}
-
-void advectParticles(vtkRectilinearGrid *velocityGrid[2],
-		     std::vector<float4> &particles,
-		     const float t, const float incr,
-		     const float t0, const float t1, int numSubSteps)
-{
-  int index;
-  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index);
-  if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
-  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index);
-    if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
-
-  int nodeRes[3];
-  velocityGrid[0]->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
-#pragma omp parallel for
-  for (int i = 0; i < particles.size(); ++i) {
-
-    particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1,
-			       cellRes, t, incr, t0, t1, numSubSteps);
-  }
 }
 
 // multiprocess

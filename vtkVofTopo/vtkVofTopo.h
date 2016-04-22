@@ -58,6 +58,9 @@ public:
 
   vtkGetMacro(SeedByPLIC, int);
   vtkSetMacro(SeedByPLIC, int);  
+
+  vtkGetMacro(InterpolateFields, int);
+  vtkSetMacro(InterpolateFields, int);  
 //~GUI -------------------------------
 
 protected:
@@ -190,6 +193,7 @@ private:
   double EMF1;
 
   int SeedByPLIC;
+  int InterpolateFields;
 };
 
 #endif

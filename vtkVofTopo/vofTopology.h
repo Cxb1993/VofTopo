@@ -94,10 +94,11 @@ void advectParticlesInt(vtkRectilinearGrid *inputVof[3],
 /* 		     const float deltaT, */
 /* 		     std::vector<float> &uncertainty); */
 
-void advectParticles(vtkRectilinearGrid *inputVelocity[2],
+void advectParticles(vtkRectilinearGrid *velocityGrid[2],
 		     std::vector<float4> &particles,
-		     const float t, const float incr,
-		     const float t0, const float t1, int numSubSteps);
+		     const float deltaT, int integrationMethod,
+		     int plicCorrection, int vofCorrection,
+		     int numSubSteps);
 
 // multiprocess
 void findGlobalExtent(std::vector<int> &allExtents, 

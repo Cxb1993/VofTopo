@@ -11,7 +11,8 @@
 #include <vector>
 #include <algorithm>
 #include <map>
-#include "helper_math.h"
+
+#include "vectors_cuda.h"
 
 #define _dpl_   std::cout << __FILE__ << ":" << __func__ << ":" << __LINE__ << std::endl;
 

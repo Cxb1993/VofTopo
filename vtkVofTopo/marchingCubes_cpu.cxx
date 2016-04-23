@@ -7,7 +7,6 @@
 #include <cmath>
 #include <map>
 #include <cstdlib>
-#include <helper_math.h>
 #include <iostream>
 
 #define MODMC 0

@@ -3,8 +3,9 @@
 
 #include "vtkDataArray.h"
 #include "vtkFloatArray.h"
-#include <vector_types.h>
 #include <vector>
+
+#include "vectors_cuda.h"
 
 void extractSurface(const float* volume, 
 		    const int* resolution,

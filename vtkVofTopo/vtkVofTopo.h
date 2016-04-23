@@ -2,10 +2,10 @@
 #define __vtkVofTopo_h
 
 #include "vtkMultiBlockDataSetAlgorithm.h"
-#include "helper_math.h"
 #include <map>
 #include <vector>
 #include <string>
+#include "vofTopology.h"
 
 class vtkMPIController;
 class vtkRectilinearGrid;

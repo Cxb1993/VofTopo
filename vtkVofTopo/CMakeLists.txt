@@ -21,9 +21,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release")
 endif()
 
-find_package(CUDA REQUIRED)
-include_directories(${CUDA_SDK_ROOT_DIR}/common/inc)
-include_directories(${CUDA_INCLUDE_DIRS})
 
 add_library(vofTopology vofTopology.cxx)
 add_library(marchingCubes_cpu marchingCubes_cpu.cxx)

@@ -7,6 +7,7 @@
 #include "vtkIdTypeArray.h"
 #include "vtkShortArray.h"
 #include "vtkCellArray.h"
+#include "vtkSmartPointer.h"
 #include "vtkXMLMultiBlockDataWriter.h"
 #include "vtkXMLPolyDataWriter.h"
 #include "vtkXMLRectilinearGridWriter.h"

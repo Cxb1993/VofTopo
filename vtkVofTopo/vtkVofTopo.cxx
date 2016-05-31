@@ -136,7 +136,8 @@ vtkVofTopo::vtkVofTopo() :
   StoreIntermParticles(0),
   VertexID(0),
   SeedByPLIC(1),
-  InterpolateFields(0)
+  InterpolateFields(0),
+  ParticleStoreFreq(8)
 {
   std::cout << "voftopo instance created" << std::endl;
   this->SetNumberOfInputPorts(3);
@@ -444,7 +445,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
 #endif//MEASURE_TIME
      
-      if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1 && (TimestepT1%8 == 0)) {
+      if (StoreIntermParticles && TimestepT0 < TargetTimeStep-1 && (TimestepT1%ParticleStoreFreq == 0)) {
 	IntermParticles.push_back(Particles);
 	IntermParticlesTimeStamps.push_back(TimestepT1);
 	if (Controller->GetCommunicator() != 0) {
@@ -1176,7 +1177,8 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
 
   int index;
   vtkDataArray *vofArray =
-    VofGrid[1]->GetCellData()->GetArray("Data", index);
+    VofGrid[1]->GetCellData()->GetArray(0);
+  // VofGrid[1]->GetCellData()->GetArray("Data", index);
 
   vtkFloatArray *coordCenters[3] = {nullptr,nullptr,nullptr};
   if (!SeedByPLIC) {
@@ -1662,7 +1664,8 @@ void getFluidExtent(vtkRectilinearGrid *vof, const int globalExtent[6],
   extent[5] = extent[5] - (extent[5] < globalExtent[5] ? numGhostLevels : 0);
 
   int index;
-  vtkDataArray *vofArray = vof->GetCellData()->GetArray("Data", index);
+  vtkDataArray *vofArray = vof->GetCellData()->GetArray(0);
+  // vof->GetCellData()->GetArray("Data", index);
   int nodeRes[3];
   vof->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
@@ -1755,15 +1758,19 @@ void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
   intVelocity->CopyStructure(velocity[0]);
 
   int index0,index1;
-  vtkDataArray *vofArray0 = vof[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *vofArray1 = vof[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *vofArray0 = vof[0]->GetCellData()->GetArray(0);
+    // vof[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *vofArray1 = vof[1]->GetCellData()->GetArray(0);
+    // vof[1]->GetCellData()->GetArray("Data", index1);
   vtkSmartPointer<vtkFloatArray> vofArray = vtkSmartPointer<vtkFloatArray>::New();
   vofArray->SetName("Data");
   vofArray->SetNumberOfComponents(1);
   vofArray->SetNumberOfTuples(vofArray0->GetNumberOfTuples());
   vofArray->FillComponent(0,0.0f);
-  vtkDataArray *velocityArray0 = velocity[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *velocityArray1 = velocity[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *velocityArray0 = velocity[0]->GetCellData()->GetArray(0);
+    // velocity[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *velocityArray1 = velocity[1]->GetCellData()->GetArray(0);
+    // velocity[1]->GetCellData()->GetArray("Data", index1);
   vtkSmartPointer<vtkFloatArray> velocityArray = vtkSmartPointer<vtkFloatArray>::New();
   velocityArray->SetName("Data");
   velocityArray->SetNumberOfComponents(3);

@@ -1038,8 +1038,8 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 			int plicSeeding)
 {
   int index;
-  vtkDataArray *vofArray =
-    vofGrid->GetCellData()->GetArray("Data", index);
+  vtkDataArray *vofArray = vofGrid->GetCellData()->GetArray(0);
+    // vofGrid->GetCellData()->GetArray("Data", index);
   if (index == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
@@ -1076,8 +1076,8 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
     computeL(cellRes, dx[0], dx[1], dx[2], vofArray, normals, lstar, normalsInt);
   }
   //--------------
-  vtkDataArray *data =
-    vofGrid->GetCellData()->GetArray("Data", index);
+  vtkDataArray *data = vofGrid->GetCellData()->GetArray(0);
+    // vofGrid->GetCellData()->GetArray("Data", index);
   if (index == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
@@ -1538,9 +1538,12 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 		     int numSubSteps)
 {
   int index0,index1,index2;
-  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index1);
-  vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetArray("Data", index2);
+  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray(0);
+    // velocityGrid[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray(0);
+    // velocityGrid[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetArray(0);
+    // vofGrid[1]->GetCellData()->GetArray("Data", index2);
   if (index0 == -1 || index1 == -1 || index2 == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
@@ -1578,8 +1581,10 @@ void advectParticles(vtkRectilinearGrid *velocityGrid[2],
 		     int numSubSteps)
 {
   int index0,index1;
-  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray(0);
+    // velocityGrid[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray(0);
+    // velocityGrid[1]->GetCellData()->GetArray("Data", index1);
   if (index0 == -1 || index1 == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
@@ -1603,9 +1608,12 @@ void advectParticlesInt(vtkRectilinearGrid *vofGrid[3],
 			const float deltaT, int plicCorrection, int vofCorrection)
 {
   int index0,index1,index2;
-  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray("Data", index1);
-  vtkDataArray *velocityArray2 = velocityGrid[2]->GetCellData()->GetArray("Data", index2);
+  vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray(0);
+    // velocityGrid[0]->GetCellData()->GetArray("Data", index0);
+  vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray(0);
+    // velocityGrid[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *velocityArray2 = velocityGrid[2]->GetCellData()->GetArray(0);
+    // velocityGrid[2]->GetCellData()->GetArray("Data", index2);
   if (index0 == -1 || index1 == -1 || index2 == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }
@@ -1627,7 +1635,8 @@ void advectParticlesInt(vtkRectilinearGrid *vofGrid[3],
 				  velocityArray0, velocityArray1,
 				  velocityArray2, cellRes, deltaT);    
   }
-  vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetArray("Data", index1);
+  vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetArray(0);
+    // vofGrid[1]->GetCellData()->GetArray("Data", index1);
   if (index1 == -1) {
     std::cout << __LINE__ << ": Array not found!" << std::endl;
   }

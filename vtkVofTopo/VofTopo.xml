@@ -107,7 +107,7 @@
 	  label="PLIC-based correction"
           command="SetPLICCorrection"
           number_of_elements="1"
-          default_values="0">
+          default_values="1">
 	<BooleanDomain name="bool"/>
       </IntVectorProperty>
       
@@ -116,16 +116,25 @@
 	  label="VOF-based correction"
           command="SetVOFCorrection"
           number_of_elements="1"
-          default_values="0">
+          default_values="1">
 	<BooleanDomain name="bool"/>
       </IntVectorProperty>
       
+      <IntVectorProperty
+	  name="SeedByPLIC"
+	  label="SeedByPLIC"
+	  command="SetSeedByPLIC"
+	  number_of_elements="1"
+	  default_values="1">
+	<BooleanDomain name="bool"/>
+      </IntVectorProperty>
+
       <IntVectorProperty
  	  name="Integration Method"
 	  command="SetIntegrationMethod"
 	  label="Integration Method"
 	  number_of_elements="1"
-	  default_values="0">
+	  default_values="1">
 	<EnumerationDomain name="enum">
 	  <Entry value="0" text="Heun"/>
 	  <Entry value="1" text="RK4"/>
@@ -168,12 +177,14 @@
       </IntVectorProperty>
 
       <IntVectorProperty
-	  name="SeedByPLIC"
-	  label="SeedByPLIC"
-	  command="SetSeedByPLIC"
+	  name="ParticleStoreFreq"
+	  label="Particle Store Frequency"
+	  command="SetParticleStoreFreq"
 	  number_of_elements="1"
-	  default_values="1">
-	<BooleanDomain name="bool"/>
+	  default_values="8">
+	<Documentation>
+	  Set how often intermediate particle positions should be stored (every Interm-th simulation step)
+	</Documentation>
       </IntVectorProperty>
 
       <IntVectorProperty

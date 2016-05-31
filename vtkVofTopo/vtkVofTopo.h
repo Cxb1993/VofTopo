@@ -32,6 +32,9 @@ public:
   vtkGetMacro(Refinement, int);
   vtkSetMacro(Refinement, int);
 
+  vtkGetMacro(ParticleStoreFreq, int);
+  vtkSetMacro(ParticleStoreFreq, int);
+
   vtkGetMacro(StoreIntermParticles, int);
   vtkSetMacro(StoreIntermParticles, int);
 
@@ -194,6 +197,8 @@ private:
 
   int SeedByPLIC;
   int InterpolateFields;
+
+  int ParticleStoreFreq;
 };
 
 #endif

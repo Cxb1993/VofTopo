@@ -2072,8 +2072,6 @@ void computeNormals(std::vector<float4> &vertices,
   }
 }
 
-#if 1
-
 void resamplePointsOnGrid(const std::vector<int> &labelPoints,
 			  const std::vector<float4> &points,
 			  vtkRectilinearGrid *subGrid,
@@ -2115,613 +2113,8 @@ void resamplePointsOnGrid(const std::vector<int> &labelPoints,
   }
 }
 
-void generateCoords(vtkDataArray *coords,
-		    const int subNodeRes,
-		    const int subone,
-		    const int r,
-		    const int ijk0, const int ijk1,
-		    vtkFloatArray **subcoords)
-{
-  (*subcoords) = vtkFloatArray::New();
-  (*subcoords)->SetNumberOfComponents(1);
-  (*subcoords)->SetNumberOfTuples(subNodeRes);
-
-  float xprev = coords->GetComponent(ijk0, 0);    
-  int ires = (subNodeRes + (r-1))/r;   // subNodeRes = subNodeRes*r - (r-1);
-
-  for (int j = 0; j < ires-1; ++j) {
-    float x = coords->GetComponent(ijk0+j+1, 0);
-    float dx = (x - xprev)/r;
-	
-    for (int k = 0; k < r; ++k) {
-      (*subcoords)->SetValue(j*r+k, xprev+k*dx);
-    }
-    xprev = x;
-  }
-  (*subcoords)->SetValue(subNodeRes-1, coords->GetComponent(ijk1+1,0)); 
-}
-
-void generateBoundary(const std::vector<float4> &points,
-		      const std::vector<float> &labels,		      
-		      vtkRectilinearGrid *grid,
-		      const int refinement,
-		      const int localExtentNoGhosts[6],
-		      const int localExtent[6],
-		      int &vertexID,
-		      std::vector<int> &labelOffsets,
-		      std::vector<float4> &vertices,
-		      std::vector<float4> &normals,
-		      std::vector<int> &indices)
-{
-  const float isoValue = 0.75f;
-  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
-			     grid->GetYCoordinates(), 
-			     grid->GetZCoordinates()};
-  int nodeRes[3];
-  grid->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
-  const int numPoints = points.size();
-  const int boundarySize = 2; // for correct normal computation
-  double range[2] = {-1, *std::max_element(labels.begin(), labels.end())};
-
-  const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
-  const int labelsRange[2] = {range[0], range[1]};
-
-  // stores indices of all points with a given label
-  std::vector<std::vector<int>> labelPoints(numLabels);
-  for (int i = 0; i < numLabels; ++i) {
-    labelPoints[i].clear();
-  }
-  calcLabelPoints(labels, labelsRange, labelPoints);
-
-  // stores the index bounds of particles with a given label
-  // the bounds are given in coordinates relative to the local extent
-  std::vector<std::array<int,6>> labelExtents(numLabels);
-  calcLabelExtents(points, labels, labelsRange, grid, labelExtents);
-
-  labelOffsets.resize(numLabels+1,0);
-  
-  for (int i = 0; i < numLabels; ++i) {
-
-    if (labelPoints[i].size() == 0) {
-      labelOffsets[i+1] = vertices.size();
-      continue;
-    }
-
-    const std::array<int,6> &labelExtent = labelExtents[i];
-    const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
-    					  labelExtent[2]-1,labelExtent[3]+1,
-    					  labelExtent[4]-1,labelExtent[5]+1};
-    int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
-			 nodeExtent[3]-nodeExtent[2]+1,
-			 nodeExtent[5]-nodeExtent[4]+1};
-    
-    vtkFloatArray *subcoords[3];
-
-    for (int j = 0; j < 3; ++j) {
-      subcoords[j] = vtkFloatArray::New();
-      subcoords[j]->SetNumberOfComponents(1);
-      subcoords[j]->SetNumberOfTuples(subNodeRes[j]);
-
-      int beg = 0;
-      if (nodeExtent[j*2] < 0) {
-	float x0 = coords[j]->GetComponent(0,0);
-	float x1 = coords[j]->GetComponent(1,0);
-	subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
-	beg = 1;
-      }
-      int end = subNodeRes[j];
-      if (nodeExtent[j*2] + end > nodeRes[j]-1) {
-	float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
-	float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
-	subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
-	end = subNodeRes[j]-1;	
-      }
-
-      for (int c = beg; c < end; ++c) {
-	float x0 = coords[j]->GetComponent(nodeExtent[j*2]+c,0);
-	float x1 = coords[j]->GetComponent(nodeExtent[j*2]+c+1,0);
-	subcoords[j]->SetComponent(c,0,(x1+x0)/2.0f);
-      }
-    }
-
-    const int r = std::pow(2,refinement);
-    if (refinement > 0) {
-
-      for (int j = 0; j < 3; ++j) {
-
-	int prev_snr = subNodeRes[j];
-	subNodeRes[j] = (subNodeRes[j]-1)*r;
-
-	vtkFloatArray *subcoord_tmp = vtkFloatArray::New();
-	subcoord_tmp->SetNumberOfComponents(1);
-	subcoord_tmp->SetNumberOfTuples(subNodeRes[j]);
-
-	for (int c = 0; c < prev_snr-1; ++c) {
-	  float dx = subcoords[j]->GetComponent(c+1,0)-subcoords[j]->GetComponent(c,0);
-	  dx /= r;
-	  float org = subcoords[j]->GetComponent(c,0) + dx/2.0f;
-	  for (int s = 0; s < r; ++s) {
-	    subcoord_tmp->SetComponent(c*r+s,0,org+dx*s);
-	  }	  
-	}
-      	subcoords[j]->Delete();
-      	subcoords[j] = subcoord_tmp;
-      }
-    }
-
-    vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
-    subGrid->SetDimensions(subcoords[0]->GetNumberOfTuples(),
-			   subcoords[1]->GetNumberOfTuples(),
-			   subcoords[2]->GetNumberOfTuples());   
-    subGrid->SetXCoordinates(subcoords[0]);
-    subGrid->SetYCoordinates(subcoords[1]);
-    subGrid->SetZCoordinates(subcoords[2]);
-
-    const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
-    std::vector<float> field(numElements, 0.0f);
-
-    resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
-
-    int subGridExtent[6] = {0, subNodeRes[0]-1,
-			    0, subNodeRes[1]-1,
-			    0, subNodeRes[2]-1};
-
-    int df;
-    df = labelExtent[0]+localExtent[0] - localExtentNoGhosts[0];
-    if (df < 0) subGridExtent[0] += r*std::min(-df,boundarySize);
-
-    df = labelExtent[1]+localExtent[0] - localExtentNoGhosts[1]; 
-    if (df > 0) subGridExtent[1] -= r*std::min(df,boundarySize);
-
-    df = labelExtent[2]+localExtent[2] - localExtentNoGhosts[2];
-    if (df < 0) subGridExtent[2] += r*std::min(-df,boundarySize);
-
-    df = labelExtent[3]+localExtent[2] - localExtentNoGhosts[3];
-    if (df > 0) subGridExtent[3] -= r*std::min(df,boundarySize);
-
-    df = labelExtent[4]+localExtent[4] - localExtentNoGhosts[4];
-    if (df < 0) subGridExtent[4] += r*std::min(-df,boundarySize);
-
-    df = labelExtent[5]+localExtent[4] - localExtentNoGhosts[5]; 
-    if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
-
-    int numVertsPrev = vertices.size();
-    int numIndicesPrev = indices.size();
-    extractSurface(field.data(), subNodeRes, subcoords, subGridExtent,
-		   isoValue, indices, vertices, vertexID);
-
-    computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
-    
-    subGrid->Delete();
-
-    labelOffsets[i+1] = vertices.size();
-  }
-}
-
-void generateBoundary(const std::vector<float4> &points,
-		      const std::vector<float> &labels,		      
-		      vtkRectilinearGrid *grid,
-		      const int refinement,
-		      const int localExtentNoGhosts[6],
-		      const int localExtent[6],
-		      int &vertexID,
-		      std::vector<int> &labelOffsets,
-		      std::vector<float4> &vertices,
-		      std::vector<float4> &normals,
-		      std::vector<int> &indices,
-		      std::vector<std::vector<int>> &prevLabelPoints)
-{
-  const float isoValue = 0.75f;
-  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
-			     grid->GetYCoordinates(), 
-			     grid->GetZCoordinates()};
-  int nodeRes[3];
-  grid->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
-  const int numPoints = points.size();
-  const int boundarySize = 2; // for correct normal computation
-  double range[2] = {-1, *std::max_element(labels.begin(), labels.end())};
-
-  const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
-  const int labelsRange[2] = {range[0], range[1]};
-
-  // stores indices of all points with a given label
-  std::vector<std::vector<int>> labelPoints(numLabels);
-  for (int i = 0; i < numLabels; ++i) {
-    labelPoints[i].clear();
-  }
-  calcLabelPoints(labels, labelsRange, labelPoints);
-
-
-  /*
-prev    |-------|------|
-curr    |--|------|----|
-   */
-  // new ---------------------------------------------------------------------
-  std::vector<bool> updateLabels(numLabels, false);
-
-  if (!prevLabelPoints.empty()) {
-
-    int prev_beg = 0;
-    int prev_end = prevLabelPoints[0].size();
-    int curr_beg = 0;
-    int curr_end = labelPoints[0].size();
-    int curr_i = 0;
-    int prev_i = 0;
-
-    while (curr_i < numLabels) {
-      if (curr_end < prev_end) {
-	while (curr_end < prev_end) {
-	   
-	  updateLabels[curr_i] = true;
-
-	  curr_i++; // 1
-	  curr_end += labelPoints[curr_i].size();
-	}
-	updateLabels[curr_i] = true; // 1
-      }
-      if (curr_end == prev_end) {
-
-	prev_beg = prev_end;
-	curr_beg = curr_end;	  
-
-	prev_i++;
-	prev_end += prevLabelPoints[prev_i].size();
-	curr_i++;
-	curr_end += labelPoints[curr_i].size();
-      }
-      if (curr_end > prev_end) {
-	while (curr_end > prev_end) {
-	  prev_i++; // 1
-	  prev_end += prevLabelPoints[prev_i].size(); // 1
-	}
-      }
-    }
-  }
-  //~new ---------------------------------------------------------------------
-  
-  // stores the index bounds of particles with a given label
-  // the bounds are given in coordinates relative to the local extent
-  std::vector<std::array<int,6>> labelExtents(numLabels);
-  calcLabelExtents(points, labels, labelsRange, grid, labelExtents);
-
-  labelOffsets.resize(numLabels+1,0);
-  
-  for (int i = 0; i < numLabels; ++i) {
-
-    if (!updateLabels[i]) {
-      continue;
-    }
-
-    if (labelPoints[i].size() == 0) {
-      labelOffsets[i+1] = vertices.size();
-      continue;
-    }
-
-    const std::array<int,6> &labelExtent = labelExtents[i];
-    const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
-    					  labelExtent[2]-1,labelExtent[3]+1,
-    					  labelExtent[4]-1,labelExtent[5]+1};
-    int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
-			 nodeExtent[3]-nodeExtent[2]+1,
-			 nodeExtent[5]-nodeExtent[4]+1};
-    
-    vtkFloatArray *subcoords[3];
-
-    for (int j = 0; j < 3; ++j) {
-      subcoords[j] = vtkFloatArray::New();
-      subcoords[j]->SetNumberOfComponents(1);
-      subcoords[j]->SetNumberOfTuples(subNodeRes[j]);
-
-      int beg = 0;
-      if (nodeExtent[j*2] < 0) {
-	float x0 = coords[j]->GetComponent(0,0);
-	float x1 = coords[j]->GetComponent(1,0);
-	subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
-	beg = 1;
-      }
-      int end = subNodeRes[j];
-      if (nodeExtent[j*2] + end > nodeRes[j]-1) {
-	float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
-	float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
-	subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
-	end = subNodeRes[j]-1;	
-      }
-
-      for (int c = beg; c < end; ++c) {
-	float x0 = coords[j]->GetComponent(nodeExtent[j*2]+c,0);
-	float x1 = coords[j]->GetComponent(nodeExtent[j*2]+c+1,0);
-	subcoords[j]->SetComponent(c,0,(x1+x0)/2.0f);
-      }
-    }
-
-    const int r = std::pow(2,refinement);
-    if (refinement > 0) {
-
-      for (int j = 0; j < 3; ++j) {
-
-	int prev_snr = subNodeRes[j];
-	subNodeRes[j] = (subNodeRes[j]-1)*r;
-
-	vtkFloatArray *subcoord_tmp = vtkFloatArray::New();
-	subcoord_tmp->SetNumberOfComponents(1);
-	subcoord_tmp->SetNumberOfTuples(subNodeRes[j]);
-
-	for (int c = 0; c < prev_snr-1; ++c) {
-	  float dx = subcoords[j]->GetComponent(c+1,0)-subcoords[j]->GetComponent(c,0);
-	  dx /= r;
-	  float org = subcoords[j]->GetComponent(c,0) + dx/2.0f;
-	  for (int s = 0; s < r; ++s) {
-	    subcoord_tmp->SetComponent(c*r+s,0,org+dx*s);
-	  }	  
-	}
-      	subcoords[j]->Delete();
-      	subcoords[j] = subcoord_tmp;
-      }
-    }
-
-    vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
-    subGrid->SetDimensions(subcoords[0]->GetNumberOfTuples(),
-			   subcoords[1]->GetNumberOfTuples(),
-			   subcoords[2]->GetNumberOfTuples());   
-    subGrid->SetXCoordinates(subcoords[0]);
-    subGrid->SetYCoordinates(subcoords[1]);
-    subGrid->SetZCoordinates(subcoords[2]);
-
-    const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
-    std::vector<float> field(numElements, 0.0f);
-
-    resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
-
-    int subGridExtent[6] = {0, subNodeRes[0]-1,
-			    0, subNodeRes[1]-1,
-			    0, subNodeRes[2]-1};
-
-    int df;
-    df = labelExtent[0]+localExtent[0] - localExtentNoGhosts[0];
-    if (df < 0) subGridExtent[0] += r*std::min(-df,boundarySize);
-
-    df = labelExtent[1]+localExtent[0] - localExtentNoGhosts[1]; 
-    if (df > 0) subGridExtent[1] -= r*std::min(df,boundarySize);
-
-    df = labelExtent[2]+localExtent[2] - localExtentNoGhosts[2];
-    if (df < 0) subGridExtent[2] += r*std::min(-df,boundarySize);
-
-    df = labelExtent[3]+localExtent[2] - localExtentNoGhosts[3];
-    if (df > 0) subGridExtent[3] -= r*std::min(df,boundarySize);
-
-    df = labelExtent[4]+localExtent[4] - localExtentNoGhosts[4];
-    if (df < 0) subGridExtent[4] += r*std::min(-df,boundarySize);
-
-    df = labelExtent[5]+localExtent[4] - localExtentNoGhosts[5]; 
-    if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
-
-    int numVertsPrev = vertices.size();
-    int numIndicesPrev = indices.size();
-    extractSurface(field.data(), subNodeRes, subcoords, subGridExtent,
-		   isoValue, indices, vertices, vertexID);
-
-    computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
-    
-    subGrid->Delete();
-
-    labelOffsets[i+1] = vertices.size();
-  }
-
-  prevLabelPoints = labelPoints;
-}
-
-// void calcLabelExtents(std::vector<float4>::iterator &points_beg,
-// 		      std::vector<float4>::iterator &points_end,
-// 		      vtkRectilinearGrid *grid,
-// 		      std::array<int,6> &extents)
-// {
-//   std::array<float,6> extentsTmp;
-//   extentsTmp[0] = extentsTmp[2] = extentsTmp[4] = std::numeric_limits<float>::max();
-//   extentsTmp[1] = extentsTmp[3] = extentsTmp[5] = -1.0f*std::numeric_limits<float>::max();
-
-//   for (auto it = points_beg; it != points_end; ++it) {
-    
-//     double p[3] = {it->x, it->y, it->z};
-//     // points->GetPoint(i, p);
-//     if (extentsTmp[0] > p[0]) extentsTmp[0] = p[0];
-//     if (extentsTmp[1] < p[0]) extentsTmp[1] = p[0];
-//     if (extentsTmp[2] > p[1]) extentsTmp[2] = p[1];
-//     if (extentsTmp[3] < p[1]) extentsTmp[3] = p[1];
-//     if (extentsTmp[4] > p[2]) extentsTmp[4] = p[2];
-//     if (extentsTmp[5] < p[2]) extentsTmp[5] = p[2];	
-//   }
-
-//   // transform physical extents into grid extents (index-based)
-//   double x0[3] = {extentsTmp[0], extentsTmp[2], extentsTmp[4]};
-//   double x1[3] = {extentsTmp[1], extentsTmp[3], extentsTmp[5]};
-//   int ijk0[3];
-//   int ijk1[3];
-//   double pcoords[3];
-
-//   grid->ComputeStructuredCoordinates(x0, ijk0, pcoords);
-//   grid->ComputeStructuredCoordinates(x1, ijk1, pcoords);
-
-//   extents = {ijk0[0],ijk1[0], ijk0[1],ijk1[1], ijk0[2],ijk1[2]};
-// }
-
-// void resamplePointsOnGrid(std::vector<float4>::iterator &points_beg,
-// 			  std::vector<float4>::iterator &points_end,
-// 			  vtkRectilinearGrid *subGrid,
-// 			  const int subNodeRes[3],
-// 			  std::vector<float> &field)
-// {
-//   for (auto it = points_beg; it != points_end; ++it) {
-    
-//     float4 px = *it;
-//     double x[3] = {px.x, px.y, px.z};
-//     int ijk[3];
-//     double pcoords[3];    
-//     int inside = subGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
-
-//     if (!inside) continue;
-    
-//     int ids[8] =
-//       {ijk[0]   +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]+1 +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]+1 + (ijk[1]+1)*subNodeRes[0] +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]   + (ijk[1]+1)*subNodeRes[0] +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]   +  ijk[1]*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]+1 +  ijk[1]*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]+1 + (ijk[1]+1)*subNodeRes[0] + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
-//        ijk[0]   + (ijk[1]+1)*subNodeRes[0] + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1]};
-
-//     field[ids[0]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
-//     field[ids[1]] += (     pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
-//     field[ids[2]] += (     pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
-//     field[ids[3]] += (1.0f-pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
-//     field[ids[4]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
-//     field[ids[5]] += (     pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
-//     field[ids[6]] += (     pcoords[0])*(     pcoords[1])*(     pcoords[2]);
-//     field[ids[7]] += (1.0f-pcoords[0])*(     pcoords[1])*(     pcoords[2]);
-//   }
-// }
-
-// void generateBoundary(std::vector<float4>::iterator &points_beg,
-// 		      std::vector<float4>::iterator &points_end,
-// 		      vtkRectilinearGrid *grid,
-// 		      const int refinement,
-// 		      const int localExtentNoGhosts[6],
-// 		      const int localExtent[6],
-// 		      int &vertexID,
-// 		      std::vector<float4> &vertices,
-// 		      std::vector<float4> &normals,
-// 		      std::vector<int> &indices)
-// {
-//   const float isoValue = 0.75f;
-//   vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
-//   			     grid->GetYCoordinates(), 
-//   			     grid->GetZCoordinates()};
-//   int nodeRes[3];
-//   grid->GetDimensions(nodeRes);
-//   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
-//   const int boundarySize = 2; // for correct normal computation
-
-//   // stores the index bounds of particles with a given label
-//   // the bounds are given in coordinates relative to the local extent
-//   std::array<int,6> extent;
-//   calcLabelExtents(points_beg, points_end, grid, extent);
-
-//   const std::array<int,6> &labelExtent = extent;
-//   const std::array<int,6> nodeExtent = {extent[0]-1,extent[1]+1,
-//   					extent[2]-1,extent[3]+1,
-//   					extent[4]-1,extent[5]+1};
-//   int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
-//   		       nodeExtent[3]-nodeExtent[2]+1,
-//   		       nodeExtent[5]-nodeExtent[4]+1};
-    
-//   vtkFloatArray *subcoords[3];
-
-//   for (int j = 0; j < 3; ++j) {
-//     subcoords[j] = vtkFloatArray::New();
-//     subcoords[j]->SetNumberOfComponents(1);
-//     subcoords[j]->SetNumberOfTuples(subNodeRes[j]);
-
-//     int beg = 0;
-//     if (nodeExtent[j*2] < 0) {
-//       float x0 = coords[j]->GetComponent(0,0);
-//       float x1 = coords[j]->GetComponent(1,0);
-//       subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
-//       beg = 1;
-//     }
-//     int end = subNodeRes[j];
-//     if (nodeExtent[j*2] + end > nodeRes[j]-1) {
-//       float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
-//       float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
-//       subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
-//       end = subNodeRes[j]-1;	
-//     }
-
-//     for (int c = beg; c < end; ++c) {
-//       float x0 = coords[j]->GetComponent(nodeExtent[j*2]+c,0);
-//       float x1 = coords[j]->GetComponent(nodeExtent[j*2]+c+1,0);
-//       subcoords[j]->SetComponent(c,0,(x1+x0)/2.0f);
-//     }
-//   }
-
-//   const int r = std::pow(2,refinement);
-//   if (refinement > 0) {
-
-//     for (int j = 0; j < 3; ++j) {
-
-//       int prev_snr = subNodeRes[j];
-//       subNodeRes[j] = (subNodeRes[j]-1)*r;
-
-//       vtkFloatArray *subcoord_tmp = vtkFloatArray::New();
-//       subcoord_tmp->SetNumberOfComponents(1);
-//       subcoord_tmp->SetNumberOfTuples(subNodeRes[j]);
-
-//       for (int c = 0; c < prev_snr-1; ++c) {
-//   	float dx = subcoords[j]->GetComponent(c+1,0)-subcoords[j]->GetComponent(c,0);
-//   	dx /= r;
-//   	float org = subcoords[j]->GetComponent(c,0) + dx/2.0f;
-//   	for (int s = 0; s < r; ++s) {
-//   	  subcoord_tmp->SetComponent(c*r+s,0,org+dx*s);
-//   	}	  
-//       }
-//       subcoords[j]->Delete();
-//       subcoords[j] = subcoord_tmp;
-//     }
-//   }
-
-//   vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
-//   subGrid->SetDimensions(subcoords[0]->GetNumberOfTuples(),
-//   			 subcoords[1]->GetNumberOfTuples(),
-//   			 subcoords[2]->GetNumberOfTuples());   
-//   subGrid->SetXCoordinates(subcoords[0]);
-//   subGrid->SetYCoordinates(subcoords[1]);
-//   subGrid->SetZCoordinates(subcoords[2]);
-
-//   const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
-//   std::vector<float> field(numElements, 0.0f);
-
-//   resamplePointsOnGrid(points_beg, points_end, subGrid, subNodeRes, field);    
-
-//   int subGridExtent[6] = {0, subNodeRes[0]-1,
-//   			  0, subNodeRes[1]-1,
-//   			  0, subNodeRes[2]-1};
-
-//   int df;
-//   df = labelExtent[0]+localExtent[0] - localExtentNoGhosts[0];
-//   if (df < 0) subGridExtent[0] += r*std::min(-df,boundarySize);
-
-//   df = labelExtent[1]+localExtent[0] - localExtentNoGhosts[1]; 
-//   if (df > 0) subGridExtent[1] -= r*std::min(df,boundarySize);
-
-//   df = labelExtent[2]+localExtent[2] - localExtentNoGhosts[2];
-//   if (df < 0) subGridExtent[2] += r*std::min(-df,boundarySize);
-
-//   df = labelExtent[3]+localExtent[2] - localExtentNoGhosts[3];
-//   if (df > 0) subGridExtent[3] -= r*std::min(df,boundarySize);
-
-//   df = labelExtent[4]+localExtent[4] - localExtentNoGhosts[4];
-//   if (df < 0) subGridExtent[4] += r*std::min(-df,boundarySize);
-
-//   df = labelExtent[5]+localExtent[4] - localExtentNoGhosts[5]; 
-//   if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
-
-//   int numVertsPrev = vertices.size();
-//   int numIndicesPrev = indices.size();
-//   extractSurface(field.data(), subNodeRes, subcoords, subGridExtent,
-//   		 isoValue, indices, vertices, vertexID);
-
-//   computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
-    
-//   subGrid->Delete();
-// }
-
-#else
-
-void resamplePointsOnGrid(const std::vector<int> &labelPoints,
+void resamplePointsOnGrid2(const std::vector<int> &labelPoints,
+			  const std::vector<float> &labels,
 			  const std::vector<float4> &points,
 			  vtkRectilinearGrid *subGrid,
 			  const int subNodeRes[3],
@@ -2730,35 +2123,35 @@ void resamplePointsOnGrid(const std::vector<int> &labelPoints,
   for (int j = 0; j < labelPoints.size(); ++j) {
 
     float4 px = points[labelPoints[j]];
+    float label = labels[labelPoints[j]];
     double x[3] = {px.x, px.y, px.z};
     int ijk[3];
     double pcoords[3];    
-    subGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
+    int inside = subGrid->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    // pcoords[0] += 0.5;
-    // pcoords[1] += 0.5;
-    // pcoords[2] += 0.5;
-
+    if (!inside) continue;
+    
     int ids[8] =
-      {ijk[0]   +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-       ijk[0]+1 +  ijk[1]*subNodeRes[0]    +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-       ijk[0]+1 + (ijk[1]+1)*subNodeRes[0] +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-       ijk[0]   + (ijk[1]+1)*subNodeRes[0] +  ijk[2]*subNodeRes[0]*subNodeRes[1],
-       ijk[0]   +  ijk[1]*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
-       ijk[0]+1 +  ijk[1]*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
-       ijk[0]+1 + (ijk[1]+1)*subNodeRes[0] + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
-       ijk[0]   + (ijk[1]+1)*subNodeRes[0] + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1]};
+      {ijk[0]   +  ijk[1]   *subNodeRes[0]    +  ijk[2]   *subNodeRes[0]*subNodeRes[1],
+       ijk[0]+1 +  ijk[1]   *subNodeRes[0]    +  ijk[2]   *subNodeRes[0]*subNodeRes[1],
+       ijk[0]+1 + (ijk[1]+1)*subNodeRes[0]    +  ijk[2]   *subNodeRes[0]*subNodeRes[1],
+       ijk[0]   + (ijk[1]+1)*subNodeRes[0]    +  ijk[2]   *subNodeRes[0]*subNodeRes[1],
+       ijk[0]   +  ijk[1]   *subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
+       ijk[0]+1 +  ijk[1]   *subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
+       ijk[0]+1 + (ijk[1]+1)*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1],
+       ijk[0]   + (ijk[1]+1)*subNodeRes[0]    + (ijk[2]+1)*subNodeRes[0]*subNodeRes[1]};
 
-    field[ids[0]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
-    field[ids[1]] += (     pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
-    field[ids[2]] += (     pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
-    field[ids[3]] += (1.0f-pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
-    field[ids[4]] += (1.0f-pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
-    field[ids[5]] += (     pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
-    field[ids[6]] += (     pcoords[0])*(     pcoords[1])*(     pcoords[2]);
-    field[ids[7]] += (1.0f-pcoords[0])*(     pcoords[1])*(     pcoords[2]);
+    field[ids[0]] += (label+1)*(1.0f-pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
+    field[ids[1]] += (label+1)*(     pcoords[0])*(1.0f-pcoords[1])*(1.0f-pcoords[2]);
+    field[ids[2]] += (label+1)*(     pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
+    field[ids[3]] += (label+1)*(1.0f-pcoords[0])*(     pcoords[1])*(1.0f-pcoords[2]);
+    field[ids[4]] += (label+1)*(1.0f-pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
+    field[ids[5]] += (label+1)*(     pcoords[0])*(1.0f-pcoords[1])*(     pcoords[2]);
+    field[ids[6]] += (label+1)*(     pcoords[0])*(     pcoords[1])*(     pcoords[2]);
+    field[ids[7]] += (label+1)*(1.0f-pcoords[0])*(     pcoords[1])*(     pcoords[2]);
   }
 }
+
 
 void generateCoords(vtkDataArray *coords,
 		    const int subNodeRes,
@@ -2798,81 +2191,108 @@ void generateBoundary(const std::vector<float4> &points,
 		      std::vector<float4> &normals,
 		      std::vector<int> &indices)
 {
+  const float isoValue = 0.75f;
+  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
+			     grid->GetYCoordinates(), 
+			     grid->GetZCoordinates()};
   int nodeRes[3];
   grid->GetDimensions(nodeRes);
   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
 
   const int numPoints = points.size();
-  const int boundarySize = 2;
-  double range[2] = {*std::min_element(labels.begin(), labels.end()),
-		     *std::max_element(labels.begin(), labels.end())};
-  range[0] = -1;
-  const int numUniqueLabels = std::ceil(range[1] - range[0] + 1.0f);
+  const int boundarySize = 2; // for correct normal computation
+  double range[2] = {-1, *std::max_element(labels.begin(), labels.end())};
+
+  const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
   const int labelsRange[2] = {range[0], range[1]};
 
   // stores indices of all points with a given label
-  std::vector<std::vector<int>> labelPoints(numUniqueLabels);
-  for (int i = 0; i < numUniqueLabels; ++i) {
+  std::vector<std::vector<int>> labelPoints(numLabels);
+  for (int i = 0; i < numLabels; ++i) {
     labelPoints[i].clear();
   }
   calcLabelPoints(labels, labelsRange, labelPoints);
 
   // stores the index bounds of particles with a given label
-  std::vector<std::array<int,6>> labelExtents(numUniqueLabels);
+  // the bounds are given in coordinates relative to the local extent
+  std::vector<std::array<int,6>> labelExtents(numLabels);
   calcLabelExtents(points, labels, labelsRange, grid, labelExtents);
 
-  const float isoValue = 0.55f;
-  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
-			     grid->GetYCoordinates(), 
-			     grid->GetZCoordinates()};
-
-  const int subone = (refinement > 0 ? 1 : 0);  
-
-  labelOffsets.resize(numUniqueLabels+1,0);
-  for (int i = 0; i < labelPoints.size(); ++i) {
+  labelOffsets.resize(numLabels+1,0);
+  
+  for (int i = 0; i < numLabels; ++i) {
 
     if (labelPoints[i].size() == 0) {
       labelOffsets[i+1] = vertices.size();
       continue;
     }
 
-    int ijk0[3] = {labelExtents[i][0],
-		   labelExtents[i][2],
-		   labelExtents[i][4]};
-    int ijk1[3] = {labelExtents[i][1],
-		   labelExtents[i][3],
-		   labelExtents[i][5]};
-
-    if (ijk0[0] > 0) ijk0[0] -= 1;
-    if (ijk0[1] > 0) ijk0[1] -= 1;
-    if (ijk0[2] > 0) ijk0[2] -= 1;
-
-    if (ijk1[0] < cellRes[0]-1) ijk1[0] += 1;
-    if (ijk1[1] < cellRes[1]-1) ijk1[1] += 1;
-    if (ijk1[2] < cellRes[2]-1) ijk1[2] += 1;
-
-    // this is a node-based grid so +1 for each dimension
-    int subNodeRes[3] = {ijk1[0]-ijk0[0]+1+1,
-			 ijk1[1]-ijk0[1]+1+1,
-			 ijk1[2]-ijk0[2]+1+1};    
-
-    const int r = std::pow(2,refinement);
-    // grid refinement comes here...
-    subNodeRes[0] = subNodeRes[0]*r - (r-1);
-    subNodeRes[1] = subNodeRes[1]*r - (r-1);
-    subNodeRes[2] = subNodeRes[2]*r - (r-1);
+    const std::array<int,6> &labelExtent = labelExtents[i];
+    const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
+    					  labelExtent[2]-1,labelExtent[3]+1,
+    					  labelExtent[4]-1,labelExtent[5]+1};
+    int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
+			 nodeExtent[3]-nodeExtent[2]+1,
+			 nodeExtent[5]-nodeExtent[4]+1};
     
     vtkFloatArray *subcoords[3];
-    for (int n = 0; n < 3; n++) {
-      generateCoords(coords[n], subNodeRes[n], subone, r, ijk0[n],
-      		     ijk1[n], &subcoords[n]);
+
+    for (int j = 0; j < 3; ++j) {
+      subcoords[j] = vtkFloatArray::New();
+      subcoords[j]->SetNumberOfComponents(1);
+      subcoords[j]->SetNumberOfTuples(subNodeRes[j]);
+
+      int beg = 0;
+      if (nodeExtent[j*2] < 0) {
+	float x0 = coords[j]->GetComponent(0,0);
+	float x1 = coords[j]->GetComponent(1,0);
+	subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
+	beg = 1;
+      }
+      int end = subNodeRes[j];
+      if (nodeExtent[j*2] + end > nodeRes[j]-1) {
+	float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
+	float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
+	subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
+	end = subNodeRes[j]-1;	
+      }
+
+      for (int c = beg; c < end; ++c) {
+	float x0 = coords[j]->GetComponent(nodeExtent[j*2]+c,0);
+	float x1 = coords[j]->GetComponent(nodeExtent[j*2]+c+1,0);
+	subcoords[j]->SetComponent(c,0,(x1+x0)/2.0f);
+      }
     }
-    
+
+    const int r = std::pow(2,refinement);
+    if (refinement > 0) {
+
+      for (int j = 0; j < 3; ++j) {
+
+	int prev_snr = subNodeRes[j];
+	subNodeRes[j] = (subNodeRes[j]-1)*r;
+
+	vtkFloatArray *subcoord_tmp = vtkFloatArray::New();
+	subcoord_tmp->SetNumberOfComponents(1);
+	subcoord_tmp->SetNumberOfTuples(subNodeRes[j]);
+
+	for (int c = 0; c < prev_snr-1; ++c) {
+	  float dx = subcoords[j]->GetComponent(c+1,0)-subcoords[j]->GetComponent(c,0);
+	  dx /= r;
+	  float org = subcoords[j]->GetComponent(c,0) + dx/2.0f;
+	  for (int s = 0; s < r; ++s) {
+	    subcoord_tmp->SetComponent(c*r+s,0,org+dx*s);
+	  }	  
+	}
+      	subcoords[j]->Delete();
+      	subcoords[j] = subcoord_tmp;
+      }
+    }
+
     vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
     subGrid->SetDimensions(subcoords[0]->GetNumberOfTuples(),
 			   subcoords[1]->GetNumberOfTuples(),
-			   subcoords[2]->GetNumberOfTuples());
-
+			   subcoords[2]->GetNumberOfTuples());   
     subGrid->SetXCoordinates(subcoords[0]);
     subGrid->SetYCoordinates(subcoords[1]);
     subGrid->SetZCoordinates(subcoords[2]);
@@ -2882,44 +2302,34 @@ void generateBoundary(const std::vector<float4> &points,
 
     resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
 
-    int extent[6] = {0, subNodeRes[0]-1,
-		     0, subNodeRes[1]-1,
-		     0, subNodeRes[2]-1};
+    int subGridExtent[6] = {0, subNodeRes[0]-1,
+			    0, subNodeRes[1]-1,
+			    0, subNodeRes[2]-1};
 
-    int labelExtentGlobal[6] = {labelExtents[i][0]+localExtent[0],
-				labelExtents[i][1]+localExtent[0],
-				labelExtents[i][2]+localExtent[2],
-				labelExtents[i][3]+localExtent[2],
-				labelExtents[i][4]+localExtent[4],
-				labelExtents[i][5]+localExtent[4]};
+    int df;
+    df = labelExtent[0]+localExtent[0] - localExtentNoGhosts[0];
+    if (df < 0) subGridExtent[0] += r*std::min(-df,boundarySize);
 
-    if (localExtentNoGhosts[0] > labelExtentGlobal[0]) {
-      extent[0] += r*std::min(localExtentNoGhosts[0]-labelExtentGlobal[0],boundarySize);
-      if (ijk0[0] > 0) extent[0] += r;   
-    }
-    if (localExtentNoGhosts[2] > labelExtentGlobal[2]) {
-      extent[2] += r*std::min(localExtentNoGhosts[2]-labelExtentGlobal[2],boundarySize);
-      if (ijk0[1] > 0) extent[2] += r;
-    }
-    if (localExtentNoGhosts[4] > labelExtentGlobal[4]) {
-      extent[4] += r*std::min(localExtentNoGhosts[4]-labelExtentGlobal[4],boundarySize);
-      if (ijk0[2] > 0) extent[4] += r;
-    }
+    df = labelExtent[1]+localExtent[0] - localExtentNoGhosts[1]; 
+    if (df > 0) subGridExtent[1] -= r*std::min(df,boundarySize);
 
-    if (localExtentNoGhosts[1]-1 < labelExtentGlobal[1]) {
-      extent[1] -= r*std::min(labelExtentGlobal[1]-(localExtentNoGhosts[1]-1),boundarySize);
-      if (ijk1[0] < cellRes[0]-1) extent[1] -= r;
-    }
-    if (localExtentNoGhosts[3]-1 < labelExtentGlobal[3]) {
-      extent[3] -= r*std::min(labelExtentGlobal[3]-(localExtentNoGhosts[3]-1),boundarySize);
-      if (ijk1[1] < cellRes[1]-1) extent[3] -= r;
-    }
-    if (localExtentNoGhosts[5]-1 < labelExtentGlobal[5]) {
-      extent[5] -= r*std::min(labelExtentGlobal[5]-(localExtentNoGhosts[5]-1),boundarySize);
-      if (ijk1[2] < cellRes[2]-1) extent[5] -= r;
-    }
+    df = labelExtent[2]+localExtent[2] - localExtentNoGhosts[2];
+    if (df < 0) subGridExtent[2] += r*std::min(-df,boundarySize);
+
+    df = labelExtent[3]+localExtent[2] - localExtentNoGhosts[3];
+    if (df > 0) subGridExtent[3] -= r*std::min(df,boundarySize);
+
+    df = labelExtent[4]+localExtent[4] - localExtentNoGhosts[4];
+    if (df < 0) subGridExtent[4] += r*std::min(-df,boundarySize);
+
+    df = labelExtent[5]+localExtent[4] - localExtentNoGhosts[5]; 
+    if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
+
     int numVertsPrev = vertices.size();
-    extractSurface(field.data(), subNodeRes, subcoords, extent, isoValue, indices, vertices, vertexID);
+    int numIndicesPrev = indices.size();
+    extractSurface(field.data(), subNodeRes, subcoords, subGridExtent,
+		   isoValue, indices, vertices, vertexID);
+
     computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
     
     subGrid->Delete();
@@ -2927,8 +2337,402 @@ void generateBoundary(const std::vector<float4> &points,
     labelOffsets[i+1] = vertices.size();
   }
 }
-#endif
 
+void calcLabelExtents(const std::vector<float4> &points,
+		      const std::vector<int> &labelPoints,
+		      vtkRectilinearGrid *grid,
+		      std::array<int,6> &labelBounds)
+{
+  std::array<float,6> labelBoundsTmp;
+
+  // initialize bounds
+  labelBoundsTmp[0] = labelBoundsTmp[2] = labelBoundsTmp[4] = std::numeric_limits<float>::max();
+  labelBoundsTmp[1] = labelBoundsTmp[3] = labelBoundsTmp[5] = -1.0f*std::numeric_limits<float>::max();
+
+  // compute physical bounds of each label
+  const int numPoints = labelPoints.size();
+  for (int j = 0; j < numPoints; ++j) {
+
+    int i = labelPoints[j];
+    double p[3] = {points[i].x, points[i].y, points[i].z};
+    // points->GetPoint(i, p);
+    if (labelBoundsTmp[0] > p[0]) labelBoundsTmp[0] = p[0];
+    if (labelBoundsTmp[1] < p[0]) labelBoundsTmp[1] = p[0];
+    if (labelBoundsTmp[2] > p[1]) labelBoundsTmp[2] = p[1];
+    if (labelBoundsTmp[3] < p[1]) labelBoundsTmp[3] = p[1];
+    if (labelBoundsTmp[4] > p[2]) labelBoundsTmp[4] = p[2];
+    if (labelBoundsTmp[5] < p[2]) labelBoundsTmp[5] = p[2];	
+  }
+
+  double x0[3] = {labelBoundsTmp[0], labelBoundsTmp[2], labelBoundsTmp[4]};
+  double x1[3] = {labelBoundsTmp[1], labelBoundsTmp[3], labelBoundsTmp[5]};
+  int ijk0[3];
+  int ijk1[3];
+  double pcoords[3];
+  
+  grid->ComputeStructuredCoordinates(x0, ijk0, pcoords);
+  grid->ComputeStructuredCoordinates(x1, ijk1, pcoords);
+
+  labelBounds = {ijk0[0],ijk1[0], ijk0[1],ijk1[1], ijk0[2],ijk1[2]};
+}
+
+void generateBoundary(const std::vector<float4> &points,
+		      const std::vector<float> &labels,		      
+		      vtkRectilinearGrid *grid,
+		      const int refinement,
+		      const int localExtentNoGhosts[6],
+		      const int localExtent[6],
+		      int &vertexID,
+		      std::vector<float4> &vertices,
+		      std::vector<float4> &normals,
+		      std::vector<int> &indices,
+		      std::vector<std::vector<int>> &prevLabelPoints)
+{
+  vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
+			     grid->GetYCoordinates(), 
+			     grid->GetZCoordinates()};
+  int nodeRes[3];
+  grid->GetDimensions(nodeRes);
+  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+
+  const int numPoints = points.size();
+  const int boundarySize = 2; // for correct normal computation
+  double range[2] = {-1, *std::max_element(labels.begin(), labels.end())};
+
+  const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
+  const int labelsRange[2] = {range[0], range[1]};
+
+  // stores indices of all points with a given label
+  std::vector<std::vector<int>> labelPoints(numLabels);
+  for (int i = 0; i < numLabels; ++i) {
+    labelPoints[i].clear();
+  }
+  calcLabelPoints(labels, labelsRange, labelPoints);
+
+  for (int i = 0; i < prevLabelPoints.size(); ++i) {
+
+    std::array<int,6> labelExtent;
+    calcLabelExtents(points, prevLabelPoints[i], grid, labelExtent);
+
+    // std::cout << "Extent[" << i << "] : " << std::endl;
+    // std::cout << labelExtent[0] << " - " << labelExtent[1] << std::endl
+    // 	      << labelExtent[2] << " - " << labelExtent[3] << std::endl
+    // 	      << labelExtent[4] << " - " << labelExtent[5] << std::endl;
+
+    const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
+    					  labelExtent[2]-1,labelExtent[3]+1,
+    					  labelExtent[4]-1,labelExtent[5]+1};
+    int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
+			 nodeExtent[3]-nodeExtent[2]+1,
+			 nodeExtent[5]-nodeExtent[4]+1};
+    
+    vtkFloatArray *subcoords[3];
+
+    for (int j = 0; j < 3; ++j) {
+      subcoords[j] = vtkFloatArray::New();
+      subcoords[j]->SetNumberOfComponents(1);
+      subcoords[j]->SetNumberOfTuples(subNodeRes[j]);
+
+      int beg = 0;
+      if (nodeExtent[j*2] < 0) {
+	float x0 = coords[j]->GetComponent(0,0);
+	float x1 = coords[j]->GetComponent(1,0);
+	subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
+	beg = 1;
+      }
+      int end = subNodeRes[j];
+      if (nodeExtent[j*2] + end > nodeRes[j]-1) {
+	float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
+	float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
+	subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
+	end = subNodeRes[j]-1;	
+      }
+
+      for (int c = beg; c < end; ++c) {
+	float x0 = coords[j]->GetComponent(nodeExtent[j*2]+c,0);
+	float x1 = coords[j]->GetComponent(nodeExtent[j*2]+c+1,0);
+	subcoords[j]->SetComponent(c,0,(x1+x0)/2.0f);
+      }
+    }
+
+    const int r = std::pow(2,refinement);
+    if (refinement > 0) {
+
+      for (int j = 0; j < 3; ++j) {
+
+	int prev_snr = subNodeRes[j];
+	subNodeRes[j] = (subNodeRes[j]-1)*r;
+
+	vtkFloatArray *subcoord_tmp = vtkFloatArray::New();
+	subcoord_tmp->SetNumberOfComponents(1);
+	subcoord_tmp->SetNumberOfTuples(subNodeRes[j]);
+
+	for (int c = 0; c < prev_snr-1; ++c) {
+	  float dx = subcoords[j]->GetComponent(c+1,0)-subcoords[j]->GetComponent(c,0);
+	  dx /= r;
+	  float org = subcoords[j]->GetComponent(c,0) + dx/2.0f;
+	  for (int s = 0; s < r; ++s) {
+	    subcoord_tmp->SetComponent(c*r+s,0,org+dx*s);
+	  }	  
+	}
+      	subcoords[j]->Delete();
+      	subcoords[j] = subcoord_tmp;
+      }
+    }
+
+    vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
+    subGrid->SetDimensions(subcoords[0]->GetNumberOfTuples(),
+			   subcoords[1]->GetNumberOfTuples(),
+			   subcoords[2]->GetNumberOfTuples());   
+    subGrid->SetXCoordinates(subcoords[0]);
+    subGrid->SetYCoordinates(subcoords[1]);
+    subGrid->SetZCoordinates(subcoords[2]);
+
+    const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
+    std::vector<float> field(numElements, -1.0f);
+
+    resamplePointsOnGrid2(prevLabelPoints[i], labels, points, subGrid, subNodeRes, field);    
+
+    int subGridExtent[6] = {0, subNodeRes[0]-1,
+			    0, subNodeRes[1]-1,
+			    0, subNodeRes[2]-1};
+
+    int df;
+    df = labelExtent[0]+localExtent[0] - localExtentNoGhosts[0];
+    if (df < 0) subGridExtent[0] += r*std::min(-df,boundarySize);
+
+    df = labelExtent[1]+localExtent[0] - localExtentNoGhosts[1]; 
+    if (df > 0) subGridExtent[1] -= r*std::min(df,boundarySize);
+
+    df = labelExtent[2]+localExtent[2] - localExtentNoGhosts[2];
+    if (df < 0) subGridExtent[2] += r*std::min(-df,boundarySize);
+
+    df = labelExtent[3]+localExtent[2] - localExtentNoGhosts[3];
+    if (df > 0) subGridExtent[3] -= r*std::min(df,boundarySize);
+
+    df = labelExtent[4]+localExtent[4] - localExtentNoGhosts[4];
+    if (df < 0) subGridExtent[4] += r*std::min(-df,boundarySize);
+
+    df = labelExtent[5]+localExtent[4] - localExtentNoGhosts[5]; 
+    if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
+
+    const float isoValue = 0.75f;
+    int numVertsPrev = vertices.size();
+    int numIndicesPrev = indices.size();
+    extractSurface2(field.data(), subNodeRes, subcoords, subGridExtent,
+		   isoValue, indices, vertices, vertexID);
+
+    computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
+    
+    subGrid->Delete();
+  }
+
+  prevLabelPoints = labelPoints;
+}
+
+// void generateBoundary(const std::vector<float4> &points,
+// 		      const std::vector<float> &labels,		      
+// 		      vtkRectilinearGrid *grid,
+// 		      const int refinement,
+// 		      const int localExtentNoGhosts[6],
+// 		      const int localExtent[6],
+// 		      int &vertexID,
+// 		      std::vector<float4> &vertices,
+// 		      std::vector<float4> &normals,
+// 		      std::vector<int> &indices,
+// 		      std::vector<std::vector<int>> &prevLabelPoints)
+// {
+//   const float isoValue = 0.75f;
+//   vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
+// 			     grid->GetYCoordinates(), 
+// 			     grid->GetZCoordinates()};
+//   int nodeRes[3];
+//   grid->GetDimensions(nodeRes);
+//   int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
+
+//   const int numPoints = points.size();
+//   const int boundarySize = 2; // for correct normal computation
+//   double range[2] = {-1, *std::max_element(labels.begin(), labels.end())};
+
+//   const int numLabels = std::ceil(range[1] - range[0] + 1.0f);
+//   const int labelsRange[2] = {range[0], range[1]};
+
+//   // stores indices of all points with a given label
+//   std::vector<std::vector<int>> labelPoints(numLabels);
+//   for (int i = 0; i < numLabels; ++i) {
+//     labelPoints[i].clear();
+//   }
+//   calcLabelPoints(labels, labelsRange, labelPoints);
+
+
+//   /*
+//     prev    |-------|------|
+//     curr    |--|------|----|
+//    */
+//   // // new ---------------------------------------------------------------------
+//   // std::vector<bool> updateLabels(numLabels, false);
+
+//   // if (!prevLabelPoints.empty()) {
+
+//   //   int prev_beg = 0;
+//   //   int prev_end = prevLabelPoints[0].size();
+//   //   int curr_beg = 0;
+//   //   int curr_end = labelPoints[0].size();
+//   //   int curr_i = 0;
+//   //   int prev_i = 0;
+
+//   //   while (curr_i < numLabels) {
+//   //     if (curr_end < prev_end) {
+//   // 	while (curr_end < prev_end) {
+	   
+//   // 	  updateLabels[curr_i] = true;
+
+//   // 	  curr_i++; // 1
+//   // 	  curr_end += labelPoints[curr_i].size();
+//   // 	}
+//   // 	updateLabels[curr_i] = true; // 1
+//   //     }
+//   //     if (curr_end == prev_end) {
+
+//   // 	prev_beg = prev_end;
+//   // 	curr_beg = curr_end;	  
+
+//   // 	prev_i++;
+//   // 	prev_end += prevLabelPoints[prev_i].size();
+//   // 	curr_i++;
+//   // 	curr_end += labelPoints[curr_i].size();
+//   //     }
+//   //     if (curr_end > prev_end) {
+//   // 	while (curr_end > prev_end) {
+//   // 	  prev_i++; // 1
+//   // 	  prev_end += prevLabelPoints[prev_i].size(); // 1
+//   // 	}
+//   //     }
+//   //   }
+//   // }
+//   //~new ---------------------------------------------------------------------
+  
+//   // stores the index bounds of particles with a given label
+//   // the bounds are given in coordinates relative to the local extent
+//   std::vector<std::array<int,6>> labelExtents(numLabels);
+//   calcLabelExtents(points, labels, labelsRange, grid, labelExtents);
+
+//   for (int i = 0; i < numLabels; ++i) {
+
+//     // if (!updateLabels[i]) {
+//     //   continue;
+//     // }
+
+//     const std::array<int,6> &labelExtent = labelExtents[i];
+//     const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
+//     					  labelExtent[2]-1,labelExtent[3]+1,
+//     					  labelExtent[4]-1,labelExtent[5]+1};
+//     int subNodeRes[3] = {nodeExtent[1]-nodeExtent[0]+1,
+// 			 nodeExtent[3]-nodeExtent[2]+1,
+// 			 nodeExtent[5]-nodeExtent[4]+1};
+    
+//     vtkFloatArray *subcoords[3];
+
+//     for (int j = 0; j < 3; ++j) {
+//       subcoords[j] = vtkFloatArray::New();
+//       subcoords[j]->SetNumberOfComponents(1);
+//       subcoords[j]->SetNumberOfTuples(subNodeRes[j]);
+
+//       int beg = 0;
+//       if (nodeExtent[j*2] < 0) {
+// 	float x0 = coords[j]->GetComponent(0,0);
+// 	float x1 = coords[j]->GetComponent(1,0);
+// 	subcoords[j]->SetComponent(0,0,x0-(x1-x0)/2.0f);
+// 	beg = 1;
+//       }
+//       int end = subNodeRes[j];
+//       if (nodeExtent[j*2] + end > nodeRes[j]-1) {
+// 	float x0 = coords[j]->GetComponent(nodeRes[j]-2,0);
+// 	float x1 = coords[j]->GetComponent(nodeRes[j]-1,0);
+// 	subcoords[j]->SetComponent(subNodeRes[j]-1,0,x1+(x1-x0)/2.0f);
+// 	end = subNodeRes[j]-1;	
+//       }
+
+//       for (int c = beg; c < end; ++c) {
+// 	float x0 = coords[j]->GetComponent(nodeExtent[j*2]+c,0);
+// 	float x1 = coords[j]->GetComponent(nodeExtent[j*2]+c+1,0);
+// 	subcoords[j]->SetComponent(c,0,(x1+x0)/2.0f);
+//       }
+//     }
+
+//     const int r = std::pow(2,refinement);
+//     if (refinement > 0) {
+
+//       for (int j = 0; j < 3; ++j) {
+
+// 	int prev_snr = subNodeRes[j];
+// 	subNodeRes[j] = (subNodeRes[j]-1)*r;
+
+// 	vtkFloatArray *subcoord_tmp = vtkFloatArray::New();
+// 	subcoord_tmp->SetNumberOfComponents(1);
+// 	subcoord_tmp->SetNumberOfTuples(subNodeRes[j]);
+
+// 	for (int c = 0; c < prev_snr-1; ++c) {
+// 	  float dx = subcoords[j]->GetComponent(c+1,0)-subcoords[j]->GetComponent(c,0);
+// 	  dx /= r;
+// 	  float org = subcoords[j]->GetComponent(c,0) + dx/2.0f;
+// 	  for (int s = 0; s < r; ++s) {
+// 	    subcoord_tmp->SetComponent(c*r+s,0,org+dx*s);
+// 	  }	  
+// 	}
+//       	subcoords[j]->Delete();
+//       	subcoords[j] = subcoord_tmp;
+//       }
+//     }
+
+//     vtkRectilinearGrid *subGrid = vtkRectilinearGrid::New();    
+//     subGrid->SetDimensions(subcoords[0]->GetNumberOfTuples(),
+// 			   subcoords[1]->GetNumberOfTuples(),
+// 			   subcoords[2]->GetNumberOfTuples());   
+//     subGrid->SetXCoordinates(subcoords[0]);
+//     subGrid->SetYCoordinates(subcoords[1]);
+//     subGrid->SetZCoordinates(subcoords[2]);
+
+//     const int numElements = subNodeRes[0]*subNodeRes[1]*subNodeRes[2];
+//     std::vector<float> field(numElements, 0.0f);
+
+//     resamplePointsOnGrid(labelPoints[i], points, subGrid, subNodeRes, field);    
+
+//     int subGridExtent[6] = {0, subNodeRes[0]-1,
+// 			    0, subNodeRes[1]-1,
+// 			    0, subNodeRes[2]-1};
+
+//     int df;
+//     df = labelExtent[0]+localExtent[0] - localExtentNoGhosts[0];
+//     if (df < 0) subGridExtent[0] += r*std::min(-df,boundarySize);
+
+//     df = labelExtent[1]+localExtent[0] - localExtentNoGhosts[1]; 
+//     if (df > 0) subGridExtent[1] -= r*std::min(df,boundarySize);
+
+//     df = labelExtent[2]+localExtent[2] - localExtentNoGhosts[2];
+//     if (df < 0) subGridExtent[2] += r*std::min(-df,boundarySize);
+
+//     df = labelExtent[3]+localExtent[2] - localExtentNoGhosts[3];
+//     if (df > 0) subGridExtent[3] -= r*std::min(df,boundarySize);
+
+//     df = labelExtent[4]+localExtent[4] - localExtentNoGhosts[4];
+//     if (df < 0) subGridExtent[4] += r*std::min(-df,boundarySize);
+
+//     df = labelExtent[5]+localExtent[4] - localExtentNoGhosts[5]; 
+//     if (df > 0) subGridExtent[5] -= r*std::min(df,boundarySize);
+
+//     int numVertsPrev = vertices.size();
+//     int numIndicesPrev = indices.size();
+//     extractSurface(field.data(), subNodeRes, subcoords, subGridExtent,
+// 		   isoValue, indices, vertices, vertexID);
+
+//     computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
+    
+//     subGrid->Delete();
+//   }
+
+//   prevLabelPoints = labelPoints;
+// }
 
 void writeData(vtkPolyData *data, const int blockId,
 	       const int processId, const std::string path)

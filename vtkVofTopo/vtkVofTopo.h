@@ -160,13 +160,10 @@ private:
   // Temporal boundaries
   vtkPolyData *Boundaries;
   // Intermediate boundaries
-  std::vector<std::vector<int>> IntermBoundaryLabelOffsets;
   std::vector<std::vector<int>> IntermBoundaryIndices;
   std::vector<std::vector<float4>> IntermBoundaryVertices;
   std::vector<std::vector<float4>> IntermBoundaryNormals;
   std::vector<std::vector<int>> PrevLabelPoints;
-  /* std::vector<float> PreviousParticleLabels; */
-  /* std::vector<int> PreviousParticleLabelOffsets; */
   
   int VertexID;
   

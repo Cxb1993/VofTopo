@@ -127,22 +127,11 @@ void generateBoundary(const std::vector<float4> &points,
 		      const int localExtentNoGhosts[6],
 		      const int localExtent[6],
 		      int &vertexID,
-		      std::vector<int> &labelOffsets,
 		      std::vector<float4> &vertices,
 		      std::vector<float4> &normals,
 		      std::vector<int> &indices,
 		      std::vector<std::vector<int>> &prevLabelPoints);
 
-/* void generateBoundary(std::vector<float4>::iterator &points_beg, */
-/* 		      std::vector<float4>::iterator &points_end, */
-/* 		      vtkRectilinearGrid *grid, */
-/* 		      const int refinement, */
-/* 		      const int localExtentNoGhosts[6], */
-/* 		      const int localExtent[6], */
-/* 		      int &vertexID, */
-/* 		      std::vector<float4> &vertices, */
-/* 		      std::vector<float4> &normals, */
-/* 		      std::vector<int> &indices); */
 
 template<typename T> 
 void sendData(const std::vector<std::vector<T> > &dataToSend, std::vector<T> &dataToRecv,

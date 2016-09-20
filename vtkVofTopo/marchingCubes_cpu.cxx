@@ -1341,3 +1341,158 @@ void extractSurface(const float* volume,
   }
   mergeTriangles(verticesTmp.data(), verticesTmp.size(), indices, vertices, vertexID);
 }
+
+void extractSurface2(const float* volume,
+		     const int*res,
+		     vtkFloatArray *coords[3],
+		     const int extent[6],
+		     const float isoValue,		    	    
+		     std::vector<int>& indices,
+		     std::vector<float4>& vertices,
+		     int &vertexID)
+{
+  const int edgeVertices[12][2] = {0,1,
+				   1,2,
+				   2,3,
+				   3,0,
+				   4,5,
+				   5,6,
+				   6,7,
+				   7,4,
+				   0,4,
+				   1,5,
+				   2,6,
+				   3,7};
+  
+  std::vector<float4> verticesTmp;
+  verticesTmp.resize(0);
+
+  float field[8];
+  float3 v[8];
+  
+  for (int k = extent[4]+1; k <= extent[5]; k++) {
+    int km = k-1;
+
+    for (int j = extent[2]+1; j <= extent[3]; j++) {
+      int jm = j-1;
+      
+      for (int i = extent[0]+1; i <= extent[1]; i++) {
+	int im = i-1;
+	
+	int ids[8] = {im + jm*res[0] + km*res[0]*res[1],
+		      i  + jm*res[0] + km*res[0]*res[1],
+		      i  + j*res[0]  + km*res[0]*res[1],
+		      im + j*res[0]  + km*res[0]*res[1],
+		      im + jm*res[0] + k*res[0]*res[1],
+		      i  + jm*res[0] + k*res[0]*res[1],
+		      i  + j*res[0]  + k*res[0]*res[1],
+		      im + j*res[0]  + k*res[0]*res[1]};
+
+	float vs[6] = {coords[0]->GetComponent(im,0),
+		       coords[0]->GetComponent(i ,0),
+		       coords[1]->GetComponent(jm,0),
+		       coords[1]->GetComponent(j ,0),
+		       coords[2]->GetComponent(km,0),
+		       coords[2]->GetComponent(k ,0)};
+	
+	v[0] = make_float3(vs[0], vs[2], vs[4]);	
+	v[1] = make_float3(vs[1], vs[2], vs[4]);	
+	v[2] = make_float3(vs[1], vs[3], vs[4]);
+	v[3] = make_float3(vs[0], vs[3], vs[4]);
+	v[4] = make_float3(vs[0], vs[2], vs[5]);
+	v[5] = make_float3(vs[1], vs[2], vs[5]);
+	v[6] = make_float3(vs[1], vs[3], vs[5]);
+	v[7] = make_float3(vs[0], vs[3], vs[5]);
+
+	field[0] = 0.0f;
+	field[1] = 0.0f;
+	field[2] = 0.0f;
+	field[3] = 0.0f;
+	field[4] = 0.0f;
+	field[5] = 0.0f;
+	field[6] = 0.0f;
+	field[7] = 0.0f;
+
+	float maxVal = -1;
+	for (int node = 0; node < 8; ++node) {	  
+	  field[node] = volume[ids[node]];
+	  if (field[node] > maxVal) {
+	    maxVal = field[node];
+	  }
+	}
+
+	// calculate flag indicating if each vertex is inside or outside isosurface
+	unsigned int cubeIndex = uint(field[0] < maxVal);
+	cubeIndex += uint(field[1] < maxVal)*2;
+	cubeIndex += uint(field[2] < maxVal)*4;
+	cubeIndex += uint(field[3] < maxVal)*8;
+	cubeIndex += uint(field[4] < maxVal)*16;
+	cubeIndex += uint(field[5] < maxVal)*32;
+	cubeIndex += uint(field[6] < maxVal)*64;
+	cubeIndex += uint(field[7] < maxVal)*128;
+
+	int numVerts = numVertsTable[cubeIndex];
+
+	if (numVerts > 0) {
+
+	  int2 edgeNodes[12] = {make_int2(0, 1),make_int2(1, 2),
+	  			make_int2(2, 3),make_int2(3, 0),
+	  			make_int2(4, 5),make_int2(5, 6),
+	  			make_int2(6, 7),make_int2(7, 4),
+	  			make_int2(0, 4),make_int2(1, 5),
+	  			make_int2(2, 6),make_int2(3, 7)};
+
+	  float3 vertlist[12];
+
+	  vertlist[ 0] = vertexInterp(0.5f, v[0], v[1], 0.0f, 1.0f);
+	  vertlist[ 1] = vertexInterp(0.5f, v[1], v[2], 0.0f, 1.0f);
+	  vertlist[ 2] = vertexInterp(0.5f, v[2], v[3], 0.0f, 1.0f);
+	  vertlist[ 3] = vertexInterp(0.5f, v[3], v[0], 0.0f, 1.0f);
+	  vertlist[ 4] = vertexInterp(0.5f, v[4], v[5], 0.0f, 1.0f);
+	  vertlist[ 5] = vertexInterp(0.5f, v[5], v[6], 0.0f, 1.0f);
+	  vertlist[ 6] = vertexInterp(0.5f, v[6], v[7], 0.0f, 1.0f);
+	  vertlist[ 7] = vertexInterp(0.5f, v[7], v[4], 0.0f, 1.0f);
+	  vertlist[ 8] = vertexInterp(0.5f, v[0], v[4], 0.0f, 1.0f);
+	  vertlist[ 9] = vertexInterp(0.5f, v[1], v[5], 0.0f, 1.0f);
+	  vertlist[10] = vertexInterp(0.5f, v[2], v[6], 0.0f, 1.0f);
+	  vertlist[11] = vertexInterp(0.5f, v[3], v[7], 0.0f, 1.0f);
+
+	  for(int iv = 0; iv < numVerts; iv += 3) {
+
+	    uint edges[3] = {triTable[cubeIndex][iv+0],
+			     triTable[cubeIndex][iv+1],
+			     triTable[cubeIndex][iv+2]};
+
+	    bool invalidTriangle = false;
+	    for (int jv = 0; jv < 3; jv++) {
+
+	      int v0 = edgeVertices[edges[jv]][0];
+	      int v1 = edgeVertices[edges[jv]][1];
+	      
+	      if (field[v0] == -1.0f ||
+		  field[v1]== -1.0f) {
+		invalidTriangle = true;
+		break;
+	      }
+	    }
+
+	    if (invalidTriangle) {
+	      continue;
+	    }
+
+	    for (int jv = 0; jv < 3; jv++) {
+
+	      uint edge = triTable[cubeIndex][iv+jv];
+	      float3 vert = vertlist[edge];
+
+	      int idx = field[edgeNodes[edge].x] > field[edgeNodes[edge].y] ? 
+						   ids[edgeNodes[edge].x] : ids[edgeNodes[edge].y];
+	      verticesTmp.push_back(make_float4(vert, idx));
+	    }
+	  }
+	}
+      }
+    }
+  }
+  mergeTriangles(verticesTmp.data(), verticesTmp.size(), indices, vertices, vertexID);
+}

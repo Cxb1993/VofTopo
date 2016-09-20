@@ -39,7 +39,7 @@ vtkStandardNewMacro(vtkVofTopo);
 
 #define MEASURE_TIME
 
-#ifdef MEASURE_TIME
+// #ifdef MEASURE_TIME
 
 #include <chrono>
 
@@ -117,7 +117,7 @@ void writeTimings(std::string filename, int t0, int t1)
   file.close();
 }
 
-#endif
+// #endif
 
 //----------------------------------------------------------------------------
 vtkVofTopo::vtkVofTopo() :
@@ -152,11 +152,9 @@ vtkVofTopo::vtkVofTopo() :
   IntermParticleIds.clear();
   IntermParticleProcs.clear();
 
-  IntermBoundaryLabelOffsets.clear();
   IntermBoundaryIndices.clear();
   IntermBoundaryVertices.clear();
   IntermBoundaryNormals.clear();
-  // PreviousParticleLabels.clear();
   PrevLabelPoints.clear();
 
   g_emf0 = EMF0;
@@ -451,8 +449,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  IntermParticleProcs.push_back(ParticleProcs);
 	}
       }
+      
       if (StoreIntermBoundaries) {
-
+	auto cl0 = Clock::now();
 	// extract components and store them in the rectilinear grid
       	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       	ExtractComponents(VofGrid[1], components);
@@ -500,58 +499,23 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	  }	  
 	}
 
-	std::vector<int> labelOffsets;
 	std::vector<int> indices(0);
 	std::vector<float4> vertices(0);
 	std::vector<float4> normals(0);
 
-	// {
-	//   // store the number of particles per label - this will be compared
-	//   // with the previous step
-	//   std::vector<int> particleLabelOffsets(1,0);
-	//   int prevLabel = labels_tmp[0];
-	//   int offset = 0;
-	//   for (int label : labels_tmp) {
-	//     if (label != prevLabel) {
-	//       particleLabelOffsets.resize(particleLabelOffsets.size()+1);
-	//       particleLabelOffsets.back() = offset;
-	//     }
-	//     offset += 1;
-	//   }
-	//   particleLabelOffsets.push_back(offset);
-
-	//   // now check if particles still belong to the same component
-	//   // (possibly with different label)
-	//   int numLabels = particleLabelOffsets.size();
-	//   int prevIdx = 1;
-	//   for (int i = 1; i < numLabels; ++i) {
-	  
-	//     if (particleLabelOffsets[i] < PreviousParticleLabelOffsets[prevIdx]) {
-	      
-	//       std::vector<float4>::iterator pit_beg = points_tmp.begin()+particleLabelOffsets[i-1];
-	//       std::vector<float4>::iterator pit_end = points_tmp.begin()+particleLabelOffsets[i];
-	//       generateBoundary(pit_beg, pit_end,
-	// 		       VofGrid[0], Refinement,
-	// 		       LocalExtentNoGhosts, LocalExtent, VertexID,
-	// 		       vertices, normals, indices);
-	//     }
-	//   }
-		
-	//   // at the end, store the current particle labels in memory for th
-	//   // next comparison
-	//   PreviousParticleLabels = labels_tmp;
-	//   PreviousParticleLabelOffsets = particleLabelOffsets;
-	// }
-	
  	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
       			 LocalExtentNoGhosts, LocalExtent, VertexID,
-      			 labelOffsets, vertices, normals, indices,
+      			 vertices, normals, indices,
 			 PrevLabelPoints);	
 
-     	IntermBoundaryLabelOffsets.push_back(labelOffsets);
       	IntermBoundaryVertices.push_back(vertices);
       	IntermBoundaryNormals.push_back(normals);
       	IntermBoundaryIndices.push_back(indices);
+
+	auto cl1 = Clock::now();
+
+	Milliseconds dur = std::chrono::duration_cast<Milliseconds>(cl1-cl0);
+	std::cout << "dur = " << dur.count() << std::endl;
       }
 
       // Timing one step end
@@ -1834,11 +1798,6 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
   intTimeStamps->SetNumberOfComponents(1);
   intTimeStamps->SetNumberOfTuples(numPoints);
 
-  vtkFloatArray *intLabels = vtkFloatArray::New();
-  intLabels->SetName("Labels");
-  intLabels->SetNumberOfComponents(1);
-  intLabels->SetNumberOfTuples(numPoints);
-	  
   int idx = 0;
   for (int i = 0; i < IntermBoundaryVertices.size(); ++i) {
     for (int j = 0; j < IntermBoundaryVertices[i].size(); ++j) {
@@ -1855,21 +1814,7 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
 	      
       intTimeStamps->SetValue(idx, i);
 
-      float label = IntermBoundaryLabelOffsets[i][j];
-      intLabels->SetValue(idx, label);
       ++idx;
-    }
-  }
-
-  for (int i = 0; i < IntermBoundaryLabelOffsets.size(); ++i) {
-    for (int j = 0; j < IntermBoundaryLabelOffsets[i].size()-1; ++j) {
-      int labelId = 0;
-      for (int k = IntermBoundaryLabelOffsets[i][j]; 
-	   k < IntermBoundaryLabelOffsets[i][j+1]; ++k) {
-
-	intLabels->SetValue(j, labelId);
-	++labelId;
-      }
     }
   }
 
@@ -1903,10 +1848,8 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
 
   intermBoundaries->SetPoints(points);
   intermBoundaries->GetPointData()->AddArray(intTimeStamps);
-  intermBoundaries->GetPointData()->AddArray(intLabels);
   intermBoundaries->SetPolys(outputTriangles);
   intermBoundaries->GetPointData()->SetNormals(pointNormals);
-
 }
 
 void vtkVofTopo::CreateScalarField(vtkRectilinearGrid *grid,

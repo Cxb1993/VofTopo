@@ -98,7 +98,7 @@
 	  label="Store Intermediate Boundaries"
           command="SetStoreIntermBoundaries"
           number_of_elements="1"
-          default_values="0">
+          default_values="1">
 	<BooleanDomain name="bool"/>
       </IntVectorProperty>
       
@@ -185,15 +185,6 @@
 	<Documentation>
 	  Set how often intermediate particle positions should be stored (every Interm-th simulation step)
 	</Documentation>
-      </IntVectorProperty>
-
-      <IntVectorProperty
-	  name="InterpolateFields"
-	  label="InterpolateFields"
-	  command="SetInterpolateFields"
-	  number_of_elements="1"
-	  default_values="0">
-	<BooleanDomain name="bool"/>
       </IntVectorProperty>
 
       <Hints>

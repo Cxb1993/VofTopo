@@ -62,8 +62,6 @@ public:
   vtkGetMacro(SeedByPLIC, int);
   vtkSetMacro(SeedByPLIC, int);  
 
-  vtkGetMacro(InterpolateFields, int);
-  vtkSetMacro(InterpolateFields, int);  
 //~GUI -------------------------------
 
 protected:
@@ -90,8 +88,6 @@ private:
   void InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds);
   void AdvectParticles(vtkRectilinearGrid *vof[2],
 		       vtkRectilinearGrid *velocity[2]);
-  void AdvectParticlesInt(vtkRectilinearGrid *vof[2],
-			  vtkRectilinearGrid *velocity[2]);
   void ExchangeParticles();
   void ExtractComponents(vtkRectilinearGrid *vof,
 			 vtkRectilinearGrid *components);
@@ -110,12 +106,6 @@ private:
 			  vtkPolyData *seeds);
 
   void ExchangeBoundarySeedPoints(vtkPolyData *boundarySeeds, vtkPolyData *seeds);
-
-  void InterpolateField(vtkRectilinearGrid *vof[2],
-			vtkRectilinearGrid *velocity[2],
-			vtkRectilinearGrid *intVof,
-			vtkRectilinearGrid *intVelocity,
-			const float a);
 
   void GenerateIntParticles(vtkPolyData *intParticles);
   void GenerateIntBoundaries(vtkPolyData *intermBoundaries);
@@ -174,6 +164,10 @@ private:
   std::vector<std::vector<int>> IntermBoundaryIndices;
   std::vector<std::vector<float4>> IntermBoundaryVertices;
   std::vector<std::vector<float4>> IntermBoundaryNormals;
+  std::vector<std::vector<int>> PrevLabelPoints;
+  /* std::vector<float> PreviousParticleLabels; */
+  /* std::vector<int> PreviousParticleLabelOffsets; */
+  
   int VertexID;
   
   // Caching  
@@ -196,7 +190,6 @@ private:
   double EMF1;
 
   int SeedByPLIC;
-  int InterpolateFields;
 
   int ParticleStoreFreq;
 };

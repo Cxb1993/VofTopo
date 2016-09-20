@@ -34,7 +34,7 @@ void computeGradient(vtkDataArray *data,
 
 float neighborF(vtkDataArray *data, int i, int j, int k, const int cellRes[3]);
 
-  int findClosestTimeStep(double requestedTimeValue,
+int findClosestTimeStep(double requestedTimeValue,
 			const std::vector<double>& timeSteps);
 
 
@@ -81,13 +81,6 @@ void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     int plicCorrection, int vofCorrection,
 		     int RK4NumSteps);
 
-void advectParticlesInt(vtkRectilinearGrid *inputVof[3],
-			vtkRectilinearGrid *inputVelocity[3],
-			std::vector<float4> &particles,
-			std::vector<float> &uncertainty,
-			const float deltaT,
-			int plicCorrection, int vofCorrection);
-
 /* void advectParticles(vtkRectilinearGrid *inputVof, */
 /* 		     vtkRectilinearGrid *inputVelocity, */
 /* 		     std::vector<float4> &particles, */
@@ -126,7 +119,31 @@ void generateBoundary(const std::vector<float4> &points,
 		      std::vector<float4> &vertices,
 		      std::vector<float4> &normals,
 		      std::vector<int> &indices);
-  
+
+void generateBoundary(const std::vector<float4> &points,
+		      const std::vector<float> &labels,
+		      vtkRectilinearGrid *grid,
+		      const int refinement,
+		      const int localExtentNoGhosts[6],
+		      const int localExtent[6],
+		      int &vertexID,
+		      std::vector<int> &labelOffsets,
+		      std::vector<float4> &vertices,
+		      std::vector<float4> &normals,
+		      std::vector<int> &indices,
+		      std::vector<std::vector<int>> &prevLabelPoints);
+
+/* void generateBoundary(std::vector<float4>::iterator &points_beg, */
+/* 		      std::vector<float4>::iterator &points_end, */
+/* 		      vtkRectilinearGrid *grid, */
+/* 		      const int refinement, */
+/* 		      const int localExtentNoGhosts[6], */
+/* 		      const int localExtent[6], */
+/* 		      int &vertexID, */
+/* 		      std::vector<float4> &vertices, */
+/* 		      std::vector<float4> &normals, */
+/* 		      std::vector<int> &indices); */
+
 template<typename T> 
 void sendData(const std::vector<std::vector<T> > &dataToSend, std::vector<T> &dataToRecv,
 	      const int numProcesses, vtkMPIController *controller)

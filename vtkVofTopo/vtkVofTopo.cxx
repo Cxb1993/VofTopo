@@ -37,9 +37,9 @@
 
 vtkStandardNewMacro(vtkVofTopo);
 
-#define MEASURE_TIME 0
+#define MEASURE_TIME
 
-#if MEASURE_TIME
+#ifdef MEASURE_TIME
 
 #include <chrono>
 
@@ -136,8 +136,8 @@ vtkVofTopo::vtkVofTopo() :
   StoreIntermParticles(0),
   VertexID(0),
   SeedByPLIC(1),
-  InterpolateFields(0),
-  ParticleStoreFreq(8)
+  ParticleStoreFreq(8),
+  StoreIntermBoundaries(0)
 {
   std::cout << "voftopo instance created" << std::endl;
   this->SetNumberOfInputPorts(3);
@@ -156,6 +156,8 @@ vtkVofTopo::vtkVofTopo() :
   IntermBoundaryIndices.clear();
   IntermBoundaryVertices.clear();
   IntermBoundaryNormals.clear();
+  // PreviousParticleLabels.clear();
+  PrevLabelPoints.clear();
 
   g_emf0 = EMF0;
   g_emf1 = EMF1;
@@ -317,7 +319,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
   if (TimestepT0 == TimestepT1) {
     if (Controller->GetCommunicator() != 0) {
 
-#if MEASURE_TIME
+#ifdef MEASURE_TIME
       Controller->Barrier();
       // Timing start
       if (Controller->GetLocalProcessId() == 0) {
@@ -337,7 +339,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     else {
 
       // Timing start
-#if MEASURE_TIME
+#ifdef MEASURE_TIME
       start_oneStep.clear();
       end_oneStep.clear();
       start_advection.clear();
@@ -399,7 +401,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     if(TimestepT0 < TargetTimeStep) {
 
       // Timing one step start
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -412,7 +414,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 #endif//MEASURE_TIME
 
       // Timing advection start
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -424,16 +426,12 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
 #endif//MEASURE_TIME
 
-      if (InterpolateFields) {
-	AdvectParticlesInt(VofGrid, VelocityGrid);
-      }
-      else {
-	AdvectParticles(VofGrid, VelocityGrid);
-      }
+      AdvectParticles(VofGrid, VelocityGrid);
+
 
       // Timing advection end
 
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -455,11 +453,12 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
       if (StoreIntermBoundaries) {
 
+	// extract components and store them in the rectilinear grid
       	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       	ExtractComponents(VofGrid[1], components);
       	std::vector<float> particleLabels;
       	LabelAdvectedParticles(components, particleLabels);
-
+	
 	vtkSmartPointer<vtkPolyData> tmpSeeds = vtkSmartPointer<vtkPolyData>::New();
 	tmpSeeds->SetPoints(Seeds->GetPoints());
 
@@ -505,19 +504,58 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	std::vector<int> indices(0);
 	std::vector<float4> vertices(0);
 	std::vector<float4> normals(0);
-	
-      	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
-      			 LocalExtentNoGhosts, LocalExtent, VertexID,
-      			 labelOffsets, vertices, normals, indices);	
 
-      	IntermBoundaryLabelOffsets.push_back(labelOffsets);
+	// {
+	//   // store the number of particles per label - this will be compared
+	//   // with the previous step
+	//   std::vector<int> particleLabelOffsets(1,0);
+	//   int prevLabel = labels_tmp[0];
+	//   int offset = 0;
+	//   for (int label : labels_tmp) {
+	//     if (label != prevLabel) {
+	//       particleLabelOffsets.resize(particleLabelOffsets.size()+1);
+	//       particleLabelOffsets.back() = offset;
+	//     }
+	//     offset += 1;
+	//   }
+	//   particleLabelOffsets.push_back(offset);
+
+	//   // now check if particles still belong to the same component
+	//   // (possibly with different label)
+	//   int numLabels = particleLabelOffsets.size();
+	//   int prevIdx = 1;
+	//   for (int i = 1; i < numLabels; ++i) {
+	  
+	//     if (particleLabelOffsets[i] < PreviousParticleLabelOffsets[prevIdx]) {
+	      
+	//       std::vector<float4>::iterator pit_beg = points_tmp.begin()+particleLabelOffsets[i-1];
+	//       std::vector<float4>::iterator pit_end = points_tmp.begin()+particleLabelOffsets[i];
+	//       generateBoundary(pit_beg, pit_end,
+	// 		       VofGrid[0], Refinement,
+	// 		       LocalExtentNoGhosts, LocalExtent, VertexID,
+	// 		       vertices, normals, indices);
+	//     }
+	//   }
+		
+	//   // at the end, store the current particle labels in memory for th
+	//   // next comparison
+	//   PreviousParticleLabels = labels_tmp;
+	//   PreviousParticleLabelOffsets = particleLabelOffsets;
+	// }
+	
+ 	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
+      			 LocalExtentNoGhosts, LocalExtent, VertexID,
+      			 labelOffsets, vertices, normals, indices,
+			 PrevLabelPoints);	
+
+     	IntermBoundaryLabelOffsets.push_back(labelOffsets);
       	IntermBoundaryVertices.push_back(vertices);
       	IntermBoundaryNormals.push_back(normals);
       	IntermBoundaryIndices.push_back(indices);
       }
 
       // Timing one step end
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -541,7 +579,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // vtkSmartPointer<vtkRectilinearGrid> scalarField = vtkSmartPointer<vtkRectilinearGrid>::New();
       // CreateScalarField(VelocityGrid[0], Particles, scalarField);	
       // ExtractComponents(scalarField, components);
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -553,7 +591,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
 #endif//MEASURE_TIME
       ExtractComponents(VofGrid[1], components);
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -565,7 +603,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
 #endif//MEASURE_TIME
       	
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -591,7 +629,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	ExchangeBoundarySeedPoints(boundarySeeds, Seeds);
       }
 
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -604,7 +642,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 #endif//MEASURE_TIME
 
       
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -644,18 +682,22 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       particles->SetPoints(ppoints);
       particles->GetPointData()->AddArray(labels);
       particles->GetPointData()->AddArray(uncertainty);
-	
-      output->SetBlock(0, Seeds);
-      output->SetBlock(1, particles);
-      output->SetBlock(2, Boundaries);
-      output->SetBlock(3, components);      
+
+      int nextBlock = 0;      
+      output->SetBlock(nextBlock++, Seeds);
+      output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Seeds");
+      output->SetBlock(nextBlock++, particles);
+      output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Advected Particles");
+      output->SetBlock(nextBlock++, Boundaries);
+      output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Boundaries");
+      output->SetBlock(nextBlock++, components);
+      output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "C-c at t_0+T");
 
       // writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
 
-      int nextBlock = 4;
       if (StoreIntermParticles) {
 
 	TransferIntermParticlesToSeeds(IntermParticles,
@@ -664,8 +706,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
 	vtkSmartPointer<vtkPolyData> intParticles = vtkSmartPointer<vtkPolyData>::New();
 	GenerateIntParticles(intParticles);
-	output->SetBlock(nextBlock, intParticles);
-	++nextBlock;
+	output->SetBlock(nextBlock++, intParticles);
+	output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Intermediate Particles");
       }
 
       if (StoreIntermBoundaries) {
@@ -674,12 +716,12 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
 	GenerateIntBoundaries(intermBoundaries);
 
-	output->SetBlock(nextBlock, intermBoundaries);
-	++nextBlock;
+	output->SetBlock(nextBlock++, intermBoundaries);
+	output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Intermediate Boundaries");
       }
 
       // Timing boundary end
-#if MEASURE_TIME            
+#ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
 	if (Controller->GetLocalProcessId() == 0) {
@@ -699,7 +741,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     request->Remove(vtkStreamingDemandDrivenPipeline::CONTINUE_EXECUTING());
 
     // Timing end
-#if MEASURE_TIME
+#ifdef MEASURE_TIME
     if (Controller->GetCommunicator() != 0) {
       Controller->Barrier();
       if (Controller->GetLocalProcessId() == 0) {
@@ -870,52 +912,6 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
-}
-
-//----------------------------------------------------------------------------
-void vtkVofTopo::AdvectParticlesInt(vtkRectilinearGrid *vof[2],
-				    vtkRectilinearGrid *velocity[2])
-{
-  float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
-  if (TimeStepDelta != 0.0) {
-    dt = TimeStepDelta;
-  }
-  
-  dt *= Incr;
-
-  vtkSmartPointer<vtkRectilinearGrid> intVof = vtkSmartPointer<vtkRectilinearGrid>::New();
-  vtkSmartPointer<vtkRectilinearGrid> intVelocity = vtkSmartPointer<vtkRectilinearGrid>::New();
-      
-  InterpolateField(VofGrid, VelocityGrid, intVof, intVelocity, 0.5f);
-
-  // {
-  // vtkRectilinearGrid *vofInt[3] = {vof[0], intVof, vof[1]};
-  // vtkRectilinearGrid *velocityInt[3] = {velocity[0], intVelocity, velocity[1]};
-
-  // advectParticlesInt(vofInt, velocityInt, Particles, Uncertainty, dt, PLICCorrection, VOFCorrection);
-  // if (Controller->GetCommunicator() != 0) {
-  //   ExchangeParticles();
-  // }
-  // }
-  
-  {
-    vtkRectilinearGrid *vofTmp[2] = {vof[0], intVof};
-    vtkRectilinearGrid *velocityTmp[2] = {velocity[0], intVelocity};
-    advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
-  		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
-    if (Controller->GetCommunicator() != 0) {
-      ExchangeParticles();
-    }
-  }  
-  {
-    vtkRectilinearGrid *vofTmp[2] = {intVof,vof[1]};
-    vtkRectilinearGrid *velocityTmp[2] = {intVelocity,velocity[1]};
-    advectParticles(vofTmp, velocityTmp, Particles, Uncertainty, dt/2.0f,
-  		    IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
-    if (Controller->GetCommunicator() != 0) {
-      ExchangeParticles();
-    }
-  }  
 }
 
 //----------------------------------------------------------------------------
@@ -1698,114 +1694,6 @@ void getFluidExtent(vtkRectilinearGrid *vof, const int globalExtent[6],
       }
     }
   }    
-}
-
-void vtkVofTopo::InterpolateField(vtkRectilinearGrid *vof[2],
-				  vtkRectilinearGrid *velocity[2],
-				  vtkRectilinearGrid *intVof,
-				  vtkRectilinearGrid *intVelocity,
-				  const float a)
-{
-  int nodeRes[3];
-  vof[0]->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1, nodeRes[1]-1, nodeRes[2]-1};
-
-  int optExtent[6];
-
-  {
-    int fluidExtent0[6], fluidExtent1[6];
-    getFluidExtent(vof[0], GlobalExtent, NumGhostLevels, fluidExtent0);
-    getFluidExtent(vof[1], GlobalExtent, NumGhostLevels, fluidExtent1);
-
-    optExtent[0] = std::min(fluidExtent0[0],fluidExtent1[0]);
-    optExtent[1] = std::max(fluidExtent0[1],fluidExtent1[1]);
-    optExtent[2] = std::min(fluidExtent0[2],fluidExtent1[2]);
-    optExtent[3] = std::max(fluidExtent0[3],fluidExtent1[3]);
-    optExtent[4] = std::min(fluidExtent0[4],fluidExtent1[4]);
-    optExtent[5] = std::max(fluidExtent0[5],fluidExtent1[5]);
-      
-    optExtent[0] -= NumGhostLevels;
-    optExtent[2] -= NumGhostLevels;
-    optExtent[4] -= NumGhostLevels;
-    optExtent[1] += NumGhostLevels;
-    optExtent[3] += NumGhostLevels;
-    optExtent[5] += NumGhostLevels;
-  }
-  
-  std::vector<float4> particles;
-  particles.clear();
-  generateSeedPointsInCellCenters(VelocityGrid[0], Refinement, particles, optExtent, GlobalExtent, NumGhostLevels);
-  
-  
-  float dt = InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0];
-  if (TimeStepDelta != 0.0) {
-    dt = TimeStepDelta;
-  }
-  
-  dt *= Incr;
-
-  std::vector<float4> particlesForward = particles;
-  float t = (1.0f-a)*InputTimeValues[TimestepT1] + a*InputTimeValues[TimestepT0];
-
-  advectParticles(velocity, particlesForward, t, 1.0f,
-		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
- 
-  std::vector<float4> particlesBackward = particles;
-  advectParticles(velocity, particlesBackward, t, -1.0f,
-		  InputTimeValues[TimestepT0], InputTimeValues[TimestepT1], RK4NumSteps);
-
-  intVof->CopyStructure(vof[0]);
-  intVelocity->CopyStructure(velocity[0]);
-
-  int index0,index1;
-  vtkDataArray *vofArray0 = vof[0]->GetCellData()->GetArray(0);
-    // vof[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *vofArray1 = vof[1]->GetCellData()->GetArray(0);
-    // vof[1]->GetCellData()->GetArray("Data", index1);
-  vtkSmartPointer<vtkFloatArray> vofArray = vtkSmartPointer<vtkFloatArray>::New();
-  vofArray->SetName("Data");
-  vofArray->SetNumberOfComponents(1);
-  vofArray->SetNumberOfTuples(vofArray0->GetNumberOfTuples());
-  vofArray->FillComponent(0,0.0f);
-  vtkDataArray *velocityArray0 = velocity[0]->GetCellData()->GetArray(0);
-    // velocity[0]->GetCellData()->GetArray("Data", index0);
-  vtkDataArray *velocityArray1 = velocity[1]->GetCellData()->GetArray(0);
-    // velocity[1]->GetCellData()->GetArray("Data", index1);
-  vtkSmartPointer<vtkFloatArray> velocityArray = vtkSmartPointer<vtkFloatArray>::New();
-  velocityArray->SetName("Data");
-  velocityArray->SetNumberOfComponents(3);
-  velocityArray->SetNumberOfTuples(velocityArray0->GetNumberOfTuples());
-  velocityArray->FillComponent(0,0.0f);
-  velocityArray->FillComponent(1,0.0f);
-  velocityArray->FillComponent(2,0.0f);
-  
-#pragma omp parallel for
-  for (int i = 0; i < particles.size(); ++i) {
-
-    int ijk[3];
-    double pcoords[3];
-    
-    double x0[3] = {particlesBackward[i].x, particlesBackward[i].y, particlesBackward[i].z};    
-    vof[0]->ComputeStructuredCoordinates(x0, ijk, pcoords);
-    float f0 = interpolateScaCellBasedData(vofArray0, cellRes, ijk, pcoords);
-    float3 v0 = interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords);
-    
-    double x1[3] = {particlesForward[i].x, particlesForward[i].y, particlesForward[i].z};
-    vof[1]->ComputeStructuredCoordinates(x1, ijk, pcoords);
-    float f1 = interpolateScaCellBasedData(vofArray1, cellRes, ijk, pcoords);
-    float3 v1 = interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords);
-    
-    double x[3] = {particles[i].x, particles[i].y, particles[i].z};
-    vof[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    float f = (1.0f-a)*f0 + a*f1;
-    float3 v = (1.0f-a)*v0 + a*v1;
-
-    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];    
-    vofArray->SetValue(idx,f);
-    velocityArray->SetTuple3(idx,v.x,v.y,v.z);
-  }
-  intVof->GetCellData()->AddArray(vofArray);
-  intVelocity->GetCellData()->AddArray(velocityArray);
 }
 
 void vtkVofTopo::TransferIntermParticlesToSeeds(std::vector<std::vector<float4>> &particles,

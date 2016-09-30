@@ -92,24 +92,28 @@ void writeTimings(std::string filename, int t0, int t1)
   Seconds dur_boundary_s = std::chrono::duration_cast<Seconds>(end_boundary-start_boundary);
   file << "boundary," << dur_boundary_s.count() << "," << dur_boundary_ms.count() << std::endl;
 
-  Milliseconds dur_components_ms = std::chrono::duration_cast<Milliseconds>(end_components-start_components);
+  Milliseconds dur_components_ms =
+    std::chrono::duration_cast<Milliseconds>(end_components-start_components);
   Seconds dur_components_s = std::chrono::duration_cast<Seconds>(end_components-start_components);
   file << "components," << dur_components_s.count() << "," << dur_components_ms.count() << std::endl;
 
-  Milliseconds dur_assignment_ms = std::chrono::duration_cast<Milliseconds>(end_assignment-start_assignment);
+  Milliseconds dur_assignment_ms =
+    std::chrono::duration_cast<Milliseconds>(end_assignment-start_assignment);
   Seconds dur_assignment_s = std::chrono::duration_cast<Seconds>(end_assignment-start_assignment);
   file << "assignment," << dur_assignment_s.count() << "," << dur_assignment_ms.count() << std::endl;
 
   if (start_oneStep.size() == end_oneStep.size()) {
     for (int i = 0; i < start_oneStep.size(); ++i) {
-      Milliseconds dur_step_ms = std::chrono::duration_cast<Milliseconds>(end_oneStep[i]-start_oneStep[i]);
+      Milliseconds dur_step_ms =
+	std::chrono::duration_cast<Milliseconds>(end_oneStep[i]-start_oneStep[i]);
       Seconds dur_step_s = std::chrono::duration_cast<Seconds>(end_oneStep[i]-start_oneStep[i]);
       file << "oneStep," << i << "," << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
     }
   }
   if (start_advection.size() == end_advection.size()) {
     for (int i = 0; i < start_advection.size(); ++i) {
-      Milliseconds dur_step_ms = std::chrono::duration_cast<Milliseconds>(end_advection[i]-start_advection[i]);
+      Milliseconds dur_step_ms =
+	std::chrono::duration_cast<Milliseconds>(end_advection[i]-start_advection[i]);
       Seconds dur_step_s = std::chrono::duration_cast<Seconds>(end_advection[i]-start_advection[i]);
       file << "advection," << i << "," << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
     }
@@ -1336,7 +1340,8 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *boundarySeeds,
+void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
+				    vtkPolyData *boundarySeeds,
 				    vtkPolyData *seeds)
 {
   vtkPoints *points = seeds->GetPoints();
@@ -1397,8 +1402,7 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries, vtkPolyData *bounda
   std::vector<float4> normals(0);
 
   generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
-		   LocalExtentNoGhosts, LocalExtent,
-		   vertexID, labelOffsets,
+		   LocalExtentNoGhosts, LocalExtent, vertexID, labelOffsets,
 		   vertices, normals, indices);
     
   vtkPoints *outputPoints = vtkPoints::New();

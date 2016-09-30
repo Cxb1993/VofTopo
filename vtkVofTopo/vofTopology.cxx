@@ -1141,17 +1141,17 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 			   f, lstar, normalsInt, bounds, idx);
 	  }
 	}
-	else {	  
-	  if (f > g_emf0) {
-	    placeSeeds(points, cellCenter, cellSize, refinement, cellRes, vofGrid, data, bounds, idx);
-	  }
-	  else {
-	    float fn = neighborF(data,i,j,k,cellRes);
-	    if (fn > g_emf0) {
-	      placeSeeds(points, cellCenter, cellSize, refinement, cellRes, vofGrid, data, bounds, idx);
-	    }
-	  }
-	}
+	// else {	  
+	//   if (f > g_emf0) {
+	//     placeSeeds(points, cellCenter, cellSize, refinement, cellRes, vofGrid, data, bounds, idx);
+	//   }
+	//   else {
+	//     float fn = neighborF(data,i,j,k,cellRes);
+	//     if (fn > g_emf0) {
+	//       placeSeeds(points, cellCenter, cellSize, refinement, cellRes, vofGrid, data, bounds, idx);
+	//     }
+	//   }
+	// }
 
 	++icur;
       }
@@ -2180,7 +2180,7 @@ void generateCoords(vtkDataArray *coords,
 }
 
 void generateBoundary(const std::vector<float4> &points,
-		      const std::vector<float> &labels,		      
+		      const std::vector<float> &labels,
 		      vtkRectilinearGrid *grid,
 		      const int refinement,
 		      const int localExtentNoGhosts[6],

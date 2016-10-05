@@ -41,6 +41,7 @@ int findClosestTimeStep(double requestedTimeValue,
 void generateSeedPoints(vtkRectilinearGrid *input,
 			int refinement,
 			vtkPoints *points,
+			std::vector<float> &mass,
 			int globalExtent[6],
 			int numGhostLevels,
 			int plicSeeding);

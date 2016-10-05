@@ -455,71 +455,51 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
       
       if (StoreIntermBoundaries) {
-	auto cl0 = Clock::now();
-	// extract components and store them in the rectilinear grid
-      	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
-      	ExtractComponents(VofGrid[1], components);
-      	std::vector<float> particleLabels;
-      	LabelAdvectedParticles(components, particleLabels);
-	
-	vtkSmartPointer<vtkPolyData> tmpSeeds = vtkSmartPointer<vtkPolyData>::New();
-	tmpSeeds->SetPoints(Seeds->GetPoints());
 
-	TransferParticleDataToSeeds(particleLabels, "Labels", tmpSeeds);
+	//----------------------------
 	
-	// Transfer seed points from neighbors ---------------------------------
+	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
+	if (Controller->GetCommunicator() != 0) {
+	  Controller->Barrier();
+	}
+	ExtractComponents(VofGrid[1], components);
+	if (Controller->GetCommunicator() != 0) {
+	  Controller->Barrier();
+	}
+      	
+	std::vector<float> particleLabels;
+	LabelAdvectedParticles(components, particleLabels);
+
+	TransferParticleDataToSeeds(particleLabels, "Labels", Seeds);
+	
 	vtkPolyData *boundarySeeds = vtkPolyData::New();
 	if (Controller->GetCommunicator() != 0) {
-	  ExchangeBoundarySeedPoints(boundarySeeds, tmpSeeds);
+	  ExchangeBoundarySeedPoints(boundarySeeds, Seeds);
 	}
 
-     	vtkPoints *points = tmpSeeds->GetPoints();
-      	std::vector<float4> points_tmp(particleLabels.size());
-	for (int i = 0; i < points_tmp.size(); ++i) {
-	  double p[3];
-	  points->GetPoint(i, p);
-	  points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
-	}
-      	std::vector<float> labels_tmp(particleLabels.size());
-	for (int i = 0; i < labels_tmp.size(); ++i) {
-	  labels_tmp[i] = particleLabels[i];
+	if (Controller->GetCommunicator() != 0) {
+	  Controller->Barrier();
 	}
 
-      	// merge points ------------------------------------------------------------
-	int numbs = boundarySeeds->GetNumberOfPoints();
-	if (numbs > 0) {
-	  vtkPoints *bspoints = boundarySeeds->GetPoints();
-	  vtkFloatArray *bslabels = vtkFloatArray::
-	    SafeDownCast(boundarySeeds->GetPointData()->GetArray("Labels"));
+	std::vector<float4> points_tmp;
+	std::vector<float> labels_tmp;
 
-	  int numpts = points_tmp.size();
-	  points_tmp.resize(numpts+numbs);
-	  labels_tmp.resize(numpts+numbs);
-	  for (int i = numpts; i < points_tmp.size(); ++i) {
-	    double p[3];
-	    bspoints->GetPoint(i-numpts, p);
-	    points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
-	    labels_tmp[i] = bslabels->GetComponent(i-numpts, 0);
-	  }	  
+	ArrangePointsForBoundaryGeneration(Seeds, boundarySeeds, points_tmp, labels_tmp);
+
+	if (!points_tmp.empty()) {
+	  std::vector<int> indices(0);
+	  std::vector<float4> vertices(0);
+	  std::vector<float4> normals(0);
+
+	  generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
+			   LocalExtentNoGhosts, LocalExtent, VertexID,
+			   vertices, normals, indices,
+			   PrevLabelPoints);	
+	  
+	  IntermBoundaryVertices.push_back(vertices);
+	  IntermBoundaryNormals.push_back(normals);
+	  IntermBoundaryIndices.push_back(indices);
 	}
-
-	std::vector<int> indices(0);
-	std::vector<float4> vertices(0);
-	std::vector<float4> normals(0);
-
- 	generateBoundary(points_tmp, labels_tmp, VofGrid[0], Refinement,
-      			 LocalExtentNoGhosts, LocalExtent, VertexID,
-      			 vertices, normals, indices,
-			 PrevLabelPoints);	
-
-      	IntermBoundaryVertices.push_back(vertices);
-      	IntermBoundaryNormals.push_back(normals);
-      	IntermBoundaryIndices.push_back(indices);
-
-	auto cl1 = Clock::now();
-
-	Milliseconds dur = std::chrono::duration_cast<Milliseconds>(cl1-cl0);
-	std::cout << "dur = " << dur.count() << std::endl;
       }
 
       // Timing one step end
@@ -759,7 +739,7 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
   }
   else {
     seedPoints = vtkPoints::New();
-    generateSeedPoints(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels, SeedByPLIC);
+    generateSeedPoints(vof, Refinement, seedPoints, Mass, GlobalExtent, NumGhostLevels, SeedByPLIC);
   }
   Particles.clear();
   ParticleIds.clear();
@@ -1340,10 +1320,13 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
 }
 
 //----------------------------------------------------------------------------
-void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
-				    vtkPolyData *boundarySeeds,
-				    vtkPolyData *seeds)
+void vtkVofTopo::ArrangePointsForBoundaryGeneration(vtkPolyData *seeds,
+						    vtkPolyData *boundarySeeds,
+						    std::vector<float4> &points_tmp,
+						    std::vector<float> &labels_tmp)
 {
+  points_tmp.clear();
+  labels_tmp.clear();
   vtkPoints *points = seeds->GetPoints();
   vtkFloatArray *labels = vtkFloatArray::
     SafeDownCast(seeds->GetPointData()->GetArray("Labels"));
@@ -1358,8 +1341,6 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
     return;
   }
   // merge points ------------------------------------------------------------
-  std::vector<float4> points_tmp;
-  points_tmp.clear();
   {
     int nps = points->GetNumberOfPoints();
     int nnps = 0;
@@ -1379,7 +1360,6 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
     }
   }
   // merge labels ------------------------------------------------------------
-  std::vector<float> labels_tmp;
   {
     int nls = labels->GetNumberOfTuples();
     int nnls = 0;
@@ -1393,6 +1373,21 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
     for (int i = 0; i < nnls; ++i) {
       labels_tmp[i+nls] = boundarySeedLabels->GetComponent(i, 0);
     }
+  }
+}
+
+//----------------------------------------------------------------------------
+void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
+				    vtkPolyData *boundarySeeds,
+				    vtkPolyData *seeds)
+{
+  std::vector<float4> points_tmp;
+  std::vector<float> labels_tmp;
+  
+  ArrangePointsForBoundaryGeneration(seeds, boundarySeeds, points_tmp, labels_tmp);
+
+  if (points_tmp.empty()) {
+    return;
   }
 
   std::vector<int> labelOffsets;

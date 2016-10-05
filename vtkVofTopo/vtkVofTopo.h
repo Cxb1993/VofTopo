@@ -100,6 +100,11 @@ private:
   void TransferIntermParticlesToSeeds(std::vector<std::vector<float4>> &particles,
 				      std::vector<std::vector<int>> &ids,
 				      std::vector<std::vector<short>> &procs);
+
+  void ArrangePointsForBoundaryGeneration(vtkPolyData *seeds,
+					  vtkPolyData *boundarySeeds,
+					  std::vector<float4> &points_tmp,
+					  std::vector<float> &labels_tmp);
   
   void GenerateBoundaries(vtkPolyData *boundaries, 
 			  vtkPolyData *boundarySeeds,
@@ -150,6 +155,7 @@ private:
   std::vector<int> ParticleIds;
   std::vector<short> ParticleProcs;
   std::vector<float> Uncertainty;
+  std::vector<float> Mass;
 
   // Intermediate particles
   std::vector<std::vector<float4>> IntermParticles;

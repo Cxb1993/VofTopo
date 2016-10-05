@@ -51,6 +51,7 @@ namespace
   }
 
   void placeSeedsPLIC(vtkPoints *seeds,
+		      std::vector<float> &mass,
 		      const float cellCenter[3], 
 		      const float cellSize[3],
 		      const int refinement,
@@ -91,6 +92,7 @@ namespace
 		  normalsInt[idx*3+1],
 		  normalsInt[idx*3+2]};
 
+    int numSeedsInCell = 0;
     for (int zr = 0; zr < subdiv; ++zr) {
       for (int yr = 0; yr < subdiv; ++yr) {
 	for (int xr = 0; xr < subdiv; ++xr) {
@@ -112,10 +114,17 @@ namespace
 	      (f < g_emf1 && d < lstar[idx] || f >= g_emf1)) {	    
 
 	    seeds->InsertNextPoint(seed);
+	    ++numSeedsInCell;
  	  }
 	}
       }
-    }    
+    }
+    if (numSeedsInCell > 0) {
+      float massPerSeed = f/numSeedsInCell;
+      for (int i = 0; i < numSeedsInCell; ++i) {
+	mass.push_back(massPerSeed);
+      }
+    }
   }
 
   void placeSeeds(vtkPoints *seeds,
@@ -1033,6 +1042,7 @@ float neighborF(vtkDataArray *data, int i, int j, int k, const int cellRes[3])
 void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 			int refinement,
 			vtkPoints *points,
+			std::vector<float> &mass,
 			int globalExtent[6],
 			int numGhostLevels,
 			int plicSeeding)
@@ -1137,8 +1147,8 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 
 	if (plicSeeding) {
 	  if (f > g_emf0) {
-	    placeSeedsPLIC(points, cellCenter, cellSize, refinement, cellRes,
-			   f, lstar, normalsInt, bounds, idx);
+	    placeSeedsPLIC(points, mass, cellCenter, cellSize, refinement,
+			   cellRes, f, lstar, normalsInt, bounds, idx);
 	  }
 	}
 	// else {	  

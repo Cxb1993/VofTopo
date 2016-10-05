@@ -429,10 +429,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 #endif//MEASURE_TIME
 
       AdvectParticles(VofGrid, VelocityGrid);
-
-
+      
       // Timing advection end
-
 #ifdef MEASURE_TIME            
       if (Controller->GetCommunicator() != 0) {
 	Controller->Barrier();
@@ -455,18 +453,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
       
       if (StoreIntermBoundaries) {
-
-	//----------------------------
 	
 	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
-	if (Controller->GetCommunicator() != 0) {
-	  Controller->Barrier();
-	}
 	ExtractComponents(VofGrid[1], components);
-	if (Controller->GetCommunicator() != 0) {
-	  Controller->Barrier();
-	}
-      	
+
 	std::vector<float> particleLabels;
 	LabelAdvectedParticles(components, particleLabels);
 
@@ -475,10 +465,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	vtkPolyData *boundarySeeds = vtkPolyData::New();
 	if (Controller->GetCommunicator() != 0) {
 	  ExchangeBoundarySeedPoints(boundarySeeds, Seeds);
-	}
-
-	if (Controller->GetCommunicator() != 0) {
-	  Controller->Barrier();
 	}
 
 	std::vector<float4> points_tmp;
@@ -619,6 +605,10 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       uncertainty->SetName("Uncertainty");
       uncertainty->SetNumberOfComponents(1);
       uncertainty->SetNumberOfTuples(Uncertainty.size());
+      vtkFloatArray *mass = vtkFloatArray::New();
+      mass->SetName("Mass");
+      mass->SetNumberOfComponents(1);
+      mass->SetNumberOfTuples(Mass.size());
 
       for (int i = 0; i < Particles.size(); ++i) {
 
@@ -626,10 +616,12 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	ppoints->SetPoint(i, p);
 	labels->SetValue(i, particleLabels[i]);
 	uncertainty->SetValue(i, Uncertainty[i]);
+	mass->SetValue(i, Mass[i]);
       }
       particles->SetPoints(ppoints);
       particles->GetPointData()->AddArray(labels);
       particles->GetPointData()->AddArray(uncertainty);
+      particles->GetPointData()->AddArray(mass);
 
       int nextBlock = 0;      
       output->SetBlock(nextBlock++, Seeds);
@@ -645,6 +637,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      // {
+      // 	vtkSmartPointer<vtkRectilinearGrid> grid = vtkSmartPointer<vtkRectilinearGrid>::New();
+      // 	grid->CopyStructure(VofGrid[0]);
+
+      // 	ResampleParticlesOnGrid(grid);
+
+      // 	writeDataRaw(grid, 0, 0, "/tmp/resampledGrid_");
+      // }
 
       if (StoreIntermParticles) {
 
@@ -771,6 +771,68 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
 }
 
 //----------------------------------------------------------------------------
+void vtkVofTopo::ResampleParticlesOnGrid(vtkRectilinearGrid *grid)
+{
+  int res[3];
+  grid->GetDimensions(res);
+  res[0] -= 1;
+  res[1] -= 1;
+  res[2] -= 1;
+  
+  vtkSmartPointer<vtkFloatArray> f = vtkSmartPointer<vtkFloatArray>::New();
+  f->SetName("Resampled Field");
+  f->SetNumberOfComponents(1);
+  f->SetNumberOfTuples(grid->GetNumberOfCells());
+  f->FillComponent(0,0.0f);
+
+  for (int i = 0; i < Particles.size(); ++i) {
+    double x[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+    int ijk[3];
+    double pcoords[3];
+
+    if (i == 0) {
+      int a = 1;
+      std::cout << a << std::endl;
+    }
+    
+    if (grid->ComputeStructuredCoordinates(x, ijk, pcoords)) {
+      
+      int di = pcoords[0] < 0.5 ? -1 : 0;
+      int dj = pcoords[1] < 0.5 ? -1 : 0;
+      int dk = pcoords[2] < 0.5 ? -1 : 0;
+
+      float ax = pcoords[0] < 0.5 ? pcoords[0] + 0.5 : pcoords[0] - 0.5;
+      float ay = pcoords[1] < 0.5 ? pcoords[1] + 0.5 : pcoords[1] - 0.5;
+      float az = pcoords[2] < 0.5 ? pcoords[2] + 0.5 : pcoords[2] - 0.5;
+
+      int cellIds[8] = {ijk[0]+di   + (ijk[1]+dj)  *res[0] + (ijk[2]+dk)  *res[0]*res[1],
+			ijk[0]+di+1 + (ijk[1]+dj)  *res[0] + (ijk[2]+dk)  *res[0]*res[1],
+			ijk[0]+di   + (ijk[1]+dj+1)*res[0] + (ijk[2]+dk)  *res[0]*res[1],
+			ijk[0]+di+1 + (ijk[1]+dj+1)*res[0] + (ijk[2]+dk)  *res[0]*res[1],
+			ijk[0]+di   + (ijk[1]+dj)  *res[0] + (ijk[2]+dk+1)*res[0]*res[1],
+			ijk[0]+di+1 + (ijk[1]+dj)  *res[0] + (ijk[2]+dk+1)*res[0]*res[1],
+			ijk[0]+di   + (ijk[1]+dj+1)*res[0] + (ijk[2]+dk+1)*res[0]*res[1],
+			ijk[0]+di+1 + (ijk[1]+dj+1)*res[0] + (ijk[2]+dk+1)*res[0]*res[1]};
+      
+      float mass[8] = {Mass[i]*(1.0f-ax)*(1.0f-ay)*(1.0f-az),
+		       Mass[i]*(     ax)*(1.0f-ay)*(1.0f-az),
+		       Mass[i]*(1.0f-ax)*(     ay)*(1.0f-az),
+		       Mass[i]*(     ax)*(     ay)*(1.0f-az),
+		       Mass[i]*(1.0f-ax)*(1.0f-ay)*(     az),
+		       Mass[i]*(     ax)*(1.0f-ay)*(     az),
+		       Mass[i]*(1.0f-ax)*(     ay)*(     az),
+		       Mass[i]*(     ax)*(     ay)*(     az)};
+
+      for (int j = 0; j < 8; ++j) {
+	float f_tmp = f->GetComponent(cellIds[j],0);
+	f->SetComponent(cellIds[j],0,mass[j]+f_tmp);
+      }
+    }
+  }
+  grid->GetCellData()->AddArray(f);
+}
+
+//----------------------------------------------------------------------------
 void vtkVofTopo::GetGlobalContext(vtkInformation *inInfo)
 {
   int processId = Controller->GetLocalProcessId();
@@ -862,6 +924,48 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   }
 }
 
+// template<typename T>
+// void vtkVofTopo::ExchangeData(std::vector<std::vector<T>> &data,
+// 			      const std::vector<float4> &Particles,
+// 			      const int numProcesses, const int processId) {
+
+//   std::vector<std::vector<T>> dataToSend(numProcesses);
+//   for (int i = 0; i < numProcesses; ++i) {
+//     dataToSend[i].resize(0);
+//   }
+
+//   std::vector<T> dataToKeep;
+//   for (int i = 0; i < Particles.size(); ++i) {
+
+//     int bound = outOfBounds(Particles[i], BoundsNoGhosts, GlobalBounds);
+//     if (bound > -1) {
+//       for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
+
+//   	int neighborId = NeighborProcesses[bound][j];
+// 	if (neighborId != processId) {
+// 	  dataToSend[neighborId].push_back(data[i]);
+// 	}
+//       }
+//     }
+//     else {
+//       dataToKeep.push_back(data[i]);
+//     }
+//   }
+
+//   data = dataToKeep;
+
+//   std::vector<T> dataToRecv;
+//   sendData(dataToSend, dataToRecv, numProcesses, Controller);
+
+//   // insert the paricles that are within the domain
+//   for (int i = 0; i < particlesToRecv.size(); ++i) {
+//     int within = withinBounds(particlesToRecv[i], BoundsNoGhosts);
+//     if (within) {
+//       data.push_back(dataToRecv[i]);
+//     }
+//   }
+// }
+
 //----------------------------------------------------------------------------
 void vtkVofTopo::ExchangeParticles()
 {
@@ -873,18 +977,21 @@ void vtkVofTopo::ExchangeParticles()
   std::vector<std::vector<int> > particleIdsToSend(numProcesses);
   std::vector<std::vector<short> > particleProcsToSend(numProcesses);
   std::vector<std::vector<float>> uncertaintyToSend(numProcesses);
+  std::vector<std::vector<float>> massToSend(numProcesses);
   
   for (int i = 0; i < numProcesses; ++i) {
     particlesToSend[i].resize(0);
     particleIdsToSend[i].resize(0);
     particleProcsToSend[i].resize(0);
     uncertaintyToSend[i].resize(0);
+    massToSend[i].resize(0);
   }
 
   std::vector<float4> particlesToKeep;
   std::vector<int> particleIdsToKeep;
   std::vector<short> particleProcsToKeep;
   std::vector<float> uncertaintyToKeep;
+  std::vector<float> massToKeep;
 
   for (int i = 0; i < Particles.size(); ++i) {
 
@@ -899,6 +1006,7 @@ void vtkVofTopo::ExchangeParticles()
 	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
 	  particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
 	  uncertaintyToSend[neighborId].push_back(Uncertainty[i]);
+	  massToSend[neighborId].push_back(Mass[i]);
 	}
       }
     }
@@ -907,6 +1015,7 @@ void vtkVofTopo::ExchangeParticles()
       particleIdsToKeep.push_back(ParticleIds[i]);
       particleProcsToKeep.push_back(ParticleProcs[i]);
       uncertaintyToKeep.push_back(Uncertainty[i]);
+      massToKeep.push_back(Mass[i]);
     }
   }
  
@@ -914,15 +1023,19 @@ void vtkVofTopo::ExchangeParticles()
   ParticleIds = particleIdsToKeep;
   ParticleProcs = particleProcsToKeep;
   Uncertainty = uncertaintyToKeep;
+  Mass = massToKeep;
 
   std::vector<float4> particlesToRecv;
   std::vector<int> particleIdsToRecv;
   std::vector<short> particleProcsToRecv;
   std::vector<float> uncertaintyToRecv;
+  std::vector<float> massToRecv;
+  
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);
   sendData(uncertaintyToSend, uncertaintyToRecv, numProcesses, Controller);
+  sendData(massToSend, massToRecv, numProcesses, Controller);
 
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
@@ -932,6 +1045,7 @@ void vtkVofTopo::ExchangeParticles()
       ParticleIds.push_back(particleIdsToRecv[i]);
       ParticleProcs.push_back(particleProcsToRecv[i]);
       Uncertainty.push_back(uncertaintyToRecv[i]);
+      Mass.push_back(massToRecv[i]);
     }
   }
 }

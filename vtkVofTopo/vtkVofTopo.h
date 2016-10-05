@@ -88,6 +88,7 @@ private:
   void InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds);
   void AdvectParticles(vtkRectilinearGrid *vof[2],
 		       vtkRectilinearGrid *velocity[2]);
+  void ResampleParticlesOnGrid(vtkRectilinearGrid *grid);
   void ExchangeParticles();
   void ExtractComponents(vtkRectilinearGrid *vof,
 			 vtkRectilinearGrid *components);

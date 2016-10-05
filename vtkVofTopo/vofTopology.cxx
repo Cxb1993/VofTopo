@@ -22,6 +22,8 @@
 #include <array>
 #include <omp.h>
 #include <algorithm>
+#include <fstream>
+// #include <fstream>
 
 #include "marchingCubes_cpu.h"
 
@@ -2767,5 +2769,22 @@ void writeData(vtkRectilinearGrid *data, const int blockId,
   writer->SetFileName(outFile.c_str());
   writer->SetDataModeToBinary();
   writer->Write();
+}
+
+void writeDataRaw(vtkRectilinearGrid *data, const int blockId,
+		  const int processId, const std::string path)
+{
+  std::string outFile = path;
+  outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+  outFile += ".raw";
+  vtkFloatArray *dataArray = vtkFloatArray::SafeDownCast(data->GetCellData()->GetArray(0));
+  int numCells = dataArray->GetNumberOfTuples();
+  float *rawData = dataArray->GetPointer(0);
+
+  std::ofstream file(outFile, std::ofstream::out | std::ofstream::binary);
+  if (file.good()) {
+    file.write((char*)rawData, numCells*sizeof(float));
+  }
+  file.close();
 }
 

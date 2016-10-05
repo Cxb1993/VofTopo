@@ -353,4 +353,7 @@ void writeData(vtkPolyData *data, const int blockId,
 void writeData(vtkRectilinearGrid *data, const int blockId,
 	       const int processId, const std::string path);
 
+void writeDataRaw(vtkRectilinearGrid *data, const int blockId,
+		  const int processId, const std::string path);
+
 #endif//VOFTOPOLOGY_H

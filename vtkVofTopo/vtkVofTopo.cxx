@@ -637,14 +637,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      // {
-      // 	vtkSmartPointer<vtkRectilinearGrid> grid = vtkSmartPointer<vtkRectilinearGrid>::New();
-      // 	grid->CopyStructure(VofGrid[0]);
+      {
+      	vtkSmartPointer<vtkRectilinearGrid> grid = vtkSmartPointer<vtkRectilinearGrid>::New();
+      	grid->CopyStructure(VofGrid[0]);
 
-      // 	ResampleParticlesOnGrid(grid);
+      	ResampleParticlesOnGrid(grid);
 
-      // 	writeDataRaw(grid, 0, 0, "/tmp/resampledGrid_");
-      // }
+      	writeDataRaw(grid, 0, 0, "/tmp/resampledGrid_");
+      }
 
       if (StoreIntermParticles) {
 

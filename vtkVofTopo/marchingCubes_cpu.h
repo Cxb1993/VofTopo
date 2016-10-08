@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "vectors_cuda.h"
+#include "volData/vec.h"
 
 void extractSurface(const float* volume, 
 		    const int* resolution,

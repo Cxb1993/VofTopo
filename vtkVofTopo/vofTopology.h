@@ -14,6 +14,8 @@
 
 #include "vectors_cuda.h"
 
+#include "volData/vec.h"
+
 #define _dpl_   std::cout << __FILE__ << ":" << __func__ << ":" << __LINE__ << std::endl;
 
 float interpolateSca(vtkDataArray *vofField,

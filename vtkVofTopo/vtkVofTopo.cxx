@@ -1,6 +1,3 @@
-#include "vtkVofTopo.h"
-#include "vofTopology.h"
-
 #include "vtkSmartPointer.h"
 #include "vtkObjectFactory.h"
 #include "vtkInformation.h"
@@ -34,6 +31,10 @@
 
 #include <sys/types.h>
 #include <sys/sysinfo.h>
+
+#include "correspondence.h"
+#include "vtkVofTopo.h"
+#include "vofTopology.h"
 
 vtkStandardNewMacro(vtkVofTopo);
 
@@ -429,6 +430,18 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 #endif//MEASURE_TIME
 
       AdvectParticles(VofGrid, VelocityGrid);
+
+      {
+      	vtkSmartPointer<vtkRectilinearGrid> resampledGrid = vtkSmartPointer<vtkRectilinearGrid>::New();
+      	resampledGrid->CopyStructure(VofGrid[0]);
+
+      	ResampleParticlesOnGrid(resampledGrid);
+
+	vtkSmartPointer<vtkRectilinearGrid> correspondences = vtkSmartPointer<vtkRectilinearGrid>::New();
+
+	GetCorrespondences(resampledGrid, VofGrid[1], correspondences);
+      }
+
       
       // Timing advection end
 #ifdef MEASURE_TIME            
@@ -637,14 +650,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      {
-      	vtkSmartPointer<vtkRectilinearGrid> grid = vtkSmartPointer<vtkRectilinearGrid>::New();
-      	grid->CopyStructure(VofGrid[0]);
-
-      	ResampleParticlesOnGrid(grid);
-
-      	writeDataRaw(grid, 0, 0, "/tmp/resampledGrid_");
-      }
 
       if (StoreIntermParticles) {
 

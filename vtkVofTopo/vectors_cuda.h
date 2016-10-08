@@ -1,6 +1,10 @@
 #ifndef VECTORS_CUDA_H
 #define VECTORS_CUDA_H
 
+#include "volData/vec.h"
+
+#ifndef __VEC__
+
 struct int2
 {
     int x, y;
@@ -182,5 +186,7 @@ inline float4 lerp(float4 a, float4 b, float t)
 {
     return a + t*(b-a);
 }
+
+#endif//__VEC__
 
 #endif//VECTORS_CUDA_H

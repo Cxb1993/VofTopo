@@ -1583,7 +1583,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
     }
   }
 
-  correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
+  //  correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
 }
 
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],

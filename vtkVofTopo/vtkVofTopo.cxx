@@ -437,9 +437,42 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       	ResampleParticlesOnGrid(resampledGrid);
 
-	vtkSmartPointer<vtkRectilinearGrid> correspondences = vtkSmartPointer<vtkRectilinearGrid>::New();
+      	vtkRectilinearGrid *correspondences = vtkRectilinearGrid::New();
+      	correspondences->CopyStructure(VofGrid[0]);
 
-	GetCorrespondences(resampledGrid, VofGrid[1], correspondences);
+	const float dt = std::abs(InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0]);
+	const float maxVelo = 587;
+	const float thres = dt*maxVelo;
+
+      	GetCorrespondences(resampledGrid, VofGrid[1], correspondences, thres);
+
+	vtkFloatArray *corrs = vtkFloatArray::SafeDownCast(correspondences->GetCellData()->GetArray(0));
+
+      	int cellRes[3];
+      	correspondences->GetDimensions(cellRes);
+      	cellRes[0] -= 1;
+      	cellRes[1] -= 1;
+      	cellRes[2] -= 1;
+
+      	for (int i = 0; i < Particles.size(); ++i) {
+
+      	  double p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
+      	  int ijk[3];
+      	  double pcoords[3];	  
+      	  correspondences->ComputeStructuredCoordinates(p, ijk, pcoords);
+      	  int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+	  
+      	  float4 v;
+      	  v.x = corrs->GetComponent(idx,0);
+      	  v.y = corrs->GetComponent(idx,1);
+      	  v.z = corrs->GetComponent(idx,2);
+      	  v.w = 0.0f;
+	  
+      	  Particles[i] += v;
+      	}
+
+
+	correspondences->Delete();
       }
 
       
@@ -645,6 +678,38 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Boundaries");
       output->SetBlock(nextBlock++, components);
       output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "C-c at t_0+T");
+
+      // {
+      // 	vtkSmartPointer<vtkRectilinearGrid> resampledGrid = vtkSmartPointer<vtkRectilinearGrid>::New();
+      // 	resampledGrid->CopyStructure(VofGrid[0]);
+
+      // 	ResampleParticlesOnGrid(resampledGrid);
+
+      // 	vtkSmartPointer<vtkRectilinearGrid> correspondences = vtkSmartPointer<vtkRectilinearGrid>::New();
+      // 	correspondences->CopyStructure(VofGrid[0]);
+
+      // 	vtkSmartPointer<vtkPolyData> lines = vtkSmartPointer<vtkPolyData>::New();
+
+      // 	const float dt = std::abs(InputTimeValues[TimestepT1] - InputTimeValues[TimestepT0]);
+      // 	const float maxVelo = 587;
+      // 	const float thres = dt*maxVelo;
+
+      // 	GetCorrespondences(resampledGrid, VofGrid[1], correspondences, thres);
+
+      // 	output->SetBlock(nextBlock++, correspondences);
+      // 	output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Correspondences");
+
+      // 	output->SetBlock(nextBlock++, VofGrid[1]);
+      // 	output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "VofGrid1");
+
+      // 	output->SetBlock(nextBlock++, resampledGrid);
+      // 	output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "ResampledGrid");
+
+      // 	// output->SetBlock(nextBlock++, lines);
+      // 	// output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "Lines");
+	
+      // }
+
 
       // writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
       // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");

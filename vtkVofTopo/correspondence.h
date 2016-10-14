@@ -7,6 +7,6 @@
 void GetCorrespondences(vtkRectilinearGrid *sourceGrid,
 			vtkRectilinearGrid *destinationGrid,
 			vtkRectilinearGrid *correspondences,
-			const float distThreshold = 0.0f);
+			vtkPolyData *corrs);
 
 #endif//CORRESPONDENCE_H

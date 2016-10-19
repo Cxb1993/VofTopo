@@ -650,6 +650,8 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	uncertainty->SetValue(i, Uncertainty[i]);
 	unc += Uncertainty[i];
       }
+
+      std::cout << "unc = " << unc << std::endl;
       
       particles->SetPoints(ppoints);
       particles->GetPointData()->AddArray(labels);

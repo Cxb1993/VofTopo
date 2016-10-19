@@ -1151,32 +1151,121 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 }
 
 
-float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
-		    vtkDataArray *coords[3], const int res[3],
-		    const int ijk[3],
-		    vtkRectilinearGrid *vofGrid, float &fCorrected)
+// float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
+// 		    vtkDataArray *coords[3], const int res[3],
+// 		    const int ijk[3],
+// 		    vtkRectilinearGrid *vofGrid, float &fCorrected)
+// {
+//   int stencilRange = 4;  
+//   int x = ijk[0];
+//   int y = ijk[1];
+//   int z = ijk[2];
+//   int index = x + y*res[0] + z*res[0]*res[1];
+
+//   double m[3][3] = {0.0};
+//   double rhs[3] = {0.0};  
+
+//   int width = 2*stencilRange+1;
+//   int neighCnt = width*width*width;
+
+//   int effNeighCnt = 0;
+//   double3 xyzi = {
+//     (coords[0]->GetComponent(x+1,0) + coords[0]->GetComponent(x,0))/2.0,
+//     (coords[1]->GetComponent(y+1,0) + coords[1]->GetComponent(y,0))/2.0,
+//     (coords[2]->GetComponent(z+1,0) + coords[2]->GetComponent(z,0))/2.0};
+
+//   double mindist2 = std::numeric_limits<float>::max();
+//   int bestIdx[3] = {-1};
+    
+//   for (int k = 0; k < neighCnt; k++) {
+    
+//     int offsetX = (k%width) - stencilRange;
+//     int offsetY = ((k/width)%width) - stencilRange;
+//     int offsetZ = (k/(width*width)) - stencilRange;
+//     int neighborX = x + offsetX;
+//     int neighborY = y + offsetY;
+//     int neighborZ = z + offsetZ;
+    
+//     if (neighborX >= 0 && neighborX < res[0] &&
+// 	neighborY >= 0 && neighborY < res[1] &&
+// 	neighborZ >= 0 && neighborZ < res[2])	{
+
+//       double3 xyzj = {
+// 	(coords[0]->GetComponent(neighborX+1,0) + coords[0]->GetComponent(neighborX,0))/2.0,
+// 	(coords[1]->GetComponent(neighborY+1,0) + coords[1]->GetComponent(neighborY,0))/2.0,
+// 	(coords[2]->GetComponent(neighborZ+1,0) + coords[2]->GetComponent(neighborZ,0))/2.0};
+      
+//       double X = xyzj.x - xyzi.x;
+//       double Y = xyzj.y - xyzi.y;
+//       double Z = xyzj.z - xyzi.z;
+
+//       int neighborIndex = neighborX + neighborY*res[0] + neighborZ*res[0]*res[1];
+//       double f = vofField->GetComponent(neighborIndex, 0);
+//       double dist2 = X*X + Y*Y + Z*Z;
+      
+//       if (f > g_emf0 && dist2 <= mindist2) {
+// 	bestIdx[0] = neighborX;
+// 	bestIdx[1] = neighborY;
+// 	bestIdx[2] = neighborZ;
+// 	fCorrected = f;
+//       }      
+//     }
+//   }
+
+//   float4 pos2 = pos1;
+//   if (bestIdx[0] > -1) {
+//     pos2 = make_float4((coords[0]->GetComponent(bestIdx[0]+1,0) + coords[0]->GetComponent(bestIdx[0],0))/2.0,
+// 		       (coords[1]->GetComponent(bestIdx[1]+1,0) + coords[1]->GetComponent(bestIdx[1],0))/2.0,
+// 		       (coords[2]->GetComponent(bestIdx[2]+1,0) + coords[2]->GetComponent(bestIdx[2],0))/2.0,
+// 		       1.0f);
+//   }
+//   return pos2;
+// }
+
+const static float3 ones = {1.0f,1.0f,1.0f};
+
+float3 intersectBox(float3 pos, float3 dir, float3 boxmin, float3 boxmax)
 {
-  int stencilRange = 4;  
+  // compute intersection of ray with all six bbox planes
+  float3 invR = ones / dir;
+  float3 tbot = invR * (boxmin - pos);
+  float3 ttop = invR * (boxmax - pos);
+
+  // re-order intersections to find smallest and largest on each axis
+  float3 tmin = minf3(ttop, tbot);
+  float3 tmax = maxf3(ttop, tbot);
+  float tnear = std::max(std::max(tmin.x, tmin.y), std::max(tmin.x, tmin.z));
+  // float w =
+  //   (boxmax.x - boxmin.x)/2.0f +
+  //   (boxmax.y - boxmin.y)/2.0f +
+  //   (boxmax.z - boxmin.z)/2.0f;
+  // w /= 3.0f;
+  // tnear += w/10.0f;
+
+  return pos + dir*tnear;
+}
+
+float4 vofCorrector2(const float4 pos1, vtkDataArray *vofField,
+		     vtkDataArray *coords[3], const int res[3],
+		     const int ijk[3],
+		     vtkRectilinearGrid *vofGrid, float &fCorrected)
+{
   int x = ijk[0];
   int y = ijk[1];
   int z = ijk[2];
-  int index = x + y*res[0] + z*res[0]*res[1];
 
-  double m[3][3] = {0.0};
-  double rhs[3] = {0.0};  
-
-  int width = 2*stencilRange+1;
-  int neighCnt = width*width*width;
-
-  int effNeighCnt = 0;
-  double3 xyzi = {
+  float3 xyzi = {
     (coords[0]->GetComponent(x+1,0) + coords[0]->GetComponent(x,0))/2.0,
     (coords[1]->GetComponent(y+1,0) + coords[1]->GetComponent(y,0))/2.0,
     (coords[2]->GetComponent(z+1,0) + coords[2]->GetComponent(z,0))/2.0};
 
   double mindist2 = std::numeric_limits<float>::max();
   int bestIdx[3] = {-1};
-    
+
+  int stencilRange = 4;  
+  int width = 2*stencilRange+1;
+  int neighCnt = width*width*width;
+
   for (int k = 0; k < neighCnt; k++) {
     
     int offsetX = (k%width) - stencilRange;
@@ -1190,18 +1279,16 @@ float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
 	neighborY >= 0 && neighborY < res[1] &&
 	neighborZ >= 0 && neighborZ < res[2])	{
 
-      double3 xyzj = {
+      float3 xyzj = {
 	(coords[0]->GetComponent(neighborX+1,0) + coords[0]->GetComponent(neighborX,0))/2.0,
 	(coords[1]->GetComponent(neighborY+1,0) + coords[1]->GetComponent(neighborY,0))/2.0,
 	(coords[2]->GetComponent(neighborZ+1,0) + coords[2]->GetComponent(neighborZ,0))/2.0};
       
-      double X = xyzj.x - xyzi.x;
-      double Y = xyzj.y - xyzi.y;
-      double Z = xyzj.z - xyzi.z;
+      float3 XYZ = xyzj - xyzi;
 
       int neighborIndex = neighborX + neighborY*res[0] + neighborZ*res[0]*res[1];
-      double f = vofField->GetComponent(neighborIndex, 0);
-      double dist2 = X*X + Y*Y + Z*Z;
+      float f = vofField->GetComponent(neighborIndex, 0);
+      float dist2 = dot(XYZ,XYZ);
       
       if (f > g_emf0 && dist2 <= mindist2) {
 	bestIdx[0] = neighborX;
@@ -1212,12 +1299,20 @@ float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
     }
   }
 
-  float4 pos2 = pos1;
-  if (bestIdx[0] > -1) {
-    pos2 = make_float4((coords[0]->GetComponent(bestIdx[0]+1,0) + coords[0]->GetComponent(bestIdx[0],0))/2.0,
-		       (coords[1]->GetComponent(bestIdx[1]+1,0) + coords[1]->GetComponent(bestIdx[1],0))/2.0,
-		       (coords[2]->GetComponent(bestIdx[2]+1,0) + coords[2]->GetComponent(bestIdx[2],0))/2.0,
-		       1.0f);
+  float4 pos2 = pos1;  
+  if  (bestIdx[0] > -1) {
+    float3 boxmin = make_float3(coords[0]->GetComponent(bestIdx[0],0),
+				coords[0]->GetComponent(bestIdx[1],0),
+				coords[0]->GetComponent(bestIdx[2],0));
+    float3 boxmax = make_float3(coords[0]->GetComponent(bestIdx[0]+1,0),
+				coords[0]->GetComponent(bestIdx[1]+1,0),
+				coords[0]->GetComponent(bestIdx[2]+1,0));
+    float3 cellCenter = (boxmin + boxmax)/2.0f;
+    float3 pos3f = make_float3(pos1);
+    float3 pos4 = intersectBox(pos3f, normalize(cellCenter-pos3f), boxmin, boxmax);
+
+    pos2 = make_float4(pos4);
+    pos2.w = fCorrected;
   }
   return pos2;
 }
@@ -1379,78 +1474,78 @@ float getCellVof(const double pos[3], vtkRectilinearGrid *grid,
 }
 
 
-void correctParticles(std::vector<float4> &particles,
-		      std::vector<float> &uncertainty,
-		      vtkRectilinearGrid *vofGrid[2], vtkDataArray *vofArray1,
-		      vtkDataArray *coords[3], const int cellRes[3],
-		      int plicCorrection, int vofCorrection)
-{
-  if (plicCorrection == 0 && vofCorrection == 0) {
-    return;
-  }
+// void correctParticles(std::vector<float4> &particles,
+// 		      std::vector<float> &uncertainty,
+// 		      vtkRectilinearGrid *vofGrid[2], vtkDataArray *vofArray1,
+// 		      vtkDataArray *coords[3], const int cellRes[3],
+// 		      int plicCorrection, int vofCorrection)
+// {
+//   if (plicCorrection == 0 && vofCorrection == 0) {
+//     return;
+//   }
   
-  std::vector<std::vector<float>> dx(3);
-  dx[0].resize(cellRes[0]);
-  dx[1].resize(cellRes[1]);
-  dx[2].resize(cellRes[2]);
-  for (int c = 0; c < 3; ++c) {
-    for (int i = 0; i < cellRes[c]; ++i) {
-      dx[c][i] = coords[c]->GetComponent(i+1,0) - coords[c]->GetComponent(i,0);
-    }
-  }
+//   std::vector<std::vector<float>> dx(3);
+//   dx[0].resize(cellRes[0]);
+//   dx[1].resize(cellRes[1]);
+//   dx[2].resize(cellRes[2]);
+//   for (int c = 0; c < 3; ++c) {
+//     for (int i = 0; i < cellRes[c]; ++i) {
+//       dx[c][i] = coords[c]->GetComponent(i+1,0) - coords[c]->GetComponent(i,0);
+//     }
+//   }
 
-  int nodeRes[3] = {cellRes[0]+1,cellRes[1]+1,cellRes[2]+1};
+//   int nodeRes[3] = {cellRes[0]+1,cellRes[1]+1,cellRes[2]+1};
   
-  std::vector<float> normalsNodes;
-  std::vector<float> lstar;
-  std::vector<float> normals;
+//   std::vector<float> normalsNodes;
+//   std::vector<float> lstar;
+//   std::vector<float> normals;
 
-  if (plicCorrection) {
+//   if (plicCorrection) {
 
-    normalsNodes.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
-    lstar.resize(cellRes[0]*cellRes[1]*cellRes[2]);
-    normals.resize(cellRes[0]*cellRes[1]*cellRes[2]*3);
+//     normalsNodes.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
+//     lstar.resize(cellRes[0]*cellRes[1]*cellRes[2]);
+//     normals.resize(cellRes[0]*cellRes[1]*cellRes[2]*3);
     
-    computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
-    computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
-  }
+//     computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
+//     computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
+//   }
   
-#pragma omp parallel for
-  for (int i = 0; i < particles.size(); ++i) {
+// #pragma omp parallel for
+//   for (int i = 0; i < particles.size(); ++i) {
 
-    if (particles[i].w > -1.0f) {
+//     if (particles[i].w > -1.0f) {
 
-      int ijk[3];
-      double p[3] = {particles[i].x, particles[i].y, particles[i].z};
-      float f = getCellVof(p, vofGrid[1], vofArray1, cellRes, ijk);
+//       int ijk[3];
+//       double p[3] = {particles[i].x, particles[i].y, particles[i].z};
+//       float f = getCellVof(p, vofGrid[1], vofArray1, cellRes, ijk);
       
-      if (vofCorrection && f <= g_emf0) {
-	float4 prev_pos1 = particles[i];
-	particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, vofGrid[1], f);
-	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
-      }
-      if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
+//       if (vofCorrection && f <= g_emf0) {
+// 	float4 prev_pos1 = particles[i];
+// 	particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, vofGrid[1], f);
+// 	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+//       }
+//       if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
 
-      	double x[3] = {particles[i].x, particles[i].y, particles[i].z};
-      	double pcoords[3];
-      	vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-      	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      	float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
-      			       coords[0]->GetComponent(ijk[0]+1,0),
-      			       coords[1]->GetComponent(ijk[1],0),
-      			       coords[1]->GetComponent(ijk[1]+1,0),
-      			       coords[2]->GetComponent(ijk[2],0),
-      			       coords[2]->GetComponent(ijk[2]+1,0)};
-      	float3 norm = make_float3(normals[idx*3+0],
-      				  normals[idx*3+1],
-      				  normals[idx*3+2]);
-      	float4 prev_pos1 = particles[i];
-      	particles[i] = plicCorrector(particles[i], norm, lstar[idx], cubeCoords);
-      	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
-      }
-    }
-  }
-}
+//       	double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+//       	double pcoords[3];
+//       	vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+//       	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+//       	float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
+//       			       coords[0]->GetComponent(ijk[0]+1,0),
+//       			       coords[1]->GetComponent(ijk[1],0),
+//       			       coords[1]->GetComponent(ijk[1]+1,0),
+//       			       coords[2]->GetComponent(ijk[2],0),
+//       			       coords[2]->GetComponent(ijk[2]+1,0)};
+//       	float3 norm = make_float3(normals[idx*3+0],
+//       				  normals[idx*3+1],
+//       				  normals[idx*3+2]);
+//       	float4 prev_pos1 = particles[i];
+//       	particles[i] = plicCorrector(particles[i], norm, lstar[idx], cubeCoords);
+//       	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+//       }
+//     }
+//   }
+// }
 
 //==============================================================================
 class IntKeys3 {
@@ -1612,7 +1707,7 @@ void correctParticles2(std::vector<float4> &particles,
     float f = getCellVof(p, grid_t1, vofArray1, cellRes, ijk);    
 
     if (vofCorrection && f <= g_emf0) {
-      updatedParticle = vofCorrector(updatedParticle, vofArray1, coords, cellRes, ijk, grid_t1, f);
+      updatedParticle = vofCorrector2(updatedParticle, vofArray1, coords, cellRes, ijk, grid_t1, f);
     }
     if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
 

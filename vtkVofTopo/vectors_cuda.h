@@ -1,6 +1,8 @@
 #ifndef VECTORS_CUDA_H
 #define VECTORS_CUDA_H
 
+#include <cstdlib>
+
 struct int2
 {
     int x, y;
@@ -120,6 +122,11 @@ inline float3 operator*(float b, float3 a)
     return make_float3(b * a.x, b * a.y, b * a.z);
 }
 
+inline float3 operator*(float3 a, float3 b)
+{
+    return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
 inline float4 operator*(float4 a, float b)
 {
     return make_float4(a.x * b, a.y * b, a.z * b,  a.w * b);
@@ -145,6 +152,11 @@ inline float3 operator/(float3 a, float b)
 inline float4 operator/(float4 a, float b)
 {
     return make_float4(a.x / b, a.y / b, a.z / b,  a.w / b);
+}
+
+inline float3 operator/(float3 a, float3 b)
+{
+    return make_float3(a.x / b.x, a.y / b.y, a.z / b.z);
 }
 
 inline float rsqrtf(float x)
@@ -181,6 +193,16 @@ inline float3 lerp(float3 a, float3 b, float t)
 inline float4 lerp(float4 a, float4 b, float t)
 {
     return a + t*(b-a);
+}
+
+inline float3 minf3(float3 a, float3 b)
+{
+    return make_float3(std::min(a.x,b.x), std::min(a.y,b.y), std::min(a.z,b.z));
+}
+
+inline float3 maxf3(float3 a, float3 b)
+{
+    return make_float3(std::max(a.x,b.x), std::max(a.y,b.y), std::max(a.z,b.z));
 }
 
 #endif//VECTORS_CUDA_H

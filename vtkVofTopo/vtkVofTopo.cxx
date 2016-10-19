@@ -640,13 +640,17 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       uncertainty->SetNumberOfComponents(1);
       uncertainty->SetNumberOfTuples(Uncertainty.size());
 
+      float unc = 0.0f;
+
       for (int i = 0; i < Particles.size(); ++i) {
 
 	float p[3] = {Particles[i].x, Particles[i].y, Particles[i].z};
 	ppoints->SetPoint(i, p);
 	labels->SetValue(i, particleLabels[i]);
 	uncertainty->SetValue(i, Uncertainty[i]);
+	unc += Uncertainty[i];
       }
+      
       particles->SetPoints(ppoints);
       particles->GetPointData()->AddArray(labels);
       particles->GetPointData()->AddArray(uncertainty);
@@ -876,7 +880,7 @@ void vtkVofTopo::AdvectParticles(vtkRectilinearGrid *vof[2],
   dt *= Incr;
 
   advectParticles(vof, velocity, Particles, Uncertainty, dt,
-		  IntegrationMethod, PLICCorrection, VOFCorrection, RK4NumSteps);
+		  IntegrationMethod, PLICCorrection, VOFCorrection, SmartCorrection, RK4NumSteps);
   if (Controller->GetCommunicator() != 0) {
     ExchangeParticles();
   }
@@ -1174,50 +1178,50 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
       if (SeedByPLIC) {      
 	labels[i] = label;
       }
-      else {
-	float f = vofArray->GetComponent(idx,0);
-	if (f >= g_emf1) {
-	  labels[i] = label;
-	}
-	else if (f > g_emf0) {
-	  f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
-	  if (f > g_emf0) {
-	    labels[i] = label;
-	  }
-	  else {
-	    labels[i] = -1.0f;
-	  }
-	}
-	else {
-	  f = neighborF(vofArray,ijk[0],ijk[1],ijk[2],cellRes);
-	  if (f > g_emf0) {
-	    f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
-	    if (f > g_emf0) {
-	      float grad[3];
-	      computeGradient(vofArray, cellRes, ijk, coordCenters, pcoords, grad);
-	      x[0] += grad[0];
-	      x[1] += grad[1];
-	      x[2] += grad[2];
-	      particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
+      // else {
+      // 	float f = vofArray->GetComponent(idx,0);
+      // 	if (f >= g_emf1) {
+      // 	  labels[i] = label;
+      // 	}
+      // 	else if (f > g_emf0) {
+      // 	  f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
+      // 	  if (f > g_emf0) {
+      // 	    labels[i] = label;
+      // 	  }
+      // 	  else {
+      // 	    labels[i] = -1.0f;
+      // 	  }
+      // 	}
+      // 	else {
+      // 	  f = neighborF(vofArray,ijk[0],ijk[1],ijk[2],cellRes);
+      // 	  if (f > g_emf0) {
+      // 	    f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
+      // 	    if (f > g_emf0) {
+      // 	      float grad[3];
+      // 	      computeGradient(vofArray, cellRes, ijk, coordCenters, pcoords, grad);
+      // 	      x[0] += grad[0];
+      // 	      x[1] += grad[1];
+      // 	      x[2] += grad[2];
+      // 	      particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
 	      
-	      if (particleInsideGrid) {
-		idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-		label = data->GetComponent(idx,0);
-		labels[i] = label;
-	      }
-	      else {
-		labels[i] = -1.0f;
-	      }
-	    }
-	    else {
-	      labels[i] = -1.0f;
-	    }
-	  }
-	  else {
-	    labels[i] = -1.0f;
-	  }	  
-	}
-      }
+      // 	      if (particleInsideGrid) {
+      // 		idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      // 		label = data->GetComponent(idx,0);
+      // 		labels[i] = label;
+      // 	      }
+      // 	      else {
+      // 		labels[i] = -1.0f;
+      // 	      }
+      // 	    }
+      // 	    else {
+      // 	      labels[i] = -1.0f;
+      // 	    }
+      // 	  }
+      // 	  else {
+      // 	    labels[i] = -1.0f;
+      // 	  }	  
+      // 	}
+      // }
     }
     else {
       labels[i] = -1.0f;

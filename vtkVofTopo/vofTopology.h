@@ -79,7 +79,7 @@ void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     const float deltaT,
 		     int integrationMethod,
 		     int plicCorrection, int vofCorrection,
-		     int RK4NumSteps);
+		     int smartCorrection, int RK4NumSteps);
 
 /* void advectParticles(vtkRectilinearGrid *inputVof, */
 /* 		     vtkRectilinearGrid *inputVelocity, */

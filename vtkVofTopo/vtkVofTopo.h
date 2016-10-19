@@ -50,6 +50,9 @@ public:
   vtkGetMacro(VOFCorrection, int);
   vtkSetMacro(VOFCorrection, int);
 
+  vtkGetMacro(SmartCorrection, int);
+  vtkSetMacro(SmartCorrection, int);
+
   vtkGetMacro(RK4NumSteps, int);
   vtkSetMacro(RK4NumSteps, int);  
 
@@ -179,6 +182,7 @@ private:
   int IntegrationMethod; // 0 - Heun, 1 - RK4
   int PLICCorrection;
   int VOFCorrection;
+  int SmartCorrection;
   int RK4NumSteps;
   int StoreIntermParticles;
   int StoreIntermBoundaries;

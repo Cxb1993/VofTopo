@@ -1037,12 +1037,7 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 			int numGhostLevels,
 			int plicSeeding)
 {
-  int index;
   vtkDataArray *vofArray = vofGrid->GetCellData()->GetArray(0);
-    // vofGrid->GetCellData()->GetArray("Data", index);
-  if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
   
   vtkDataArray *coordNodes[3] = {vofGrid->GetXCoordinates(),
 				 vofGrid->GetYCoordinates(),
@@ -1077,13 +1072,7 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
   }
   //--------------
   vtkDataArray *data = vofGrid->GetCellData()->GetArray(0);
-    // vofGrid->GetCellData()->GetArray("Data", index);
-  if (index == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
   
-  // vtkDataArray *data =
-  //   vofGrid->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
   int inputRes[3];
   vofGrid->GetDimensions(inputRes);
   vtkDataArray *coordCenters[3];
@@ -1164,7 +1153,7 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
 
 float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
 		    vtkDataArray *coords[3], const int res[3],
-		    const int ijk[3], const double pcoords[3],
+		    const int ijk[3],
 		    vtkRectilinearGrid *vofGrid, float &fCorrected)
 {
   int stencilRange = 4;  
@@ -1322,15 +1311,73 @@ float4 plicCorrector(const float4 pos1, const float3 normal,
   return pos2;
 }
 
-float getCellVof(const float4 &pos, vtkRectilinearGrid *vofGrid[2],
-		 vtkDataArray *vofArray1, const int cellRes[3],
-		 int ijk[3], double pcoords[3])
+int ComputeStructuredCoordinates(vtkRectilinearGrid *grid,
+				 const double x[3], int ijk[3])
 {
-  double x[3] = {pos.x, pos.y, pos.z};
-  vofGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
+  int i, j;
+  double xPrev, xNext, tmp;
+  vtkDataArray *scalars[3];
+  int Dimensions[3];
+
+  grid->GetDimensions(Dimensions);
+
+  scalars[0] = grid->GetXCoordinates();
+  scalars[1] = grid->GetYCoordinates();
+  scalars[2] = grid->GetZCoordinates();
+  //
+  // Find locations in x-y-z direction
+  //
+  ijk[0] = ijk[1] = ijk[2] = 0;
+
+  for ( j=0; j < 3; j++ )
+    {
+    xPrev = scalars[j]->GetComponent(0, 0);
+    xNext = scalars[j]->GetComponent(scalars[j]->GetNumberOfTuples()-1, 0);
+    if (xNext < xPrev)
+      {
+      tmp = xNext;
+      xNext = xPrev;
+      xPrev = tmp;
+      }
+    if ( x[j] < xPrev || x[j] > xNext )
+      {
+      return 0;
+      }
+    if (x[j] == xNext  && Dimensions[j] != 1)
+      {
+      return 0;
+      }
+
+    for (i=1; i < scalars[j]->GetNumberOfTuples(); i++)
+      {
+      xNext = scalars[j]->GetComponent(i, 0);
+      if ( x[j] >= xPrev && x[j] < xNext )
+        {
+        ijk[j] = i - 1;
+        break;
+        }
+
+      else if ( x[j] == xNext )
+        {
+        ijk[j] = i - 1;
+        break;
+        }
+      xPrev = xNext;
+      }
+    }
+
+  return 1;
+}
+
+float getCellVof(const double pos[3], vtkRectilinearGrid *grid,
+		 vtkDataArray *vofArray1, const int cellRes[3],
+		 int ijk[3])
+{
+  ComputeStructuredCoordinates(grid, pos, ijk);
   int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
   return vofArray1->GetComponent(idx, 0);
 }
+
 
 void correctParticles(std::vector<float4> &particles,
 		      std::vector<float> &uncertainty,
@@ -1353,45 +1400,243 @@ void correctParticles(std::vector<float4> &particles,
   }
 
   int nodeRes[3] = {cellRes[0]+1,cellRes[1]+1,cellRes[2]+1};
-  std::vector<float> normalsNodes(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);  
-  computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
+  
+  std::vector<float> normalsNodes;
+  std::vector<float> lstar;
+  std::vector<float> normals;
 
-  std::vector<float> lstar(cellRes[0]*cellRes[1]*cellRes[2]);
-  std::vector<float> normals(cellRes[0]*cellRes[1]*cellRes[2]*3);
-  computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
+  if (plicCorrection) {
+
+    normalsNodes.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
+    lstar.resize(cellRes[0]*cellRes[1]*cellRes[2]);
+    normals.resize(cellRes[0]*cellRes[1]*cellRes[2]*3);
+    
+    computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
+    computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
+  }
   
 #pragma omp parallel for
   for (int i = 0; i < particles.size(); ++i) {
 
     if (particles[i].w > -1.0f) {
+
       int ijk[3];
-      double pcoords[3];
-      float f = getCellVof(particles[i], vofGrid, vofArray1, cellRes, ijk, pcoords);
+      double p[3] = {particles[i].x, particles[i].y, particles[i].z};
+      float f = getCellVof(p, vofGrid[1], vofArray1, cellRes, ijk);
+      
       if (vofCorrection && f <= g_emf0) {
 	float4 prev_pos1 = particles[i];
-	particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, pcoords, vofGrid[1], f);
+	particles[i] = vofCorrector(particles[i], vofArray1, coords, cellRes, ijk, vofGrid[1], f);
 	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
       }
       if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
 
-	double x[3] = {particles[i].x, particles[i].y, particles[i].z};
-	double pcoords[3];
-	vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-	float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
-			       coords[0]->GetComponent(ijk[0]+1,0),
-			       coords[1]->GetComponent(ijk[1],0),
-			       coords[1]->GetComponent(ijk[1]+1,0),
-			       coords[2]->GetComponent(ijk[2],0),
-			       coords[2]->GetComponent(ijk[2]+1,0)};
-	float3 norm = make_float3(normals[idx*3+0],
-				  normals[idx*3+1],
-				  normals[idx*3+2]);
-	float4 prev_pos1 = particles[i];
-	particles[i] = plicCorrector(particles[i], norm, lstar[idx], cubeCoords);
-	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
+      	double x[3] = {particles[i].x, particles[i].y, particles[i].z};
+      	double pcoords[3];
+      	vofGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
+      	int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      	float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
+      			       coords[0]->GetComponent(ijk[0]+1,0),
+      			       coords[1]->GetComponent(ijk[1],0),
+      			       coords[1]->GetComponent(ijk[1]+1,0),
+      			       coords[2]->GetComponent(ijk[2],0),
+      			       coords[2]->GetComponent(ijk[2]+1,0)};
+      	float3 norm = make_float3(normals[idx*3+0],
+      				  normals[idx*3+1],
+      				  normals[idx*3+2]);
+      	float4 prev_pos1 = particles[i];
+      	particles[i] = plicCorrector(particles[i], norm, lstar[idx], cubeCoords);
+      	uncertainty[i] += length(make_float3(particles[i] - prev_pos1));
       }
     }
+  }
+}
+
+//==============================================================================
+class IntKeys3 {
+public:
+  IntKeys3(short k1, short k2, short k3) : key1(k1), key2(k2), key3(k3) { }
+
+  bool operator<(const IntKeys3 &right) const {
+    return (key1 < right.key1 ||
+            (key1 == right.key1 &&
+             (key2 < right.key2 ||
+              (key2 == right.key2 &&
+               (key3 < right.key3))))
+            );
+  }
+
+  short key1, key2, key3;
+};
+
+void mapCellsToParticles(vtkRectilinearGrid *grid,
+			 std::vector<float4> &particles,
+			 std::map<IntKeys3,std::vector<int>> &particlesInCells)
+{
+  int pIdx = 0;
+  for (const auto &particle : particles) {
+    
+    double p[3] = {particle.x, particle.y, particle.z};
+    int ijk[3];
+    ComputeStructuredCoordinates(grid, p, ijk);
+    
+    IntKeys3 key(ijk[0],ijk[1],ijk[2]);
+    
+    if (particlesInCells.find(key) == particlesInCells.end()) {
+      particlesInCells[key] = {pIdx};
+    }
+    else {
+      particlesInCells[key].push_back(pIdx);
+    }
+    
+    ++pIdx;
+  }
+
+}
+
+void correctParticles2(std::vector<float4> &particles,
+		       std::vector<float4> &oldParticles,
+		       std::vector<float> &uncertainty,
+		       vtkRectilinearGrid *vofGrid[2], vtkDataArray *vofArray1,
+		       vtkDataArray *coords[3], const int cellRes[3],
+		       int plicCorrection, int vofCorrection, int smartCorrection)
+{ 
+  if (plicCorrection == 0 && vofCorrection == 0) {
+    return;
+  }
+
+  vtkRectilinearGrid *grid_t1 = vofGrid[1];
+  
+  std::vector<std::vector<float>> dx(3);
+  if (plicCorrection) {
+    dx[0].resize(cellRes[0]);
+    dx[1].resize(cellRes[1]);
+    dx[2].resize(cellRes[2]);
+    for (int c = 0; c < 3; ++c) {
+      for (int i = 0; i < cellRes[c]; ++i) {
+	dx[c][i] = coords[c]->GetComponent(i+1,0) - coords[c]->GetComponent(i,0);
+      }
+    }
+  }
+  
+  int nodeRes[3] = {cellRes[0]+1,cellRes[1]+1,cellRes[2]+1};
+  
+  std::vector<float> normalsNodes;
+  std::vector<float> lstar;
+  std::vector<float> normals;
+
+  if (plicCorrection) {
+
+    normalsNodes.resize(nodeRes[0]*nodeRes[1]*nodeRes[2]*3);
+    lstar.resize(cellRes[0]*cellRes[1]*cellRes[2]);
+    normals.resize(cellRes[0]*cellRes[1]*cellRes[2]*3);
+    
+    computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
+    computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
+  }
+
+  std::vector<std::pair<int,float4>> updatedParticles;
+  updatedParticles.clear();
+
+  std::map<IntKeys3,std::vector<int>> particlesInCells;
+  particlesInCells.clear();
+  
+  if (smartCorrection) {
+    mapCellsToParticles(grid_t1, oldParticles, particlesInCells);
+  }  
+
+  const int cellRange = 1;
+
+  // go over new positions -----------------------------------------
+  int pIdx = 0;
+  for (const auto &particle : particles) {
+
+    float4 updatedParticle = particle;
+    
+    int ijk[3];
+    double x[3] = {updatedParticle.x, updatedParticle.y, updatedParticle.z};      
+    const float f = getCellVof(x, grid_t1, vofArray1, cellRes, ijk);    
+    const bool pushParticle = f < g_emf1;
+
+    if (smartCorrection && f <= g_emf0) {
+
+      double p[3] = {oldParticles[pIdx].x, oldParticles[pIdx].y, oldParticles[pIdx].z};      
+      ComputeStructuredCoordinates(grid_t1, p, ijk);
+	
+      float minDist = std::numeric_limits<float>::max();
+      int bestId = -1;
+	
+      for (int z = ijk[2]-cellRange; z <= ijk[2]+cellRange; ++z) {
+    	for (int y = ijk[2]-cellRange; y <= ijk[2]+cellRange; ++y) {
+    	  for (int x = ijk[0]-cellRange; x <= ijk[0]+cellRange; ++x) {
+
+    	    IntKeys3 key(x,y,z);
+    	    const std::vector<int> &nIds = particlesInCells[key];
+	      
+    	    for (const auto &nId : nIds) {
+    	      if (nId != pIdx) {
+    		int ijk2[3];
+    		double p2[3] = {particles[nId].x, particles[nId].y, particles[nId].z};
+    		float f2 = getCellVof(p2, grid_t1, vofArray1, cellRes, ijk2);
+    		if (f2 > g_emf0) {
+		  
+    		  float4 d = oldParticles[pIdx] - oldParticles[nId];
+    		  float dist = length(make_float3(d.x,d.y,d.z));
+    		  if (minDist > dist) {
+    		    minDist = dist;
+    		    bestId = nId;
+    		  }
+    		}
+    	      }
+    	    }
+    	  }
+    	}
+      }		  
+      if (bestId > -1) {
+    	updatedParticle += particles[bestId] - oldParticles[bestId];
+      }
+    }
+    if (pushParticle) {
+      updatedParticles.push_back(std::pair<int,float4>(pIdx,updatedParticle));
+    }
+    ++pIdx;
+  }
+
+#pragma omp parallel for
+  for (int i = 0; i < updatedParticles.size(); ++i) {
+
+    float4 &updatedParticle = updatedParticles[i].second;
+
+    double p[3] = {updatedParticle.x, updatedParticle.y, updatedParticle.z};
+    int ijk[3];
+    float f = getCellVof(p, grid_t1, vofArray1, cellRes, ijk);    
+
+    if (vofCorrection && f <= g_emf0) {
+      updatedParticle = vofCorrector(updatedParticle, vofArray1, coords, cellRes, ijk, grid_t1, f);
+    }
+    if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
+
+      p[0] = updatedParticle.x; p[1] = updatedParticle.y; p[2] = updatedParticle.z;
+      ComputeStructuredCoordinates(grid_t1, p, ijk);
+      int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
+      float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
+    			     coords[0]->GetComponent(ijk[0]+1,0),
+    			     coords[1]->GetComponent(ijk[1],0),
+    			     coords[1]->GetComponent(ijk[1]+1,0),
+    			     coords[2]->GetComponent(ijk[2],0),
+    			     coords[2]->GetComponent(ijk[2]+1,0)};
+      float3 norm = make_float3(normals[idx*3+0],
+    				normals[idx*3+1],
+    				normals[idx*3+2]);
+      
+      updatedParticle = plicCorrector(updatedParticle, norm, lstar[idx], cubeCoords);
+    }
+  }
+
+  for (int i = 0; i < updatedParticles.size(); ++i) {
+    int pIdx = updatedParticles[i].first;
+    uncertainty[pIdx] += length(make_float3(particles[pIdx] - updatedParticles[i].second));
+    particles[pIdx] = updatedParticles[i].second;
   }
 }
 
@@ -1535,18 +1780,11 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 		     std::vector<float> &uncertainty,
 		     const float deltaT, int integrationMethod,
 		     int plicCorrection, int vofCorrection,
-		     int numSubSteps)
+		     int smartCorrection, int numSubSteps)
 {
-  int index0,index1,index2;
   vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray(0);
-    // velocityGrid[0]->GetCellData()->GetArray("Data", index0);
   vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray(0);
-    // velocityGrid[1]->GetCellData()->GetArray("Data", index1);
   vtkDataArray *vofArray1 = vofGrid[1]->GetCellData()->GetArray(0);
-    // vofGrid[1]->GetCellData()->GetArray("Data", index2);
-  if (index0 == -1 || index1 == -1 || index2 == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
 
   int nodeRes[3];
   vofGrid[1]->GetDimensions(nodeRes);
@@ -1554,6 +1792,8 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
   vtkDataArray *coords[3] = {vofGrid[1]->GetXCoordinates(),
 			     vofGrid[1]->GetYCoordinates(),
 			     vofGrid[1]->GetZCoordinates()};
+
+  std::vector<float4> oldParticles = particles;
   
 #pragma omp parallel for  
   for (int i = 0; i < particles.size(); ++i) {
@@ -1571,7 +1811,8 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
     }
   }
 
-  correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
+  // correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
+  correctParticles2(particles, oldParticles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection, smartCorrection);
 }
 
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],
@@ -1580,14 +1821,8 @@ void advectParticles(vtkRectilinearGrid *velocityGrid[2],
 		     int plicCorrection, int vofCorrection,
 		     int numSubSteps)
 {
-  int index0,index1;
   vtkDataArray *velocityArray0 = velocityGrid[0]->GetCellData()->GetArray(0);
-    // velocityGrid[0]->GetCellData()->GetArray("Data", index0);
   vtkDataArray *velocityArray1 = velocityGrid[1]->GetCellData()->GetArray(0);
-    // velocityGrid[1]->GetCellData()->GetArray("Data", index1);
-  if (index0 == -1 || index1 == -1) {
-    std::cout << __LINE__ << ": Array not found!" << std::endl;
-  }
 
   int nodeRes[3];
   velocityGrid[1]->GetDimensions(nodeRes);
@@ -2413,11 +2648,6 @@ void generateBoundary(const std::vector<float4> &points,
 
     std::array<int,6> labelExtent;
     calcLabelExtents(points, prevLabelPoints[i], grid, labelExtent);
-
-    // std::cout << "Extent[" << i << "] : " << std::endl;
-    // std::cout << labelExtent[0] << " - " << labelExtent[1] << std::endl
-    // 	      << labelExtent[2] << " - " << labelExtent[3] << std::endl
-    // 	      << labelExtent[4] << " - " << labelExtent[5] << std::endl;
 
     const std::array<int,6> nodeExtent = {labelExtent[0]-1,labelExtent[1]+1,
     					  labelExtent[2]-1,labelExtent[3]+1,

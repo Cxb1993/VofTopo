@@ -1349,8 +1349,10 @@ void extractSurface2(const float* volume,
 		     const float isoValue,		    	    
 		     std::vector<int>& indices,
 		     std::vector<float4>& vertices,
-		     int &vertexID)
+		     int &vertexID,
+		     float lab0, float lab1)
 {
+  std::cout << "Labs " << lab0 << " " << lab1 << std::endl;
   const int edgeVertices[12][2] = {0,1,
 				   1,2,
 				   2,3,
@@ -1414,25 +1416,38 @@ void extractSurface2(const float* volume,
 	field[7] = 0.0f;
 
 	float maxVal = -1;
-	for (int node = 0; node < 8; ++node) {	  
-	  field[node] = volume[ids[node]];
+	for (int node = 0; node < 8; ++node) {
+	  if (volume[ids[node]] == lab0 || volume[ids[node]] == lab1) {
+	    field[node] = volume[ids[node]];
+	  }
+	  else {
+	    field[node] = -1.0f;
+	  }
 	  if (field[node] > maxVal) {
 	    maxVal = field[node];
 	  }
 	}
 
-	// calculate flag indicating if each vertex is inside or outside isosurface
-	unsigned int cubeIndex = uint(field[0] < maxVal);
-	cubeIndex += uint(field[1] < maxVal)*2;
-	cubeIndex += uint(field[2] < maxVal)*4;
-	cubeIndex += uint(field[3] < maxVal)*8;
-	cubeIndex += uint(field[4] < maxVal)*16;
-	cubeIndex += uint(field[5] < maxVal)*32;
-	cubeIndex += uint(field[6] < maxVal)*64;
-	cubeIndex += uint(field[7] < maxVal)*128;
+	// // calculate flag indicating if each vertex is inside or outside isosurface
+	// unsigned int cubeIndex = uint(field[0] < maxVal);
+	// cubeIndex += uint(field[1] < maxVal)*2;
+	// cubeIndex += uint(field[2] < maxVal)*4;
+	// cubeIndex += uint(field[3] < maxVal)*8;
+	// cubeIndex += uint(field[4] < maxVal)*16;
+	// cubeIndex += uint(field[5] < maxVal)*32;
+	// cubeIndex += uint(field[6] < maxVal)*64;
+	// cubeIndex += uint(field[7] < maxVal)*128;
+
+	unsigned int cubeIndex = uint(field[0] == lab0);
+	cubeIndex += uint(field[1] == lab0)*2;
+	cubeIndex += uint(field[2] == lab0)*4;
+	cubeIndex += uint(field[3] == lab0)*8;
+	cubeIndex += uint(field[4] == lab0)*16;
+	cubeIndex += uint(field[5] == lab0)*32;
+	cubeIndex += uint(field[6] == lab0)*64;
+	cubeIndex += uint(field[7] == lab0)*128;
 
 	int numVerts = numVertsTable[cubeIndex];
-
 	if (numVerts > 0) {
 
 	  int2 edgeNodes[12] = {make_int2(0, 1),make_int2(1, 2),
@@ -1443,7 +1458,6 @@ void extractSurface2(const float* volume,
 	  			make_int2(2, 6),make_int2(3, 7)};
 
 	  float3 vertlist[12];
-
 	  vertlist[ 0] = vertexInterp(0.5f, v[0], v[1], 0.0f, 1.0f);
 	  vertlist[ 1] = vertexInterp(0.5f, v[1], v[2], 0.0f, 1.0f);
 	  vertlist[ 2] = vertexInterp(0.5f, v[2], v[3], 0.0f, 1.0f);
@@ -1463,20 +1477,26 @@ void extractSurface2(const float* volume,
 			     triTable[cubeIndex][iv+1],
 			     triTable[cubeIndex][iv+2]};
 
-	    bool invalidTriangle = false;
+	    // bool invalidTriangle = false;
+	    int numInvalidEdges = 0;
 	    for (int jv = 0; jv < 3; jv++) {
 
 	      int v0 = edgeVertices[edges[jv]][0];
 	      int v1 = edgeVertices[edges[jv]][1];
 	      
 	      if (field[v0] == -1.0f ||
-		  field[v1]== -1.0f) {
-		invalidTriangle = true;
-		break;
+		  field[v1] == -1.0f) {
+
+		numInvalidEdges++;
+		// invalidTriangle = true;
+		// break;
 	      }
 	    }
 
-	    if (invalidTriangle) {
+	    // if (invalidTriangle) {
+	    //   continue;
+	    // }
+	    if (numInvalidEdges > 1) {
 	      continue;
 	    }
 

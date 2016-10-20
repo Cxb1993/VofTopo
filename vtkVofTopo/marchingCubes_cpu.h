@@ -23,7 +23,8 @@ void extractSurface2(const float* volume,
 		     const float isoValue,		    	    
 		     std::vector<int>& indices,
 		     std::vector<float4>& vertices,
-		     int &vertexID);
+		     int &vertexID,
+		     float lab0 = 0, float lab1 = 0);
 
 
 #endif//MARCHINGCUBES_CPU_H

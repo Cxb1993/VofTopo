@@ -455,7 +455,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
       
       if (StoreIntermBoundaries) {
-	auto cl0 = Clock::now();
+
 	// extract components and store them in the rectilinear grid
       	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
       	ExtractComponents(VofGrid[1], components);
@@ -516,10 +516,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       	IntermBoundaryNormals.push_back(normals);
       	IntermBoundaryIndices.push_back(indices);
 
-	auto cl1 = Clock::now();
-
-	Milliseconds dur = std::chrono::duration_cast<Milliseconds>(cl1-cl0);
-	std::cout << "dur = " << dur.count() << std::endl;
       }
 
       // Timing one step end

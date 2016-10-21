@@ -1268,6 +1268,7 @@ float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
 	bestIdx[1] = neighborY;
 	bestIdx[2] = neighborZ;
 	fCorrected = f;
+	mindist2 = dist2;
       }      
     }
   }
@@ -1388,13 +1389,6 @@ float4 vofCorrector2(const float4 pos1, vtkDataArray *vofField,
     ijk[1] = bestIdx[1];
     ijk[2] = bestIdx[2];
 
-    // int ijk3[3];
-    // double p3[3] = {pos2.x, pos2.y, pos2.z};
-    // float f3 = getCellVof(p3, vofGrid, vofField, res, ijk3);
-
-    // if (f3 <= g_emf0) {
-    // 	std::cout << "NIE BANGLA" << std::endl;
-    // }
   }
   return pos2;
 }
@@ -1726,8 +1720,6 @@ void correctParticles2(std::vector<float4> &particles,
     }
     if (plicCorrection && (f > g_emf0 && f < g_emf1)) {
 
-      // p[0] = updatedParticle.x; p[1] = updatedParticle.y; p[2] = updatedParticle.z;
-      // ComputeStructuredCoordinates(grid_t1, p, ijk);
       int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
       float cubeCoords[6] = {coords[0]->GetComponent(ijk[0],0),
     			     coords[0]->GetComponent(ijk[0]+1,0),
@@ -1740,14 +1732,6 @@ void correctParticles2(std::vector<float4> &particles,
     				normals[idx*3+2]);
       
       updatedParticle = plicCorrector(updatedParticle, norm, lstar[idx], cubeCoords);
-
-      // int ijk2[3];
-      // double p2[3] = {updatedParticle.x, updatedParticle.y, updatedParticle.z};
-      // float f2 = getCellVof(p2, vofGrid[1], vofArray1, cellRes, ijk2);
-      // if (f2 <= g_emf0) {
-      // 	std::cout << "NIE BANGLA" << std::endl;
-      // }
-
     }
   }
 
@@ -1756,18 +1740,6 @@ void correctParticles2(std::vector<float4> &particles,
     uncertainty[pIdx] += length(make_float3(particles[pIdx] - updatedParticles[i].second));
     particles[pIdx] = updatedParticles[i].second;
   }
-
-  // //sanity check
-  // int idxs = 0;
-  // for (const auto & particle:particles) {
-  //   double p[3] = {particle.x, particle.y, particle.z};
-  //   int ijk[3];
-  //   float f = getCellVof(p, grid_t1, vofArray1, cellRes, ijk);
-  //   if (f <= g_emf0) {
-  //     std::cout << "NIE BANGLA!!! " << idxs << std::endl;
-  //   }
-  //   ++idxs;
-  // }
 }
 
 const float inv6 = 0.16666666666666666f;
@@ -2791,8 +2763,6 @@ void generateBoundary(const std::vector<float4> &points,
   calcLabelPoints(labels, labelsRange, labelPoints);
 
   for (int i = 0; i < prevLabelPoints.size(); ++i) {
-
-    std::cout << "-------------label " << i << std::endl;
 
     //---------------------------------------------------
     std::unordered_set<float> unique_labels;

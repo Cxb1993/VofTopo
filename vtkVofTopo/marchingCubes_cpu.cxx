@@ -1352,7 +1352,6 @@ void extractSurface2(const float* volume,
 		     int &vertexID,
 		     float lab0, float lab1)
 {
-  std::cout << "Labs " << lab0 << " " << lab1 << std::endl;
   const int edgeVertices[12][2] = {0,1,
 				   1,2,
 				   2,3,
@@ -1496,7 +1495,7 @@ void extractSurface2(const float* volume,
 	    // if (invalidTriangle) {
 	    //   continue;
 	    // }
-	    if (numInvalidEdges > 1) {
+	    if (numInvalidEdges > 2) {
 	      continue;
 	    }
 

@@ -37,7 +37,7 @@
 
 vtkStandardNewMacro(vtkVofTopo);
 
-#define MEASURE_TIME
+//#define MEASURE_TIME
 
 // #ifdef MEASURE_TIME
 
@@ -973,19 +973,33 @@ void vtkVofTopo::ExchangeParticles()
   std::vector<short> particleProcsToKeep;
   std::vector<float> uncertaintyToKeep;
 
+  for (int i = 0; i < NeighborProcesses.size(); ++i) {
+    for (int j = 0; j < NeighborProcesses[i].size(); ++j) {
+      std::cout << processId << " " << i << " neighborprocesses " << " " << NeighborProcesses[i][j] << std::endl;
+    }
+  }
+
   for (int i = 0; i < Particles.size(); ++i) {
 
     int bound = outOfBounds(Particles[i], BoundsNoGhosts, GlobalBounds);
     if (bound > -1) {
-      for (int j = 0; j < NeighborProcesses[bound].size(); ++j) {
-      // for (int j = 0; j < numProcesses; ++j) {	
+      for (int k = 0; k < 6; ++k) {
+	for (int j = 0; j < NeighborProcesses[k].size(); ++j) {
+	  // for (int j = 0; j < numProcesses; ++j) {	
 
-  	int neighborId = NeighborProcesses[bound][j];
-	if (neighborId != processId) {
-	  particlesToSend[neighborId].push_back(Particles[i]);
-	  particleIdsToSend[neighborId].push_back(ParticleIds[i]);
-	  particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
-	  uncertaintyToSend[neighborId].push_back(Uncertainty[i]);
+	  // int neighborId = NeighborProcesses[bound][j];
+	  int neighborId = NeighborProcesses[k][j];
+	  if (neighborId != processId) {
+	    particlesToSend[neighborId].push_back(Particles[i]);
+	    particleIdsToSend[neighborId].push_back(ParticleIds[i]);
+	    particleProcsToSend[neighborId].push_back(ParticleProcs[i]);
+	    uncertaintyToSend[neighborId].push_back(Uncertainty[i]);
+
+	    if (ParticleIds[i] == 13 && ParticleProcs[i] == 1) {
+	      std::cout << "exchange: " << processId << " " << neighborId << " " << ParticleIds[i] << " " << ParticleProcs[i] << std::endl;
+	    }
+	  
+	  }
 	}
       }
     }
@@ -1013,7 +1027,20 @@ void vtkVofTopo::ExchangeParticles()
 
   // insert the paricles that are within the domain
   for (int i = 0; i < particlesToRecv.size(); ++i) {
+
     int within = withinBounds(particlesToRecv[i], BoundsNoGhosts);
+    if (particleIdsToRecv[i] == 13 && particleProcsToRecv[i] == 1) {
+      std::cout << "receive " << processId << " " << i << " " << within << std::endl;
+      std::cout << "particle "
+		<< particlesToRecv[i].x << " "
+		<< particlesToRecv[i].y << " "
+		<< particlesToRecv[i].z << std::endl;
+      std::cout << "bounds "
+		<< BoundsNoGhosts[0] << " " << BoundsNoGhosts[1] << " " 
+		<< BoundsNoGhosts[2] << " " << BoundsNoGhosts[3] << " "
+		<< BoundsNoGhosts[4] << " " << BoundsNoGhosts[5] << std::endl;
+	
+    }
     if (within) {
       Particles.push_back(particlesToRecv[i]);
       ParticleIds.push_back(particleIdsToRecv[i]);
@@ -1404,6 +1431,12 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
 
   }
   dst->GetPointData()->AddArray(dataArray);
+
+  for (int i = 0; i < dataArray->GetNumberOfTuples(); i++) {
+    if (dataArray->GetValue(i) < 0) {
+      std::cout << ">>> " << Controller->GetLocalProcessId() << " " << i << std::endl;
+    }
+  }
 }
 
 //----------------------------------------------------------------------------

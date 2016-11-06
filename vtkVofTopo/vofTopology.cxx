@@ -2740,6 +2740,9 @@ void generateBoundary(const std::vector<float4> &points,
 		      std::vector<int> &indices,
 		      std::vector<std::vector<int>> &prevLabelPoints)
 {
+  if (points.empty()) {
+    return;
+  }
   vtkDataArray *coords[3] = {grid->GetXCoordinates(), 
 			     grid->GetYCoordinates(), 
 			     grid->GetZCoordinates()};

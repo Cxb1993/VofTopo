@@ -1414,37 +1414,26 @@ void extractSurface2(const float* volume,
 	field[6] = 0.0f;
 	field[7] = 0.0f;
 
-	float maxVal = -1;
 	for (int node = 0; node < 8; ++node) {
-	  if (volume[ids[node]] == lab0 || volume[ids[node]] == lab1) {
-	    field[node] = volume[ids[node]];
+	  if (volume[ids[node]] == lab0) {
+	    field[node] = 0.0f;
+	  }
+	  else if (volume[ids[node]] == lab1) {
+	    field[node] = 1.0f;
 	  }
 	  else {
 	    field[node] = -1.0f;
 	  }
-	  if (field[node] > maxVal) {
-	    maxVal = field[node];
-	  }
 	}
 
-	// // calculate flag indicating if each vertex is inside or outside isosurface
-	// unsigned int cubeIndex = uint(field[0] < maxVal);
-	// cubeIndex += uint(field[1] < maxVal)*2;
-	// cubeIndex += uint(field[2] < maxVal)*4;
-	// cubeIndex += uint(field[3] < maxVal)*8;
-	// cubeIndex += uint(field[4] < maxVal)*16;
-	// cubeIndex += uint(field[5] < maxVal)*32;
-	// cubeIndex += uint(field[6] < maxVal)*64;
-	// cubeIndex += uint(field[7] < maxVal)*128;
-
-	unsigned int cubeIndex = uint(field[0] == lab0);
-	cubeIndex += uint(field[1] == lab0)*2;
-	cubeIndex += uint(field[2] == lab0)*4;
-	cubeIndex += uint(field[3] == lab0)*8;
-	cubeIndex += uint(field[4] == lab0)*16;
-	cubeIndex += uint(field[5] == lab0)*32;
-	cubeIndex += uint(field[6] == lab0)*64;
-	cubeIndex += uint(field[7] == lab0)*128;
+	unsigned int cubeIndex = uint(field[0] == 1.0f);
+	cubeIndex += uint(field[1] == 1.0f)*2;
+	cubeIndex += uint(field[2] == 1.0f)*4;
+	cubeIndex += uint(field[3] == 1.0f)*8;
+	cubeIndex += uint(field[4] == 1.0f)*16;
+	cubeIndex += uint(field[5] == 1.0f)*32;
+	cubeIndex += uint(field[6] == 1.0f)*64;
+	cubeIndex += uint(field[7] == 1.0f)*128;
 
 	int numVerts = numVertsTable[cubeIndex];
 	if (numVerts > 0) {
@@ -1456,19 +1445,20 @@ void extractSurface2(const float* volume,
 	  			make_int2(0, 4),make_int2(1, 5),
 	  			make_int2(2, 6),make_int2(3, 7)};
 
+	  float isovalue = 0.5f;
 	  float3 vertlist[12];
-	  vertlist[ 0] = vertexInterp(0.5f, v[0], v[1], 0.0f, 1.0f);
-	  vertlist[ 1] = vertexInterp(0.5f, v[1], v[2], 0.0f, 1.0f);
-	  vertlist[ 2] = vertexInterp(0.5f, v[2], v[3], 0.0f, 1.0f);
-	  vertlist[ 3] = vertexInterp(0.5f, v[3], v[0], 0.0f, 1.0f);
-	  vertlist[ 4] = vertexInterp(0.5f, v[4], v[5], 0.0f, 1.0f);
-	  vertlist[ 5] = vertexInterp(0.5f, v[5], v[6], 0.0f, 1.0f);
-	  vertlist[ 6] = vertexInterp(0.5f, v[6], v[7], 0.0f, 1.0f);
-	  vertlist[ 7] = vertexInterp(0.5f, v[7], v[4], 0.0f, 1.0f);
-	  vertlist[ 8] = vertexInterp(0.5f, v[0], v[4], 0.0f, 1.0f);
-	  vertlist[ 9] = vertexInterp(0.5f, v[1], v[5], 0.0f, 1.0f);
-	  vertlist[10] = vertexInterp(0.5f, v[2], v[6], 0.0f, 1.0f);
-	  vertlist[11] = vertexInterp(0.5f, v[3], v[7], 0.0f, 1.0f);
+	  vertlist[ 0] = vertexInterp(isoValue, v[0], v[1], field[0], field[1]);
+	  vertlist[ 1] = vertexInterp(isoValue, v[1], v[2], field[1], field[2]);
+	  vertlist[ 2] = vertexInterp(isoValue, v[2], v[3], field[2], field[3]);
+	  vertlist[ 3] = vertexInterp(isoValue, v[3], v[0], field[3], field[0]);
+	  vertlist[ 4] = vertexInterp(isoValue, v[4], v[5], field[4], field[5]);
+	  vertlist[ 5] = vertexInterp(isoValue, v[5], v[6], field[5], field[6]);
+	  vertlist[ 6] = vertexInterp(isoValue, v[6], v[7], field[6], field[7]);
+	  vertlist[ 7] = vertexInterp(isoValue, v[7], v[4], field[7], field[4]);
+	  vertlist[ 8] = vertexInterp(isoValue, v[0], v[4], field[0], field[4]);
+	  vertlist[ 9] = vertexInterp(isoValue, v[1], v[5], field[1], field[5]);
+	  vertlist[10] = vertexInterp(isoValue, v[2], v[6], field[2], field[6]);
+	  vertlist[11] = vertexInterp(isoValue, v[3], v[7], field[3], field[7]);
 
 	  for(int iv = 0; iv < numVerts; iv += 3) {
 

@@ -78,9 +78,14 @@ TimePoint end_components;
 TimePoint start_assignment;
 TimePoint end_assignment;
 
+std::vector<TimePoint> start_interm_boundary;
+std::vector<TimePoint> end_interm_boundary;
+
+std::string wallClockStartTime;
+
 void writeTimings(std::string filename, int t0, int t1)
 {
-  std::ofstream file(filename, std::ofstream::app);
+  std::ofstream file(filename, std::ofstream::out);
 
   file << "timesteps," << t0 << "," << t1 << std::endl;
 
@@ -118,6 +123,15 @@ void writeTimings(std::string filename, int t0, int t1)
       file << "advection," << i << "," << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
     }
   }
+  if (start_interm_boundary.size() == end_interm_boundary.size()) {
+    for (int i = 0; i < start_interm_boundary.size(); ++i) {
+      Milliseconds dur_step_ms =
+	std::chrono::duration_cast<Milliseconds>(end_interm_boundary[i]-start_interm_boundary[i]);
+      Seconds dur_step_s = std::chrono::duration_cast<Seconds>(end_interm_boundary[i]-start_interm_boundary[i]);
+      file << "interm_boundary," << i << "," << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
+    }
+  }
+
   file.close();
 }
 
@@ -329,8 +343,18 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	end_oneStep.clear();
 	start_advection.clear();
 	end_advection.clear();
-
+	start_interm_boundary.clear();
+	end_interm_boundary.clear();
+	
 	start_all = Clock::now();
+
+	time_t rawtime;
+	struct tm * timeinfo;
+	char buffer [80];
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	strftime(buffer,80,"%F_%H:%M:%S",timeinfo);
+	wallClockStartTime = buffer;
       }
 #endif//MEASURE_TIME
       // find neighbor processes and global domain bounds
@@ -346,9 +370,19 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       end_oneStep.clear();
       start_advection.clear();
       end_advection.clear();
+      start_interm_boundary.clear();
+      end_interm_boundary.clear();
       
       start_all = Clock::now();
-      
+
+      time_t rawtime;
+      struct tm * timeinfo;
+      char buffer [80];
+      time(&rawtime);
+      timeinfo = localtime(&rawtime);
+      strftime(buffer,80,"%F_%H:%M:%S",timeinfo);
+      wallClockStartTime = buffer;
+
 #endif//MEASURE_TIME
       
       vtkRectilinearGrid *inputVof = vtkRectilinearGrid::
@@ -430,7 +464,6 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 
       AdvectParticles(VofGrid, VelocityGrid);
 
-
       // Timing advection end
 
 #ifdef MEASURE_TIME            
@@ -455,6 +488,18 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
       
       if (StoreIntermBoundaries) {
+
+#ifdef MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  start_interm_boundary.push_back(Clock::now());
+	}
+      }
+      else {
+	start_interm_boundary.push_back(Clock::now());
+      }
+#endif//MEASURE_TIME
 
 	// extract components and store them in the rectilinear grid
       	vtkSmartPointer<vtkRectilinearGrid> components = vtkSmartPointer<vtkRectilinearGrid>::New();
@@ -516,6 +561,18 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       	IntermBoundaryNormals.push_back(normals);
       	IntermBoundaryIndices.push_back(indices);
 
+#ifdef MEASURE_TIME            
+      if (Controller->GetCommunicator() != 0) {
+	Controller->Barrier();
+	if (Controller->GetLocalProcessId() == 0) {
+	  end_interm_boundary.push_back(Clock::now());
+	}
+      }
+      else {
+	end_interm_boundary.push_back(Clock::now());
+      }
+#endif//MEASURE_TIME
+	
       }
 
       // Timing one step end
@@ -721,8 +778,16 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     else {
       end_all = Clock::now();
     }
+#endif//MEASURE_TIME
 
-    writeTimings("timings.csv", InitTimeStep, TimestepT1);
+#ifdef MEASURE_TIME
+    std::string tname = "timings_";
+    tname += std::to_string(InitTimeStep) + "-" + std::to_string(TimestepT1);
+    tname += "_" + wallClockStartTime;
+    tname += ".csv";
+    
+    writeTimings(tname, InitTimeStep, TimestepT1);
+    
 #endif//MEASURE_TIME
   }
   else {
@@ -937,10 +1002,10 @@ void vtkVofTopo::ExchangeParticles()
   ParticleProcs = particleProcsToKeep;
   Uncertainty = uncertaintyToKeep;
 
-  std::vector<float4> particlesToRecv;
-  std::vector<int> particleIdsToRecv;
-  std::vector<short> particleProcsToRecv;
-  std::vector<float> uncertaintyToRecv;
+  std::vector<float4> particlesToRecv = {};
+  std::vector<int> particleIdsToRecv = {};
+  std::vector<short> particleProcsToRecv = {};
+  std::vector<float> uncertaintyToRecv = {};
   sendData(particlesToSend, particlesToRecv, numProcesses, Controller);
   sendData(particleIdsToSend, particleIdsToRecv, numProcesses, Controller);
   sendData(particleProcsToSend, particleProcsToRecv, numProcesses, Controller);

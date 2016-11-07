@@ -37,7 +37,7 @@
 
 vtkStandardNewMacro(vtkVofTopo);
 
-//#define MEASURE_TIME
+#define MEASURE_TIME
 
 // #ifdef MEASURE_TIME
 
@@ -513,39 +513,36 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 	TransferParticleDataToSeeds(particleLabels, "Labels", tmpSeeds);
 	
 	// Transfer seed points from neighbors ---------------------------------
-	vtkPolyData *boundarySeeds = vtkPolyData::New();
+	vtkSmartPointer<vtkPolyData> boundarySeeds = vtkSmartPointer<vtkPolyData>::New();
 	if (Controller->GetCommunicator() != 0) {
 	  ExchangeBoundarySeedPoints(boundarySeeds, tmpSeeds);
 	}
 
      	vtkPoints *points = tmpSeeds->GetPoints();
-      	std::vector<float4> points_tmp(particleLabels.size());
-	for (int i = 0; i < points_tmp.size(); ++i) {
+	vtkDataArray *labels = tmpSeeds->GetPointData()->GetArray("Labels");
+
+	int nps = tmpSeeds->GetNumberOfPoints();
+	int nnps = boundarySeeds->GetNumberOfPoints();
+	
+      	std::vector<float4> points_tmp(nps+nnps);
+	std::vector<float> labels_tmp(nps+nnps);
+	for (int i = 0; i < nps; ++i) {
 	  double p[3];
 	  points->GetPoint(i, p);
 	  points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
+	  labels_tmp[i] = labels->GetComponent(i, 0);
 	}
-      	std::vector<float> labels_tmp(particleLabels.size());
-	for (int i = 0; i < labels_tmp.size(); ++i) {
-	  labels_tmp[i] = particleLabels[i];
-	}
+	
+	if (nnps > 0) {
 
-      	// merge points ------------------------------------------------------------
-	int numbs = boundarySeeds->GetNumberOfPoints();
-	if (numbs > 0) {
-	  vtkPoints *bspoints = boundarySeeds->GetPoints();
-	  vtkFloatArray *bslabels = vtkFloatArray::
-	    SafeDownCast(boundarySeeds->GetPointData()->GetArray("Labels"));
-
-	  int numpts = points_tmp.size();
-	  points_tmp.resize(numpts+numbs);
-	  labels_tmp.resize(numpts+numbs);
-	  for (int i = numpts; i < points_tmp.size(); ++i) {
+	  labels = boundarySeeds->GetPointData()->GetArray("Labels");
+	  
+	  for (int i = 0; i < nnps; ++i) {
 	    double p[3];
-	    bspoints->GetPoint(i-numpts, p);
-	    points_tmp[i] = make_float4(p[0],p[1],p[2],1.0f);
-	    labels_tmp[i] = bslabels->GetComponent(i-numpts, 0);
-	  }	  
+	    boundarySeeds->GetPoint(i, p);
+	    points_tmp[i+nps] = make_float4(p[0],p[1],p[2],1.0f);
+	    labels_tmp[i+nps] = labels->GetComponent(i, 0);
+	  }
 	}
 
 	std::vector<int> indices(0);
@@ -781,11 +778,17 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 #endif//MEASURE_TIME
 
 #ifdef MEASURE_TIME
-    std::string tname = "timings_";
+    int pid = 0;
+    if (Controller->GetCommunicator() == 0) {
+      pid = Controller->GetLocalProcessId();
+    }
+
+    std::string tname = "timings_p";
+    tname += pid + "_";
     tname += std::to_string(InitTimeStep) + "-" + std::to_string(TimestepT1);
     tname += "_" + wallClockStartTime;
     tname += ".csv";
-    
+
     writeTimings(tname, InitTimeStep, TimestepT1);
     
 #endif//MEASURE_TIME

@@ -2740,6 +2740,18 @@ void generateBoundary(const std::vector<float4> &points,
 		      std::vector<int> &indices,
 		      std::vector<std::vector<int>> &prevLabelPoints)
 {
+  {
+    long long numPoints = points.size();
+    long long numPrevPoints = 0;
+    for (const auto  &it : prevLabelPoints) {
+      numPrevPoints += it.size();
+    }
+    if (numPrevPoints != 0 && numPoints != numPrevPoints) {
+      std::cout << "ERROR: the number of points doesn't match: "
+		<< numPoints << " - " << numPrevPoints << std::endl;
+    }
+  }
+  
   if (points.empty()) {
     return;
   }

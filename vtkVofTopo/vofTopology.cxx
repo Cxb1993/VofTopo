@@ -1666,10 +1666,18 @@ void correctParticles2(std::vector<float4> &particles,
 	
       float minDist = std::numeric_limits<float>::max();
       int bestId = -1;
+
+      int x0 = std::max(ijk[0]-cellRange, 0);
+      int y0 = std::max(ijk[1]-cellRange, 0);
+      int z0 = std::max(ijk[2]-cellRange, 0);
+      
+      int x1 = std::min(ijk[0]+cellRange, cellRes[0]-1);
+      int y1 = std::min(ijk[1]+cellRange, cellRes[1]-1);
+      int z1 = std::min(ijk[2]+cellRange, cellRes[2]-1);
 	
-      for (int z = ijk[2]-cellRange; z <= ijk[2]+cellRange; ++z) {
-    	for (int y = ijk[2]-cellRange; y <= ijk[2]+cellRange; ++y) {
-    	  for (int x = ijk[0]-cellRange; x <= ijk[0]+cellRange; ++x) {
+      for (int z = z0; z <= z1; ++z) {
+    	for (int y = y0; y <= y1; ++y) {
+    	  for (int x = x0; x <= x1; ++x) {
 
     	    IntKeys3 key(x,y,z);
     	    const std::vector<int> &nIds = particlesInCells[key];
@@ -1893,13 +1901,10 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 			     vofGrid[1]->GetZCoordinates()};
 
   std::vector<float4> oldParticles = particles;
-  
+
 #pragma omp parallel for  
   for (int i = 0; i < particles.size(); ++i) {
 
-    // if (particles[i].w <= g_emf0) {
-    //   continue;
-    // }
     if (integrationMethod == 0) { // Heun
       particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
 				   vofArray1, cellRes, deltaT);
@@ -2025,11 +2030,11 @@ int outOfBounds(const float4 particle, const double bounds[6], const double glob
 
 int withinBounds(const float4 particle, const double bounds[6])
 {
-  if (particle.x < bounds[0]) return 0;
+  if (particle.x <= bounds[0]) return 0;
   if (particle.x > bounds[1]) return 0;
-  if (particle.y < bounds[2]) return 0;
+  if (particle.y <= bounds[2]) return 0;
   if (particle.y > bounds[3]) return 0;
-  if (particle.z < bounds[4]) return 0;
+  if (particle.z <= bounds[4]) return 0;
   if (particle.z > bounds[5]) return 0;
 
   return 1;
@@ -2782,9 +2787,9 @@ void generateBoundary(const std::vector<float4> &points,
     std::unordered_set<float> unique_labels;
     unique_labels.clear();
     for (int j = 0; j < prevLabelPoints[i].size(); ++j) {
-      // if (labels[prevLabelPoints[i][j]] != -1) {
+      if (labels[prevLabelPoints[i][j]] != -1) {
 	unique_labels.insert(labels[prevLabelPoints[i][j]]);
-      // }
+      }
     }
     if (unique_labels.size() < 2) {
       continue;
@@ -2902,7 +2907,6 @@ void generateBoundary(const std::vector<float4> &points,
     generatePairs(unique_labels, combs);
 
     for (int j = 0; j < combs.size(); ++j) {
-    
       extractSurface2(field.data(), subNodeRes, subcoords, subGridExtent,
 		      isoValue, indices, vertices, vertexID, combs[j].first, combs[j].second);
     }

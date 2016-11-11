@@ -172,7 +172,7 @@ vtkVofTopo::vtkVofTopo() :
 
   IntermBoundaryIndices.clear();
   IntermBoundaryVertices.clear();
-  IntermBoundaryNormals.clear();
+  // IntermBoundaryNormals.clear();
   PrevLabelPoints.clear();
 
   g_emf0 = EMF0;
@@ -426,9 +426,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       Uncertainty.clear();
       Uncertainty.resize(Particles.size(),0.0f);
 
-      Boundaries->SetPoints(vtkPoints::New());
-      vtkCellArray *cells = vtkCellArray::New();
-      Boundaries->SetPolys(cells);
+      // Boundaries->SetPoints(vtkPoints::New());
+      // vtkCellArray *cells = vtkCellArray::New();
+      // Boundaries->SetPolys(cells);
     }
   }
 
@@ -555,7 +555,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 			 PrevLabelPoints);	
 
       	IntermBoundaryVertices.push_back(vertices);
-      	IntermBoundaryNormals.push_back(normals);
+      	// IntermBoundaryNormals.push_back(normals);
       	IntermBoundaryIndices.push_back(indices);
 
 #ifdef MEASURE_TIME            
@@ -678,14 +678,14 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       boundarySeeds->Delete();
 
       // Generate output -----------------------------------------------------
-      vtkPolyData *particles = vtkPolyData::New();
-      vtkPoints *ppoints = vtkPoints::New();
+      vtkSmartPointer<vtkPolyData> particles = vtkSmartPointer<vtkPolyData>::New();
+      vtkSmartPointer<vtkPoints> ppoints = vtkSmartPointer<vtkPoints>::New();
       ppoints->SetNumberOfPoints(Particles.size());
-      vtkFloatArray *labels = vtkFloatArray::New();
+      vtkSmartPointer<vtkFloatArray> labels = vtkSmartPointer<vtkFloatArray>::New();
       labels->SetName("Labels");
       labels->SetNumberOfComponents(1);
       labels->SetNumberOfTuples(particleLabels.size());
-      vtkFloatArray *uncertainty = vtkFloatArray::New();
+      vtkSmartPointer<vtkFloatArray> uncertainty = vtkSmartPointer<vtkFloatArray>::New();
       uncertainty->SetName("Uncertainty");
       uncertainty->SetNumberOfComponents(1);
       uncertainty->SetNumberOfTuples(Uncertainty.size());
@@ -803,7 +803,7 @@ int vtkVofTopo::RequestData(vtkInformation *request,
 //----------------------------------------------------------------------------
 void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
 {
-  vtkPoints *seedPoints;
+  vtkSmartPointer<vtkPoints> seedPoints;
 
   if (seeds) {
     if (Controller->GetCommunicator() == 0) {
@@ -828,7 +828,7 @@ void vtkVofTopo::InitParticles(vtkRectilinearGrid *vof, vtkPolyData *seeds)
     }
   }
   else {
-    seedPoints = vtkPoints::New();
+    seedPoints = vtkSmartPointer<vtkPoints>::New();
     generateSeedPoints(vof, Refinement, seedPoints, GlobalExtent, NumGhostLevels, SeedByPLIC);
   }
   Particles.clear();
@@ -1050,7 +1050,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
 
   vtkDataArray *data = vof->GetCellData()->GetAttribute(vtkDataSetAttributes::SCALARS);
 
-  vtkFloatArray *labels = vtkFloatArray::New();
+  vtkSmartPointer<vtkFloatArray> labels = vtkSmartPointer<vtkFloatArray>::New();
   labels->SetName("Labels");
   labels->SetNumberOfComponents(1);
   labels->SetNumberOfTuples(vof->GetNumberOfCells());
@@ -1321,7 +1321,7 @@ void vtkVofTopo::TransferParticleDataToSeeds(std::vector<float> &particleData,
 					     const std::string arrayName,
 					     vtkPolyData *dst)
 {
-  vtkFloatArray *dataArray = vtkFloatArray::New();
+  vtkSmartPointer<vtkFloatArray> dataArray = vtkSmartPointer<vtkFloatArray>::New();
   dataArray->SetName(arrayName.c_str());
   dataArray->SetNumberOfComponents(1);
   dataArray->SetNumberOfTuples(dst->GetNumberOfPoints());
@@ -1489,7 +1489,7 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
 		   LocalExtentNoGhosts, LocalExtent, vertexID, labelOffsets,
 		   vertices, normals, indices);
     
-  vtkPoints *outputPoints = vtkPoints::New();
+  vtkSmartPointer<vtkPoints> outputPoints = vtkSmartPointer<vtkPoints>::New();
   outputPoints->SetNumberOfPoints(vertices.size());
   for (int i = 0; i < vertices.size(); ++i) {
     
@@ -1509,11 +1509,11 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
     cells->SetValue(i*4+3,indices[i*3+2]);
   }
 
-  vtkCellArray *outputTriangles = vtkCellArray::New();
+  vtkSmartPointer<vtkCellArray> outputTriangles = vtkSmartPointer<vtkCellArray>::New();
   outputTriangles->SetNumberOfCells(indices.size()/3);
   outputTriangles->SetCells(indices.size()/3, cells);
 
-  vtkShortArray *boundaryLabels = vtkShortArray::New();
+  vtkSmartPointer<vtkShortArray> boundaryLabels = vtkSmartPointer<vtkShortArray>::New();
   boundaryLabels->SetName("Labels");
   boundaryLabels->SetNumberOfComponents(1);
   boundaryLabels->SetNumberOfTuples(outputPoints->GetNumberOfPoints());
@@ -1529,7 +1529,7 @@ void vtkVofTopo::GenerateBoundaries(vtkPolyData *boundaries,
     }
   }
 
-  vtkFloatArray *pointNormals = vtkFloatArray::New();
+  vtkSmartPointer<vtkFloatArray> pointNormals = vtkSmartPointer<vtkFloatArray>::New();
   pointNormals->SetName("Normals");
   pointNormals->SetNumberOfComponents(3);
   pointNormals->SetNumberOfTuples(normals.size());
@@ -1873,15 +1873,15 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
     numPoints += IntermBoundaryVertices[i].size();
   }
 
-  vtkPoints *points = vtkPoints::New();
+  vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
   points->SetNumberOfPoints(numPoints);
 
-  vtkFloatArray *pointNormals = vtkFloatArray::New();
-  pointNormals->SetName("Normals");
-  pointNormals->SetNumberOfComponents(3);
-  pointNormals->SetNumberOfTuples(numPoints);
+  // vtkFloatArray *pointNormals = vtkFloatArray::New();
+  // pointNormals->SetName("Normals");
+  // pointNormals->SetNumberOfComponents(3);
+  // pointNormals->SetNumberOfTuples(numPoints);
 
-  vtkFloatArray *intTimeStamps = vtkFloatArray::New();
+  vtkSmartPointer<vtkFloatArray> intTimeStamps = vtkSmartPointer<vtkFloatArray>::New();
   intTimeStamps->SetName("IntermediateTimeStamps");
   intTimeStamps->SetNumberOfComponents(1);
   intTimeStamps->SetNumberOfTuples(numPoints);
@@ -1895,10 +1895,10 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
 		     IntermBoundaryVertices[i][j].z};
       points->SetPoint(idx, p);
 
-      float n[3] = {IntermBoundaryNormals[i][j].x,
-		    IntermBoundaryNormals[i][j].y,
-		    IntermBoundaryNormals[i][j].z};
-      pointNormals->SetTuple3(idx,n[0],n[1],n[2]);
+      // float n[3] = {IntermBoundaryNormals[i][j].x,
+      // 		    IntermBoundaryNormals[i][j].y,
+      // 		    IntermBoundaryNormals[i][j].z};
+      // pointNormals->SetTuple3(idx,n[0],n[1],n[2]);
 	      
       intTimeStamps->SetValue(idx, i);
 
@@ -1930,14 +1930,14 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
     }
   }
 
-  vtkCellArray *outputTriangles = vtkCellArray::New();
+  vtkSmartPointer<vtkCellArray> outputTriangles = vtkSmartPointer<vtkCellArray>::New();
   outputTriangles->SetNumberOfCells(numCells);
   outputTriangles->SetCells(numCells, cells);
 
   intermBoundaries->SetPoints(points);
   intermBoundaries->GetPointData()->AddArray(intTimeStamps);
   intermBoundaries->SetPolys(outputTriangles);
-  intermBoundaries->GetPointData()->SetNormals(pointNormals);
+  // intermBoundaries->GetPointData()->SetNormals(pointNormals);
 }
 
 void vtkVofTopo::CreateScalarField(vtkRectilinearGrid *grid,

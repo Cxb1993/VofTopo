@@ -1135,10 +1135,12 @@ void generateSeedPoints(vtkRectilinearGrid *vofGrid,
   
   int inputRes[3];
   vofGrid->GetDimensions(inputRes);
-  vtkDataArray *coordCenters[3];
+  vtkSmartPointer<vtkDataArray> coordCenters[3] = {vtkSmartPointer<vtkFloatArray>::New(),
+						   vtkSmartPointer<vtkFloatArray>::New(),
+						   vtkSmartPointer<vtkFloatArray>::New()};
 
   for (int c = 0; c < 3; ++c) {
-    coordCenters[c] = vtkFloatArray::New();
+    // coordCenters[c] = vtkFloatArray::New();
     coordCenters[c]->SetNumberOfComponents(1);
     coordCenters[c]->SetNumberOfTuples(coordNodes[c]->GetNumberOfTuples()-1);
     for (int i = 0; i < coordCenters[c]->GetNumberOfTuples(); ++i) {
@@ -1917,6 +1919,8 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 
   //correctParticles(particles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection);
   correctParticles2(particles, oldParticles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection, smartCorrection);
+
+  oldParticles.clear();
 }
 
 // void advectParticles(vtkRectilinearGrid *velocityGrid[2],
@@ -2672,6 +2676,11 @@ void generateBoundary(const std::vector<float4> &points,
     computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
     
     subGrid->Delete();
+    for (int j = 0; j < 3; ++j) {
+      if (subcoords[j] != nullptr) {
+	subcoords[j]->Delete();
+      }
+    }
 
     labelOffsets[i+1] = vertices.size();
   }
@@ -2914,6 +2923,12 @@ void generateBoundary(const std::vector<float4> &points,
     computeNormals(subGrid, field.data(), vertices.begin()+numVertsPrev, vertices.end(), normals);
     
     subGrid->Delete();
+
+    for (int j = 0; j < 3; ++j) {
+      if (subcoords[j] != nullptr) {
+	subcoords[j]->Delete();
+      }
+    }
   }
 
   prevLabelPoints = labelPoints;

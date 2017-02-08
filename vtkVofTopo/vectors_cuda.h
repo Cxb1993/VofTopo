@@ -5,27 +5,27 @@
 
 struct int2
 {
-    int x, y;
+  int x, y;
 };
 
 struct int3
 {
-    int x, y, z;
+  int x, y, z;
 };
 
 struct float3
 {
-    float x, y, z;
+  float x, y, z;
 };
 
 struct float4
 {
-    float x, y, z, w;
+  float x, y, z, w;
 };
 
 struct double3
 {
-    double x, y, z;
+  double x, y, z;
 };
 
 inline int2 make_int2(int x, int y)
@@ -49,7 +49,7 @@ inline float3 make_float3(float s)
 
 inline float3 make_float3(float4 a)
 {
-    return make_float3(a.x, a.y, a.z);
+  return make_float3(a.x, a.y, a.z);
 }
 
 inline float4 make_float4(float x, float y, float z, float w)
@@ -61,148 +61,153 @@ inline float4 make_float4(float x, float y, float z, float w)
 
 inline float4 make_float4(float3 a)
 {
-    return make_float4(a.x, a.y, a.z, 0.0f);
+  return make_float4(a.x, a.y, a.z, 0.0f);
 }
 
 inline float4 make_float4(float3 a, float w)
 {
-    return make_float4(a.x, a.y, a.z, w);
+  return make_float4(a.x, a.y, a.z, w);
 }
 
 inline float3 operator+(float3 a, float3 b)
 {
-    return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
+  return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 
 inline float4 operator+(float4 a, float4 b)
 {
-    return make_float4(a.x + b.x, a.y + b.y, a.z + b.z,  a.w + b.w);
+  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z,  a.w + b.w);
 }
 
 inline void operator+=(float3 &a, float3 b)
 {
-    a.x += b.x;
-    a.y += b.y;
-    a.z += b.z;
+  a.x += b.x;
+  a.y += b.y;
+  a.z += b.z;
 }
 
 inline void operator+=(float4 &a, float4 b)
 {
-    a.x += b.x;
-    a.y += b.y;
-    a.z += b.z;
-    a.w += b.w;
+  a.x += b.x;
+  a.y += b.y;
+  a.z += b.z;
+  a.w += b.w;
 }
 
 inline float3 operator-(float3 a, float3 b)
 {
-    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
+  return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
 inline float4 operator-(float4 a, float4 b)
 {
-    return make_float4(a.x - b.x, a.y - b.y, a.z - b.z,  a.w - b.w);
+  return make_float4(a.x - b.x, a.y - b.y, a.z - b.z,  a.w - b.w);
 }
 
 inline void operator-=(float4 &a, float4 b)
 {
-    a.x -= b.x;
-    a.y -= b.y;
-    a.z -= b.z;
-    a.w -= b.w;
+  a.x -= b.x;
+  a.y -= b.y;
+  a.z -= b.z;
+  a.w -= b.w;
 }
 
 inline float3 operator*(float3 a, float b)
 {
-    return make_float3(a.x * b, a.y * b, a.z * b);
+  return make_float3(a.x * b, a.y * b, a.z * b);
 }
 
 inline float3 operator*(float b, float3 a)
 {
-    return make_float3(b * a.x, b * a.y, b * a.z);
+  return make_float3(b * a.x, b * a.y, b * a.z);
 }
 
 inline float3 operator*(float3 a, float3 b)
 {
-    return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
+  return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
 inline float4 operator*(float4 a, float b)
 {
-    return make_float4(a.x * b, a.y * b, a.z * b,  a.w * b);
+  return make_float4(a.x * b, a.y * b, a.z * b,  a.w * b);
 }
 
 inline float4 operator*(float b, float4 a)
 {
-    return make_float4(b * a.x, b * a.y, b * a.z, b * a.w);
+  return make_float4(b * a.x, b * a.y, b * a.z, b * a.w);
 }
 
 inline void operator*=(float3 &a, float3 b)
 {
-    a.x *= b.x;
-    a.y *= b.y;
-    a.z *= b.z;
+  a.x *= b.x;
+  a.y *= b.y;
+  a.z *= b.z;
 }
 
 inline float3 operator/(float3 a, float b)
 {
-    return make_float3(a.x / b, a.y / b, a.z / b);
+  return make_float3(a.x / b, a.y / b, a.z / b);
 }
 
 inline float4 operator/(float4 a, float b)
 {
-    return make_float4(a.x / b, a.y / b, a.z / b,  a.w / b);
+  return make_float4(a.x / b, a.y / b, a.z / b,  a.w / b);
 }
 
 inline float3 operator/(float3 a, float3 b)
 {
-    return make_float3(a.x / b.x, a.y / b.y, a.z / b.z);
+  return make_float3(a.x / b.x, a.y / b.y, a.z / b.z);
 }
 
 inline float rsqrtf(float x)
 {
-    return 1.0f / sqrtf(x);
+  return 1.0f / sqrtf(x);
 }
 
 inline float dot(float3 a, float3 b)
 {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
+  return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
 inline float length(float3 v)
 {
-    return sqrtf(dot(v, v));
+  return sqrtf(dot(v, v));
+}
+
+inline float lengthSq(float3 v)
+{
+  return dot(v, v);
 }
 
 inline float3 normalize(float3 v)
 {
-    float invLen = rsqrtf(dot(v, v));
-    return v * invLen;
+  float invLen = rsqrtf(dot(v, v));
+  return v * invLen;
 }
 
 inline float3 cross(float3 a, float3 b)
 {
-    return make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
+  return make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
 }
 
 inline float3 lerp(float3 a, float3 b, float t)
 {
-    return a + t*(b-a);
+  return a + t*(b-a);
 }
 
 inline float4 lerp(float4 a, float4 b, float t)
 {
-    return a + t*(b-a);
+  return a + t*(b-a);
 }
 
 inline float3 minf3(float3 a, float3 b)
 {
-    return make_float3(std::min(a.x,b.x), std::min(a.y,b.y), std::min(a.z,b.z));
+  return make_float3(std::min(a.x,b.x), std::min(a.y,b.y), std::min(a.z,b.z));
 }
 
 inline float3 maxf3(float3 a, float3 b)
 {
-    return make_float3(std::max(a.x,b.x), std::max(a.y,b.y), std::max(a.z,b.z));
+  return make_float3(std::max(a.x,b.x), std::max(a.y,b.y), std::max(a.z,b.z));
 }
 
 #endif//VECTORS_CUDA_H

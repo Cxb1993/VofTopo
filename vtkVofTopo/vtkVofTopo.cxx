@@ -475,6 +475,11 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       }
       else {
 	end_advection.push_back(Clock::now());
+	Milliseconds dur_step_ms =
+	  std::chrono::duration_cast<Milliseconds>(end_advection.back()-start_advection.back());
+	Seconds dur_step_s = std::chrono::duration_cast<Seconds>(end_advection.back()-start_advection.back());
+	std::cout << "advection," << TimestepT0 << ","
+		  << dur_step_s.count() << "," << dur_step_ms.count() << std::endl;
       }
 #endif//MEASURE_TIME
      
@@ -1258,50 +1263,6 @@ void vtkVofTopo::LabelAdvectedParticles(vtkRectilinearGrid *components,
       if (SeedByPLIC) {      
 	labels[i] = label;
       }
-      // else {
-      // 	float f = vofArray->GetComponent(idx,0);
-      // 	if (f >= g_emf1) {
-      // 	  labels[i] = label;
-      // 	}
-      // 	else if (f > g_emf0) {
-      // 	  f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
-      // 	  if (f > g_emf0) {
-      // 	    labels[i] = label;
-      // 	  }
-      // 	  else {
-      // 	    labels[i] = -1.0f;
-      // 	  }
-      // 	}
-      // 	else {
-      // 	  f = neighborF(vofArray,ijk[0],ijk[1],ijk[2],cellRes);
-      // 	  if (f > g_emf0) {
-      // 	    f = interpolateScaCellBasedData(vofArray, cellRes, ijk, pcoords);
-      // 	    if (f > g_emf0) {
-      // 	      float grad[3];
-      // 	      computeGradient(vofArray, cellRes, ijk, coordCenters, pcoords, grad);
-      // 	      x[0] += grad[0];
-      // 	      x[1] += grad[1];
-      // 	      x[2] += grad[2];
-      // 	      particleInsideGrid = components->ComputeStructuredCoordinates(x, ijk, pcoords);
-	      
-      // 	      if (particleInsideGrid) {
-      // 		idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-      // 		label = data->GetComponent(idx,0);
-      // 		labels[i] = label;
-      // 	      }
-      // 	      else {
-      // 		labels[i] = -1.0f;
-      // 	      }
-      // 	    }
-      // 	    else {
-      // 	      labels[i] = -1.0f;
-      // 	    }
-      // 	  }
-      // 	  else {
-      // 	    labels[i] = -1.0f;
-      // 	  }	  
-      // 	}
-      // }
     }
     else {
       labels[i] = -1.0f;
@@ -1938,98 +1899,5 @@ void vtkVofTopo::GenerateIntBoundaries(vtkPolyData *intermBoundaries)
   intermBoundaries->GetPointData()->AddArray(intTimeStamps);
   intermBoundaries->SetPolys(outputTriangles);
   // intermBoundaries->GetPointData()->SetNormals(pointNormals);
-}
-
-void vtkVofTopo::CreateScalarField(vtkRectilinearGrid *grid,
-				   const std::vector<float4> &particles,
-				   vtkRectilinearGrid *scalarField)
-{
-  int nodeRes[3];
-  grid->GetDimensions(nodeRes);
-  int cellRes[3] = {nodeRes[0]-1,nodeRes[1]-1,nodeRes[2]-1};
-  const int numCells = cellRes[0]*cellRes[1]*cellRes[2];
-  
-  scalarField->CopyStructure(grid);
-  vtkSmartPointer<vtkFloatArray> field = vtkSmartPointer<vtkFloatArray>::New();
-  field->SetName("Data");
-  field->SetNumberOfComponents(1);
-  field->SetNumberOfTuples(numCells);
-  field->FillComponent(0,0.0f);
-
-  for (const float4 &p : particles) {
-
-    double x[3] = {p.x, p.y, p.z};
-    int ijk[3];
-    double pcoords[3];
-    grid->ComputeStructuredCoordinates(x, ijk, pcoords);
-
-    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-
-    {
-      int lx = ijk[0];
-      int ly = ijk[1];
-      int lz = ijk[2];
-      float bx = pcoords[0] - 0.5;
-      float by = pcoords[1] - 0.5;
-      float bz = pcoords[2] - 0.5;
-
-      if (pcoords[0] < 0.5) {
-	lx -= 1;
-	bx = pcoords[0] + 0.5;
-      }
-      if (pcoords[1] < 0.5) {
-	ly -= 1;
-	by = pcoords[1] + 0.5;
-      }
-      if (pcoords[2] < 0.5) {
-	lz -= 1;
-	bz = pcoords[2] + 0.5;
-      }
-   
-      int ux = lx+1;
-      int uy = ly+1;
-      int uz = lz+1;
-    
-      if (lx < 0) lx = 0;
-      if (ly < 0) ly = 0;
-      if (lz < 0) lz = 0;
-      if (ux > cellRes[0]-1) ux = cellRes[0]-1;
-      if (uy > cellRes[1]-1) uy = cellRes[1]-1;
-      if (uz > cellRes[2]-1) uz = cellRes[2]-1;
-
-      float contr[8] = {(1.0f-bx)*(1.0f-by)*(1.0f-bz),
-			(bx)     *(1.0f-by)*(1.0f-bz),
-			(1.0f-bx)*(by)     *(1.0f-bz),
-			(bx)     *(by)     *(1.0f-bz),
-			(1.0f-bx)*(1.0f-by)*(bz),
-			(bx)     *(1.0f-by)*(bz),
-			(1.0f-bx)*(by)     *(bz),
-			(bx)     *(by)     *(bz)};
-
-      int lzslab = lz*cellRes[0]*cellRes[1];
-      int uzslab = uz*cellRes[0]*cellRes[1];
-      int lyr = ly*cellRes[0];
-      int uyr = uy*cellRes[0];
-    
-      int id[8] = {lx + lyr + lzslab,
-		   ux + lyr + lzslab,
-		   lx + uyr + lzslab,
-		   ux + uyr + lzslab,
-		   lx + lyr + uzslab,
-		   ux + lyr + uzslab,
-		   lx + uyr + uzslab,
-		   ux + uyr + uzslab};
-
-      float f0 = 1.0f/std::pow(8.0,Refinement);
-      for (int j = 0; j < 8; ++j) {
-	field->SetComponent(id[j],0,field->GetComponent(id[j],0)+contr[j]*f0);
-      }
-    }
-
-    // field->SetComponent(idx, 0, 1.0f);
-  }
-
-  scalarField->GetCellData()->AddArray(field);
-  scalarField->GetCellData()->SetActiveAttribute("Data",vtkDataSetAttributes::SCALARS);
 }
 

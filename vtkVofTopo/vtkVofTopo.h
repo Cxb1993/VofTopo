@@ -147,6 +147,7 @@ private:
   int Refinement;
   vtkPolyData *Seeds;
   bool SeedPointsProvided;
+  bool VelocityProvided;
 
   // Particles
   std::vector<float4> Particles;

@@ -23,6 +23,7 @@
 #include <array>
 #include <omp.h>
 #include <algorithm>
+#include <chrono>
 
 #include "marchingCubes_cpu.h"
 
@@ -529,7 +530,14 @@ void computeNormals(int nodeRes[3],
 	  im = 0;
 	if (ip > cellRes[0]-1) 
 	  ip = cellRes[0]-1;
-	
+
+	// dont compute if completely full/empty cell
+	int fo = i + j*cellRes[0] + k*cellRes[0]*cellRes[1];
+	float tmp_f = f->GetComponent(fo,0);
+	if (tmp_f <= g_emf0 || tmp_f >= g_emf1) {
+	  continue;
+	}
+
 	float dxc = (dx[im] + dx[ip])*0.5f;
 
 	float fs[8] = {f->GetComponent(im + jm*cellRes[0] + km*cellRes[0]*cellRes[1], 0),
@@ -744,6 +752,11 @@ void computeL(const int cellRes[3],
       for (int i = 0; i < w; i++) {
 	int fo = i + j*w + k*w*h;
 
+	float tmp_f = f->GetComponent(fo,0);
+	if (tmp_f <= g_emf0 || tmp_f >= g_emf1) {
+	  continue;
+	}
+	  
 	// The correct normals vector is computed as an average of 
 	// 8 corners;
 	int n0 = i   + (j  )*(w+1) + (k  )*(w+1)*(h+1);
@@ -999,7 +1012,7 @@ float4 vofCorrector(const float4 pos1, vtkDataArray *vofField,
 		    const int ijk[3],
 		    vtkRectilinearGrid *vofGrid, float &fCorrected)
 {
-  int stencilRange = 4;  
+  int stencilRange = 16;  
   int x = ijk[0];
   int y = ijk[1];
   int z = ijk[2];
@@ -1278,7 +1291,13 @@ void correctParticles2(std::vector<float4> &particles,
     normals.resize(cellRes[0]*cellRes[1]*cellRes[2]*3);
     
     computeNormals(nodeRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes);
+
+    // std::chrono::time_point<std::chrono::system_clock> start, end;
+    // start = std::chrono::system_clock::now();
     computeL(cellRes, dx[0], dx[1], dx[2], vofArray1, normalsNodes, lstar, normals);
+    // end = std::chrono::system_clock::now();
+    // std::chrono::duration<double> elapsed_seconds = end-start;
+    // std::cout << "computeL: " << elapsed_seconds.count() << std::endl;
   }
 
   std::vector<std::pair<int,float4>> updatedParticles;
@@ -2358,9 +2377,9 @@ void generateBoundary(const std::vector<float4> &points,
     std::unordered_set<float> unique_labels;
     unique_labels.clear();
     for (int j = 0; j < prevLabelPoints[i].size(); ++j) {
-      if (labels[prevLabelPoints[i][j]] != -1) {
+      // if (labels[prevLabelPoints[i][j]] != -1) {
 	unique_labels.insert(labels[prevLabelPoints[i][j]]);
-      }
+      // }
     }
     if (unique_labels.size() < 2) {
       continue;

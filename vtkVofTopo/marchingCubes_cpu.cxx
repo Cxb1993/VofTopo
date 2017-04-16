@@ -1485,9 +1485,9 @@ void extractSurface2(const float* volume,
 	    // if (invalidTriangle) {
 	    //   continue;
 	    // }
-	    if (numInvalidEdges > 2) {
-	      continue;
-	    }
+	    // if (numInvalidEdges > 2) {
+	    //   continue;
+	    // }
 
 	    for (int jv = 0; jv < 3; jv++) {
 

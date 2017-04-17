@@ -41,9 +41,6 @@ public:
   vtkGetMacro(StoreIntermBoundaries, int);
   vtkSetMacro(StoreIntermBoundaries, int);
 
-  vtkGetMacro(IntegrationMethod, int);
-  vtkSetMacro(IntegrationMethod, int);
-
   vtkGetMacro(PLICCorrection, int);
   vtkSetMacro(PLICCorrection, int);
 
@@ -180,7 +177,6 @@ private:
   vtkRectilinearGrid *VelocityGrid[2];
 
   // Misc
-  int IntegrationMethod; // 0 - Heun, 1 - RK4
   int PLICCorrection;
   int VOFCorrection;
   int SmartCorrection;

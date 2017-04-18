@@ -77,20 +77,12 @@ void advectParticles(vtkRectilinearGrid *inputVof[2],
 		     std::vector<float4> &particles,
 		     std::vector<float> &uncertainty,
 		     const float deltaT,
-		     int integrationMethod,
 		     int plicCorrection, int vofCorrection,
 		     int smartCorrection, int RK4NumSteps);
 
-/* void advectParticles(vtkRectilinearGrid *inputVof, */
-/* 		     vtkRectilinearGrid *inputVelocity, */
-/* 		     std::vector<float4> &particles, */
-/* 		     std::vector<float4> &velocities, */
-/* 		     const float deltaT, */
-/* 		     std::vector<float> &uncertainty); */
-
 void advectParticles(vtkRectilinearGrid *velocityGrid[2],
 		     std::vector<float4> &particles,
-		     const float deltaT, int integrationMethod,
+		     const float deltaT,
 		     int plicCorrection, int vofCorrection,
 		     int numSubSteps);
 

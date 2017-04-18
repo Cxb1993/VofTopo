@@ -28,6 +28,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 
+add_library(timeMeasure time_measure.cxx)
 add_library(vofTopology vofTopology.cxx)
 add_library(marchingCubes_cpu marchingCubes_cpu.cxx)
 
@@ -35,4 +36,4 @@ add_paraview_plugin(VofTopo "1.0"
   SERVER_MANAGER_XML VofTopo.xml
   SERVER_MANAGER_SOURCES vtkVofTopo.cxx)
 
-target_link_libraries(VofTopo PRIVATE vofTopology marchingCubes_cpu)
+target_link_libraries(VofTopo PRIVATE timeMeasure vofTopology marchingCubes_cpu)

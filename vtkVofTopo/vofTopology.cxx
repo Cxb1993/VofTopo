@@ -1423,20 +1423,22 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
   float ct = t;
   
   float DeltaT = t1 - t0; // > 0
+  float DeltaTinv = 1.0f/DeltaT;
   float et = incr > 0 ? t1 : t0;
   float deltaT = et - ct; // <> 0
   float ctr = ct - t0; // > 0
   float a;
+  const float deltaTStep = deltaT/numSubSteps;
   
   for (int i = 0; i < numSteps; ++i) {
 
-    float dt = i < numSteps-1 ? deltaT/numSteps : et - ct;
+    float dt = i < numSteps-1 ? deltaTStep : et - ct;
     double x[3] = {pos.x, pos.y, pos.z};
     int ijk[3];
     double pcoords[3];
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    a = ctr/DeltaT;
+    a = ctr*DeltaTinv;
     float4 k10 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
     float4 k11 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);    
     float4 k1 = lerp(k10,k11,a);
@@ -1444,7 +1446,7 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
     x[0] = k1p.x; x[1] = k1p.y; x[2] = k1p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    a = (ctr+dt*0.5f)/DeltaT;
+    a = (ctr+dt*0.5f)*DeltaTinv;
     float4 k20 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
     float4 k21 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k2 = lerp(k20,k21,a);
@@ -1452,7 +1454,7 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
     x[0] = k2p.x; x[1] = k2p.y; x[2] = k2p.z;    
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    a = (ctr+dt*0.5f)/DeltaT;
+    a = (ctr+dt*0.5f)*DeltaTinv;
     float4 k30 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
     float4 k31 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k3 = lerp(k30,k31,a);
@@ -1460,7 +1462,7 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
     x[0] = k3p.x; x[1] = k3p.y; x[2] = k3p.z;
     velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
 
-    a = (ctr+dt)/DeltaT;
+    a = (ctr+dt)*DeltaTinv;
     float4 k40 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
     float4 k41 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
     float4 k4 = lerp(k40,k41,a);
@@ -1472,43 +1474,6 @@ float4 rungeKutta4(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
   return pos;
 }
 
-float4 iterativeHeun(const float4 &pos0, vtkRectilinearGrid *velocityGrid[2],
-		     vtkDataArray *velocityArray0, vtkDataArray *velocityArray1,
-		     vtkDataArray *vofArray1, const int cellRes[3], const float deltaT)
-{
-  double x[3] = {pos0.x, pos0.y, pos0.z};
-  int ijk[3];
-  double pcoords[3];
-  velocityGrid[0]->ComputeStructuredCoordinates(x, ijk, pcoords);
-  float4 velocity0 = make_float4(interpolateVecCellBasedData(velocityArray0, cellRes, ijk, pcoords),0.0f);
-  float4 pos1 = pos0 + deltaT*velocity0;     // initial guess - forward Euler
-  float4 velocity1;
-
-  const int maxNumIter = 20;
-  for (int i = 0; i < maxNumIter; ++i) {
-
-    x[0] = pos1.x;
-    x[1] = pos1.y;
-    x[2] = pos1.z;
-      
-    velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);
-    velocity1 = make_float4(interpolateVecCellBasedData(velocityArray1, cellRes, ijk, pcoords),0.0f);
-
-    float4 velocity = (velocity0 + velocity1)/2.0f;
-    pos1 = pos0 + deltaT*velocity;	
-  }      
-
-  x[0] = pos1.x;
-  x[1] = pos1.y;
-  x[2] = pos1.z;
-  int particleInsideGrid = velocityGrid[1]->ComputeStructuredCoordinates(x, ijk, pcoords);        
-  if (particleInsideGrid) {
-    int idx = ijk[0] + ijk[1]*cellRes[0] + ijk[2]*cellRes[0]*cellRes[1];
-    pos1.w = vofArray1->GetComponent(idx, 0);
-  }
-  return pos1;
-}
-
 // iterative, solved with fixed point method - Newton's method can be viewed as such
 // https://en.wikipedia.org/wiki/Fixed-point_iteration
 // https://en.wikipedia.org/wiki/Trapezoidal_rule_%28differential_equations%29
@@ -1516,7 +1481,7 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 		     vtkRectilinearGrid *velocityGrid[2],
 		     std::vector<float4> &particles,
 		     std::vector<float> &uncertainty,
-		     const float deltaT, int integrationMethod,
+		     const float deltaT,
 		     int plicCorrection, int vofCorrection,
 		     int smartCorrection, int numSubSteps)
 {
@@ -1533,17 +1498,10 @@ void advectParticles(vtkRectilinearGrid *vofGrid[2],
 
   std::vector<float4> oldParticles = particles;
 
-#pragma omp parallel for  
+#pragma omp parallel for
   for (int i = 0; i < particles.size(); ++i) {
-
-    if (integrationMethod == 0) { // Heun
-      particles[i] = iterativeHeun(particles[i], velocityGrid, velocityArray0, velocityArray1,
-				   vofArray1, cellRes, deltaT);
-    }
-    else {
-      particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1, cellRes,
-				 0.0f, 1.0f, 0.0f, deltaT, numSubSteps);
-    }
+    particles[i] = rungeKutta4(particles[i], velocityGrid, velocityArray0, velocityArray1, cellRes,
+			       0.0f, 1.0f, 0.0f, deltaT, numSubSteps);
   }
 
   correctParticles2(particles, oldParticles, uncertainty, vofGrid, vofArray1, coords, cellRes, plicCorrection, vofCorrection, smartCorrection);
@@ -2513,6 +2471,19 @@ void generateBoundary(const std::vector<float4> &points,
   }
 
   prevLabelPoints = labelPoints;
+}
+
+void writeData(vtkPolyData *data, const int blockId,
+	       const int processId, const std::string path)
+{
+  vtkSmartPointer<vtkXMLPolyDataWriter> writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+  writer->SetInputData(data);
+  std::string outFile = path;
+  outFile += std::to_string(blockId) + std::string("_") + std::to_string(processId);
+  outFile += ".vtp";
+  writer->SetFileName(outFile.c_str());
+  writer->SetDataModeToBinary();
+  writer->Write();
 }
 
 void writeData(vtkRectilinearGrid *data, const int blockId,

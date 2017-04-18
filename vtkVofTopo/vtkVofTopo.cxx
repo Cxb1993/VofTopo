@@ -623,9 +623,9 @@ int vtkVofTopo::RequestData(vtkInformation *request,
       output->SetBlock(nextBlock++, components);
       output->GetMetaData(nextBlock-1)->Set(vtkCompositeDataSet::NAME(), "C-c at t_0+T");
 
-      // writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      // writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
-      // writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
+      writeData(Seeds, 0, Controller->GetLocalProcessId(), "/tmp/vis/out1_");
+      writeData(particles, 1, Controller->GetLocalProcessId(), "/tmp/vis/out1_");
+      writeData(Boundaries, 2, Controller->GetLocalProcessId(), "/tmp/vis/out1_");
       // writeData(components, 3, Controller->GetLocalProcessId(), "/tmp/vis001/out1_");
 
       if (StoreIntermParticles) {
@@ -690,15 +690,15 @@ int vtkVofTopo::RequestData(vtkInformation *request,
     if (Controller->GetCommunicator() != 0) {
       pid = Controller->GetLocalProcessId();
     }
-
-    std::string tname = "timings_p";
-    tname += std::to_string(pid) + "_";
-    tname += std::to_string(InitTimeStep) + "-" + std::to_string(TimestepT1);
-    tname += "_" + timeMeasure->wallClockStartTime;
-    tname += ".csv";
-
-    writeTimings(tname, timeMeasure);
-    
+    if (pid == 0) {
+      std::string tname = "timings_p";
+      tname += std::to_string(pid) + "_";
+      tname += std::to_string(InitTimeStep) + "-" + std::to_string(TimestepT1);
+      tname += "_" + timeMeasure->wallClockStartTime;
+      tname += ".csv";
+      
+      writeTimings(tname, timeMeasure);
+    }
 #endif//MEASURE_TIME
   }
   else {
@@ -984,28 +984,16 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
 
     // -----------------------------------------------------------------------
     // gather number of labels from other processes
-    std::vector<vtkIdType> recvLengths(numProcesses);
-    std::vector<vtkIdType> recvOffsets(numProcesses);
-    for (int i = 0; i < numProcesses; ++i) {
-      recvLengths[i] = 1;
-      recvOffsets[i] = i;
-    }
-
     int numMyLabels = g_labelId;
     std::vector<int> allNumLabels(numProcesses);
-    Controller->AllGatherV(&numMyLabels, &allNumLabels[0], 1, &recvLengths[0], &recvOffsets[0]);
+    Controller->AllGather(&numMyLabels, &allNumLabels[0], 1);
+
     std::vector<int> labelOffsets(numProcesses);
     labelOffsets[0] = 0;
     for (int i = 1; i < numProcesses; ++i) {
       labelOffsets[i] = labelOffsets[i-1] + allNumLabels[i-1];
     }
     int numAllLabels = labelOffsets.back() + allNumLabels.back();
-
-    // ------------------------
-    for (int i = 0; i < numProcesses; ++i) {
-      recvLengths[i] = NUM_SIDES;
-      recvOffsets[i] = i*NUM_SIDES;
-    }
 
     // -----------------------------------------------------------------------
     // prepare labelled cells to send to neighbors
@@ -1089,6 +1077,11 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
     unifyLabelsInProcess(NeighborProcesses, myExtent, cellRes,
 			 labels, labelsToRecv, labelOffsets, processId,
 			 allLabels);
+
+    
+    // ------------------------
+    std::vector<vtkIdType> recvLengths(numProcesses);
+    std::vector<vtkIdType> recvOffsets(numProcesses);
 
     for (int i = 0; i < numProcesses; ++i) {
       recvLengths[i] = numAllLabels;

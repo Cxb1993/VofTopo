@@ -1091,9 +1091,7 @@ void vtkVofTopo::ExtractComponents(vtkRectilinearGrid *vof,
   labels->SetName("Labels");
   labels->SetNumberOfComponents(1);
   labels->SetNumberOfTuples(vof->GetNumberOfCells());
-  for (int i = 0; i < labels->GetNumberOfTuples(); ++i) {
-    labels->SetValue(i, -1.0f);
-  }
+  labels->FillComponent(0, -1.0);
 
   g_labelId = 0;
   // determine if data is float or double
